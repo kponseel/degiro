@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { uploadCsv, getToken, setToken, clearToken, enrichNow, getEtfHoldings, uploadEtfHoldings } from '../lib/api.js';
+import {
+  uploadCsv, enrichNow, getEtfHoldings, uploadEtfHoldings,
+  updatePseudo, deleteMyData, deleteAccount,
+} from '../lib/api.js';
 import { Card, Banner } from '../components/ui.jsx';
 import IsinEditor from '../components/IsinEditor.jsx';
 
@@ -169,8 +172,83 @@ function EtfHoldingsUploader({ onImported }) {
   );
 }
 
-export default function Settings({ onImported }) {
-  const [tokenInput, setTokenInput] = useState('');
+function AccountCard({ user, onUserChange, onLogout }) {
+  const [pseudo, setPseudo] = useState(user?.pseudo || '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [confirmData, setConfirmData] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function savePseudo() {
+    if (!pseudo.trim() || pseudo.trim() === user?.pseudo) return;
+    setBusy(true); setMsg(null);
+    try {
+      const res = await updatePseudo(pseudo.trim());
+      onUserChange?.(res.user);
+      setMsg({ kind: 'info', text: 'Pseudo mis à jour.' });
+    } catch (e) {
+      setMsg({ kind: 'err', text: e.body?.error || e.message });
+    } finally { setBusy(false); }
+  }
+
+  async function wipeData() {
+    setBusy(true); setMsg(null);
+    try {
+      await deleteMyData();
+      setConfirmData(false);
+      setMsg({ kind: 'info', text: 'Toutes tes données de portefeuille ont été effacées.' });
+    } catch (e) {
+      setMsg({ kind: 'err', text: e.body?.error || e.message });
+    } finally { setBusy(false); }
+  }
+
+  async function removeAccount() {
+    setBusy(true);
+    try {
+      await deleteAccount();
+      onLogout?.();
+    } catch (e) {
+      setMsg({ kind: 'err', text: e.body?.error || e.message });
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="Mon compte">
+      <p className="muted" style={{ marginTop: 0 }}>
+        Connecté en tant que <strong>{user?.email}</strong>.
+      </p>
+      <div className="field" style={{ maxWidth: 480 }}>
+        <label>Pseudo</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="input" value={pseudo} maxLength={60} onChange={(e) => setPseudo(e.target.value)} placeholder="Ton pseudo" />
+          <button className="btn" disabled={busy || !pseudo.trim() || pseudo.trim() === user?.pseudo} onClick={savePseudo}>Enregistrer</button>
+        </div>
+      </div>
+
+      {msg && <div style={{ marginTop: 12 }}><Banner kind={msg.kind}>{msg.text}</Banner></div>}
+
+      <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button className="btn ghost" onClick={onLogout}>Se déconnecter</button>
+        {!confirmData
+          ? <button className="btn ghost" onClick={() => setConfirmData(true)}>Effacer mes données</button>
+          : <button className="btn danger" disabled={busy} onClick={wipeData}>Confirmer l'effacement des données</button>}
+        {!confirmDelete
+          ? <button className="link-btn danger-text" onClick={() => setConfirmDelete(true)}>Supprimer mon compte</button>
+          : <button className="btn danger" disabled={busy} onClick={removeAccount}>Confirmer la suppression du compte</button>}
+      </div>
+      {(confirmData || confirmDelete) && (
+        <div className="sub muted" style={{ marginTop: 10, fontSize: 12.5 }}>
+          {confirmDelete
+            ? 'La suppression du compte est définitive : données, sessions et pseudo seront effacés.'
+            : 'L’effacement retire tes snapshots, positions et mouvements — le compte est conservé.'}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function Settings({ onImported, user, onUserChange, onLogout }) {
   const [enrichMsg, setEnrichMsg] = useState(null);
   const [theme, setThemeState] = useState(localStorage.getItem('degiro_theme') || 'light');
 
@@ -180,9 +258,6 @@ export default function Settings({ onImported }) {
     if (t === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', t);
   }
-
-  const currentToken = getToken();
-  const masked = currentToken ? `${currentToken.slice(0, 4)}…${currentToken.slice(-4)}` : '—';
 
   async function runEnrich() {
     setEnrichMsg({ kind: 'info', text: 'Enrichissement en cours…' });
@@ -223,17 +298,7 @@ export default function Settings({ onImported }) {
         </div>
       </Card>
 
-      <Card title="Jeton d'accès">
-        <p className="muted" style={{ marginTop: 0 }}>Jeton actuel : <code>{masked}</code></p>
-        <div className="field" style={{ maxWidth: 480 }}>
-          <label>Remplacer le jeton</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="input" type="password" placeholder="Nouveau jeton" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} />
-            <button className="btn" disabled={!tokenInput} onClick={() => { setToken(tokenInput.trim()); location.reload(); }}>Enregistrer</button>
-          </div>
-        </div>
-        <button className="link-btn" style={{ marginTop: 12 }} onClick={() => { clearToken(); location.reload(); }}>Se déconnecter (oublier le jeton)</button>
-      </Card>
+      <AccountCard user={user} onUserChange={onUserChange} onLogout={onLogout} />
 
       <Card title="Apparence">
         <div style={{ display: 'flex', gap: 8 }}>

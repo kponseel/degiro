@@ -218,6 +218,12 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
 .btn.ghost { background: var(--card); color: var(--ink); border-color: var(--line); box-shadow: none; }
 .btn.ghost:hover { border-color: var(--ink-faint); background: var(--card-2); filter: none; }
+.btn.danger { background: var(--neg); color: #fff; box-shadow: none; }
+.link-btn.danger-text { color: var(--neg); }
+
+/* ── User chip (sidebar) ──────────────────────────────── */
+.user-chip { display: flex; flex-direction: column; gap: 2px; }
+.user-pseudo { font-weight: 680; color: var(--ink); font-size: 13px; }
 .input {
   width: 100%; padding: 11px 13px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit;
