@@ -23,6 +23,14 @@ export function assetClassFromType(type) {
   return type;
 }
 
+/** Devine la classe d'actifs depuis le nom (utile pour les imports CSV sans type). */
+export function assetClassFromName(name) {
+  const n = String(name || '');
+  if (/\betf\b|ucits|tracker/i.test(n)) return 'ETF';
+  if (/\betc\b|physical (gold|silver|palladium|platinum|metal)/i.test(n)) return 'ETC';
+  return null;
+}
+
 /** Résolution ISIN→ticker/secteur via OpenFIGI (best-effort, jamais bloquant). */
 async function openFigiLookup(isins) {
   const map = new Map();
@@ -60,9 +68,10 @@ async function openFigiLookup(isins) {
 export async function enrichPortfolio() {
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT DISTINCT p.isin, p.product_type
+    `SELECT p.isin, MAX(p.product_type) AS product_type, MAX(p.name) AS name
      FROM positions p
-     WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = 1 ORDER BY captured_at DESC LIMIT 1)`,
+     WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = 1 ORDER BY captured_at DESC LIMIT 1)
+     GROUP BY p.isin`,
   );
   if (!rows.length) return { enriched: 0, skippedManual: 0, source: 'none' };
 
@@ -74,7 +83,9 @@ export async function enrichPortfolio() {
 
   for (const r of toEnrich) {
     const country = countryFromIsin(r.isin);
-    const assetClass = assetClassFromType(r.product_type);
+    // Type DEGIRO si présent (extension), sinon inférence par le nom, sinon Action par défaut.
+    const assetClass =
+      assetClassFromType(r.product_type) || assetClassFromName(r.name) || 'Action';
     const f = figi.get(r.isin) || {};
     await pool.query(
       `INSERT INTO isin_ref (isin, ticker, sector, country, asset_class, manual_override, updated_at)

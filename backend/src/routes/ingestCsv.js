@@ -7,6 +7,7 @@ import {
   mapPortfolio,
   mapAccount,
   mapTransactions,
+  extractCashEur,
   csvCaptureId,
 } from '../services/csvParser.js';
 import { ingestSnapshot } from '../services/ingest.js';
@@ -47,15 +48,18 @@ router.post('/', upload.single('file'), async (req, res, next) => {
     }
 
     if (kind === 'portfolio') {
-      const totalValueEur = normalized.reduce((s, p) => s + (p.value_eur || 0), 0);
+      const posTotal = normalized.reduce((s, p) => s + (p.value_eur || 0), 0);
+      const cashEur = extractCashEur(rows);
+      const totalValueEur = posTotal + (cashEur || 0);
       const result = await ingestSnapshot({
         source: 'csv',
         capture_id: csvCaptureId(text),
         captured_at: new Date().toISOString(),
         total_value_eur: totalValueEur || null,
+        cash_eur: cashEur,
         positions: normalized,
       });
-      return res.status(200).json({ kind, positions: normalized.length, ...result });
+      return res.status(200).json({ kind, positions: normalized.length, cash_eur: cashEur, ...result });
     }
 
     const result = await saveTransactions(normalized);

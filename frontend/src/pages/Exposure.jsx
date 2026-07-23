@@ -79,23 +79,25 @@ export default function Exposure() {
     return <Card><Empty title="Aucune position">Importez d'abord un portefeuille.</Empty></Card>;
   }
 
-  const byCurrency = groupBy(positions, (p) => p.currency);
-  const byType = groupBy(positions, (p) => p.product_type, 'Non typé');
-  const bySector = exposure?.sector || (positions.some((p) => p.sector) ? groupBy(positions, (p) => p.sector) : []);
-  const byCountry = exposure?.country || (positions.some((p) => p.country) ? groupBy(positions, (p) => p.country) : []);
+  // Le serveur renvoie les répartitions enrichies ; repli client si l'endpoint échoue.
+  const byCurrency = exposure?.currency?.length ? exposure.currency : groupBy(positions, (p) => p.currency);
+  const byType = exposure?.asset_class?.length ? exposure.asset_class : groupBy(positions, (p) => p.product_type, 'Non typé');
+  const bySector = exposure?.sector || [];
+  const byCountry = exposure?.country || [];
 
   return (
     <>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
         <Donut title="Exposition par devise" data={byCurrency} note="Devise de cotation — sans neutraliser l'effet de change." />
-        <Donut title="Exposition par classe d'actifs" data={byType} note="Depuis le type de produit DEGIRO (absent des imports CSV)." />
+        <Donut title="Exposition par classe d'actifs" data={byType} note="Type DEGIRO, ou déduit du nom (UCITS/ETF → ETF, Physical Gold → ETC)." />
         {bySector.length > 0 && <Donut title="Exposition par secteur" data={bySector} note="Depuis l'enrichissement ISIN (hors ETF non éclatés). Le look-through ETF affinera cette vue." />}
         {byCountry.length > 0 && <Donut title="Exposition par pays" data={byCountry} />}
       </div>
       {(enrichPending || bySector.length === 0) && (
         <div style={{ marginTop: 16 }}>
           <Banner kind="info">
-            Secteur et pays nécessitent l'enrichissement ISIN. Lancez-le depuis <strong>Import / Réglages → Enrichissement</strong>.
+            La répartition par secteur nécessite l'enrichissement ISIN (source externe) ou une saisie
+            manuelle. Renseignez-la depuis <strong>Import / Réglages → Références ISIN</strong>.
           </Banner>
         </div>
       )}

@@ -89,10 +89,13 @@ export default function Overview({ onGoImport }) {
               </tr>
             </thead>
             <tbody>
-              {weighted.map((p) => (
+              {weighted.map((p) => {
+                const ac = p.asset_class || p.product_type;
+                const isFund = ac === 'ETF' || ac === 'ETC';
+                return (
                 <tr key={p.isin}>
                   <td><span className="sym">{p.symbol || '—'}</span> <span className="muted">{p.name || p.isin}</span></td>
-                  <td>{p.product_type ? <span className={`chip ${p.product_type === 'ETF' ? 'etf' : 'stock'}`}>{p.product_type}</span> : <span className="muted">—</span>}</td>
+                  <td>{ac ? <span className={`chip ${isFund ? 'etf' : 'stock'}`}>{ac}</span> : <span className="muted">—</span>}</td>
                   <td>{fmtNum(p.qty, 0)}</td>
                   <td>{fmtNum(p.price)}</td>
                   <td className="muted">{p.currency || '—'}</td>
@@ -100,7 +103,8 @@ export default function Overview({ onGoImport }) {
                   <td>{fmtPct(p.w)}</td>
                   <td className={p.pl_eur >= 0 ? 'pos' : 'neg'}>{p.pl_eur != null ? fmtEur(p.pl_eur) : '—'}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
