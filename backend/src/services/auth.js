@@ -24,9 +24,55 @@ async function findUserByEmail(email) {
   return rows[0] || null;
 }
 
+/**
+ * Crée un utilisateur en protégeant l'id 1, réservé au propriétaire :
+ * l'id 1 porte les données historiques (account_id = 1) et ne doit JAMAIS
+ * échoir à un inscrit par simple ordre d'arrivée.
+ *  - email == OWNER_EMAIL → tente de réclamer l'id 1 (s'il est libre).
+ *  - sinon insertion normale ; si l'auto-incrément attribue quand même 1
+ *    (table neuve, migration 005 pas encore passée), on répare et on réessaie.
+ */
+async function createUser(email, pseudo) {
+  const pool = getPool();
+  const isOwner = Boolean(config.auth.ownerEmail) && email === config.auth.ownerEmail;
+  if (isOwner) {
+    try {
+      await pool.query(
+        'INSERT INTO users (id, email, pseudo, created_at, last_login_at) VALUES (1, ?, ?, NOW(), NOW())',
+        [email, pseudo],
+      );
+      logger.info(`Propriétaire connecté pour la première fois → utilisateur #1 (${email})`);
+      return { id: 1, email, pseudo };
+    } catch {
+      // id 1 déjà occupé (ensureOwner l'a créé, ou situation anormale déjà signalée au boot).
+    }
+  }
+  let [ins] = await pool.query(
+    'INSERT INTO users (email, pseudo, created_at, last_login_at) VALUES (?, ?, NOW(), NOW())',
+    [email, pseudo],
+  );
+  if (ins.insertId === 1 && !isOwner) {
+    logger.warn(`Garde-fou : inscription ${email} a reçu l'id 1 (réservé au propriétaire) — réattribution`);
+    await pool.query('DELETE FROM users WHERE id = 1');
+    await pool.query('ALTER TABLE users AUTO_INCREMENT = 2');
+    [ins] = await pool.query(
+      'INSERT INTO users (email, pseudo, created_at, last_login_at) VALUES (?, ?, NOW(), NOW())',
+      [email, pseudo],
+    );
+  }
+  return { id: ins.insertId, email, pseudo };
+}
+
 export async function getUserById(id) {
   const [rows] = await getPool().query('SELECT id, email, pseudo, created_at, last_login_at FROM users WHERE id = ? LIMIT 1', [id]);
   return rows[0] || null;
+}
+
+/** Purge opportuniste : liens expirés/consommés depuis > 1 jour, sessions expirées. */
+async function purgeStale() {
+  const pool = getPool();
+  await pool.query('DELETE FROM magic_links WHERE expires_at < NOW() - INTERVAL 1 DAY');
+  await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
 }
 
 /**
@@ -39,6 +85,7 @@ export async function getUserById(id) {
 export async function requestMagicLink({ email, pseudo, appUrl }) {
   const mail = normalizeEmail(email);
   if (!isValidEmail(mail)) return { sent: false, error: 'invalid_email' };
+  await purgeStale().catch(() => {});
 
   const existing = await findUserByEmail(mail);
   const wantedPseudo = cleanPseudo(pseudo);
@@ -81,8 +128,7 @@ export async function verifyMagicLink(rawToken) {
   let user = await findUserByEmail(link.email);
   if (!user) {
     const pseudo = cleanPseudo(link.pseudo) || link.email.split('@')[0].slice(0, 60);
-    const [ins] = await pool.query('INSERT INTO users (email, pseudo, created_at, last_login_at) VALUES (?, ?, NOW(), NOW())', [link.email, pseudo]);
-    user = { id: ins.insertId, email: link.email, pseudo };
+    user = await createUser(link.email, pseudo);
   } else {
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
   }
@@ -131,10 +177,15 @@ export async function deleteUserData(userId) {
   await pool.query('DELETE FROM snapshots WHERE account_id = ?', [userId]); // positions ON DELETE CASCADE
 }
 
-/** Supprime le compte : données + sessions + ligne user. */
+/** Supprime le compte : données + sessions + liens magiques en attente + ligne user. */
 export async function deleteAccount(userId) {
   await deleteUserData(userId);
   const pool = getPool();
+  const [rows] = await pool.query('SELECT email FROM users WHERE id = ?', [userId]);
+  if (rows.length) {
+    // Sans cette purge, un lien magique encore valide recréerait le compte supprimé.
+    await pool.query('DELETE FROM magic_links WHERE email = ?', [rows[0].email]);
+  }
   await pool.query('DELETE FROM sessions WHERE user_id = ?', [userId]);
   await pool.query('DELETE FROM users WHERE id = ?', [userId]);
 }
@@ -145,11 +196,44 @@ export async function deleteAccount(userId) {
  * historiques (account_id = 1). Idempotent, appelé au démarrage.
  */
 export async function ensureOwner() {
-  const email = config.auth.ownerEmail;
-  if (!email) return;
   const pool = getPool();
-  const [rows] = await pool.query('SELECT id FROM users WHERE id = 1 OR email = ? LIMIT 1', [email]);
-  if (rows.length) return;
+  const email = config.auth.ownerEmail;
+
+  if (!email) {
+    // Sans OWNER_EMAIL, personne ne peut réclamer les données historiques (account 1) :
+    // on prévient si elles existent, pour aider au diagnostic.
+    const [legacy] = await pool.query(
+      'SELECT 1 FROM snapshots WHERE account_id = 1 LIMIT 1',
+    );
+    const [u1] = await pool.query('SELECT 1 FROM users WHERE id = 1 LIMIT 1');
+    if (legacy.length && !u1.length) {
+      logger.warn(
+        "Des données existent pour le compte 1 mais OWNER_EMAIL n'est pas défini : " +
+          'définissez OWNER_EMAIL pour que le propriétaire les récupère à sa connexion.',
+      );
+    }
+    return;
+  }
+
+  const [rows] = await pool.query('SELECT id, email FROM users WHERE id = 1 OR email = ? LIMIT 2', [email]);
+  const idOne = rows.find((r) => r.id === 1);
+  const byEmail = rows.find((r) => r.email === email);
+  if (idOne && idOne.email !== email) {
+    logger.warn(
+      `L'utilisateur #1 (${idOne.email}) ne correspond pas à OWNER_EMAIL (${email}) — ` +
+        'les données historiques appartiennent à cet utilisateur #1.',
+    );
+    return;
+  }
+  if (byEmail && byEmail.id !== 1) {
+    logger.warn(
+      `OWNER_EMAIL (${email}) existe déjà comme utilisateur #${byEmail.id} : il ne peut plus ` +
+        "récupérer l'id 1 automatiquement.",
+    );
+    return;
+  }
+  if (idOne) return; // déjà en place
+
   try {
     await pool.query(
       "INSERT INTO users (id, email, pseudo, created_at) VALUES (1, ?, 'moi', NOW())",

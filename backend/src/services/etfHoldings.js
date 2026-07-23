@@ -103,7 +103,7 @@ export async function heldEtfsWithCoverage(accountId = 1) {
      FROM positions p LEFT JOIN isin_ref r ON r.isin = p.isin
      WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
        AND (r.asset_class = 'ETF' OR p.product_type = 'ETF'
-            OR p.name LIKE '%ETF%' OR p.name LIKE '%UCITS%' OR p.name LIKE '%ETC%')
+            OR p.name REGEXP 'ETF|UCITS|ETC|ISHARES|XTRACKERS|LYXOR|AMUNDI|VANGUARD|SPDR|INVESCO|WISDOMTREE|VANECK')
      GROUP BY p.isin
      ORDER BY name`,
     [accountId],

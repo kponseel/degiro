@@ -7,7 +7,7 @@ import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 const TT = { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' };
 const axisTick = { fontSize: 12, fill: 'var(--ink-faint)' };
 
-export default function History() {
+export default function History({ onGoImport }) {
   const [rows, setRows] = useState(null);
   const [perf, setPerf] = useState(null);
   const [benchKey, setBenchKey] = useState('world');
@@ -32,7 +32,12 @@ export default function History() {
       <Card>
         <Empty title="Pas encore assez d'historique">
           L'historique se construit à chaque capture. Il faut au moins deux jours de données pour tracer une courbe.
-          {rows.length === 1 && <div style={{ marginTop: 8 }}>1 point enregistré pour l'instant.</div>}
+          {rows.length === 1 && <div style={{ marginTop: 8 }}>1 point enregistré pour l'instant — reviens demain après un nouvel import.</div>}
+          {rows.length === 0 && (
+            <div style={{ marginTop: 14 }}>
+              <button className="btn" onClick={onGoImport}>Importer mon portefeuille</button>
+            </div>
+          )}
         </Empty>
       </Card>
     );

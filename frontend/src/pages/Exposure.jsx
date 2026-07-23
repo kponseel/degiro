@@ -135,7 +135,7 @@ function Lookthrough({ data }) {
   );
 }
 
-export default function Exposure() {
+export default function Exposure({ onGoImport }) {
   const [positions, setPositions] = useState(null);
   const [exposure, setExposure] = useState(null);
   const [lookthrough, setLookthrough] = useState(null);
@@ -153,7 +153,16 @@ export default function Exposure() {
   if (error) return <Banner kind="err">Erreur : {error}</Banner>;
   if (!positions) return <Spinner />;
   if (!positions.length) {
-    return <Card><Empty title="Aucune position">Importez d'abord un portefeuille.</Empty></Card>;
+    return (
+      <Card>
+        <Empty title="Aucune position">
+          Importe d'abord ton portefeuille pour voir tes expositions.
+          <div style={{ marginTop: 14 }}>
+            <button className="btn" onClick={onGoImport}>Importer mon portefeuille</button>
+          </div>
+        </Empty>
+      </Card>
+    );
   }
 
   // Le serveur renvoie les répartitions enrichies ; repli client si l'endpoint échoue.

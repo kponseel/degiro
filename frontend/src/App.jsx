@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getMe, requestMagicLink, verifyMagicLink, logout as apiLogout } from './lib/api.js';
+import { getMe, getPortfolio, requestMagicLink, verifyMagicLink, logout as apiLogout } from './lib/api.js';
 import { Spinner } from './components/ui.jsx';
+import Onboarding from './components/Onboarding.jsx';
 import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends } from './components/icons.jsx';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
@@ -106,6 +107,8 @@ export default function App() {
   const [active, setActive] = useState('overview');
   const [reloadKey, setReloadKey] = useState(0);
   const [loginError, setLoginError] = useState('');
+  // null = à déterminer ; true = compte sans données → parcours de bienvenue.
+  const [needsOnboarding, setNeedsOnboarding] = useState(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -129,15 +132,36 @@ export default function App() {
       .catch(() => setStatus('login'));
   }, []);
 
+  // Compte sans aucune donnée → onboarding (sauf s'il a déjà été passé sur cet appareil).
+  useEffect(() => {
+    if (status !== 'ready' || !user) return;
+    if (localStorage.getItem(`degiro_onboarded_${user.id}`)) { setNeedsOnboarding(false); return; }
+    getPortfolio()
+      .then((d) => setNeedsOnboarding(!d.snapshot))
+      .catch(() => setNeedsOnboarding(false));
+  }, [status, user]);
+
+  function finishOnboarding() {
+    if (user) localStorage.setItem(`degiro_onboarded_${user.id}`, '1');
+    setNeedsOnboarding(false);
+    setActive('overview');
+    setReloadKey((k) => k + 1);
+  }
+
   async function handleLogout() {
     try { await apiLogout(); } catch { /* ignore */ }
     setUser(null);
     setActive('overview');
+    setNeedsOnboarding(null);
     setStatus('login');
   }
 
   if (status === 'checking') return <Spinner />;
   if (status === 'login') return <Login initialError={loginError} />;
+  if (needsOnboarding === null) return <Spinner />;
+  if (needsOnboarding) {
+    return <Onboarding user={user} onFinished={finishOnboarding} onSkip={finishOnboarding} />;
+  }
 
   const current = PAGES.find((p) => p.id === active) || PAGES[0];
   const Comp = current.Comp;
@@ -177,7 +201,7 @@ export default function App() {
           onUserChange={setUser}
           onLogout={handleLogout}
           onGoImport={() => setActive('settings')}
-          onImported={() => setReloadKey((k) => k + 1)}
+          onGoOverview={() => { setActive('overview'); setReloadKey((k) => k + 1); }}
         />
       </main>
     </div>
