@@ -1,0 +1,30 @@
+{
+  "name": "degiro-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Analyse de portefeuille DEGIRO — backend Express + frontend React (monorepo)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "start": "node backend/src/server.js",
+    "migrate": "node backend/src/db/migrate.js",
+    "test": "npm run test -w backend",
+    "lint": "eslint ."
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "concurrently": "^9.0.1",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react": "^7.37.2",
+    "globals": "^15.11.0",
+    "nodemon": "^3.1.7"
+  }
+}
