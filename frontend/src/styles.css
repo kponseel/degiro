@@ -171,6 +171,8 @@ table.data thead th {
 table.data tbody tr { border-bottom: 1px solid var(--line-soft); }
 table.data tbody tr:last-child { border-bottom: none; }
 table.data tbody tr:hover { background: var(--card-2); }
+table.data tbody tr.row-flag { background: var(--warn-soft); }
+table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 16%, transparent); }
 .sym { font-weight: 680; letter-spacing: -0.01em; }
 .muted { color: var(--ink-faint); }
 

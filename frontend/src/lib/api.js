@@ -37,6 +37,29 @@ export const getIsinRef = () => api('/api/isin-ref');
 export const updateIsinRef = (isin, patch) =>
   api(`/api/isin-ref/${isin}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
 export const enrichNow = () => api('/api/enrich', { method: 'POST' });
+export const getLookthrough = () => api('/api/lookthrough');
+export const getEtfHoldings = () => api('/api/etf-holdings');
+
+export async function uploadEtfHoldings(file, etfIsin, mode = 'commit') {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('etf_isin', etfIsin);
+  fd.append('mode', mode);
+  const token = getToken();
+  const res = await fetch('/api/etf-holdings', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || res.statusText);
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+  return body;
+}
 
 export async function uploadCsv(file, kind, mode) {
   const fd = new FormData();
