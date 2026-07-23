@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pingDb } from '../db/pool.js';
 import { config } from '../config.js';
+import { mailerMode } from '../services/mailer.js';
 
 const router = Router();
 
@@ -14,6 +15,9 @@ router.get('/', async (_req, res) => {
     // Diagnostic d'un db:down (sans donnée sensible) : code d'erreur + host d'origine
     // vu par MySQL en cas de refus d'accès (utile pour l'allowlist Remote MySQL).
     ...(db.ok ? {} : { db_error: db.code, ...(db.deniedFrom ? { db_denied_from: db.deniedFrom } : {}) }),
+    // Mode d'envoi d'email : 'smtp' = liens magiques réellement expédiés,
+    // 'dev' = SMTP non configuré (le lien est journalisé/renvoyé en dev).
+    email: mailerMode(),
     version: config.version || process.env.npm_package_version || '0.1.0',
     ts: new Date().toISOString(),
   });
