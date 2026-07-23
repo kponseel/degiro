@@ -11,8 +11,9 @@ router.get('/', async (_req, res) => {
   res.status(200).json({
     status: 'ok',
     db: db.ok ? 'up' : 'down',
-    // Code d'erreur de connexion (sans donnée sensible) pour diagnostiquer un db:down.
-    ...(db.ok ? {} : { db_error: db.code }),
+    // Diagnostic d'un db:down (sans donnée sensible) : code d'erreur + host d'origine
+    // vu par MySQL en cas de refus d'accès (utile pour l'allowlist Remote MySQL).
+    ...(db.ok ? {} : { db_error: db.code, ...(db.deniedFrom ? { db_denied_from: db.deniedFrom } : {}) }),
     version: config.version || process.env.npm_package_version || '0.1.0',
     ts: new Date().toISOString(),
   });
