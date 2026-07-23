@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { getPortfolio, getExposure } from '../lib/api.js';
+import { getPortfolio, getExposure, getLookthrough } from '../lib/api.js';
 import { fmtEur, fmtPct } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 
@@ -60,9 +60,85 @@ function Donut({ title, data, note }) {
   );
 }
 
+function Lookthrough({ data }) {
+  if (!data) return null;
+  const { trueHoldings = [], overlaps = [], coveredCount = 0, missing = [], total = 0 } = data;
+  if (!trueHoldings.length) return null;
+
+  const overlapKeys = new Set(overlaps.map((o) => o.isin || `name:${(o.name || '').toLowerCase()}`));
+  const isOverlap = (h) => overlapKeys.has(h.isin || `name:${(h.name || '').toLowerCase()}`);
+  const top = trueHoldings.filter((h) => !/·\s*reste$/i.test(h.name)).slice(0, 15);
+
+  return (
+    <Card title="Vraie exposition (look-through ETF)" className="lookthrough">
+      <p className="muted" style={{ marginTop: 0 }}>
+        Chaque ETF dont la composition est importée est éclaté en ses titres. On révèle ainsi la
+        <strong> vraie exposition par entreprise</strong> — et les surexpositions cachées (un titre détenu en direct
+        <em> et</em> via un ETF).
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
+        <span className="chip">{coveredCount} ETF éclaté(s)</span>
+        {overlaps.length > 0 && <span className="chip warn">{overlaps.length} surexposition(s)</span>}
+        {missing.length > 0 && <span className="chip">{missing.length} ETF sans composition</span>}
+      </div>
+
+      {overlaps.length > 0 && (
+        <Banner kind="warn">
+          <strong>Surexposition détectée.</strong> Vous détenez {overlaps.map((o) => o.name).slice(0, 3).join(', ')}
+          {overlaps.length > 3 ? '…' : ''} à la fois en direct et à l'intérieur d'un ETF. Votre exposition réelle à ces
+          titres est plus élevée que ne le suggère la liste de vos positions.
+        </Banner>
+      )}
+
+      <div className="table-wrap" style={{ marginTop: 14 }}>
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Titre</th>
+              <th>Direct</th>
+              <th>Via ETF</th>
+              <th>Total</th>
+              <th>Poids réel</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top.map((h) => (
+              <tr key={h.isin || h.name} className={isOverlap(h) ? 'row-flag' : ''}>
+                <td>
+                  <span className="sym">{h.name}</span>
+                  {isOverlap(h) && <span className="chip warn" style={{ marginLeft: 8 }}>surexposition</span>}
+                  {h.isin && <div className="muted" style={{ fontSize: 11.5, fontFamily: 'var(--mono, ui-monospace, monospace)' }}>{h.isin}</div>}
+                </td>
+                <td>{h.direct > 0.005 ? fmtEur(h.direct) : <span className="muted">—</span>}</td>
+                <td>{h.viaEtf > 0.005 ? fmtEur(h.viaEtf) : <span className="muted">—</span>}</td>
+                <td className="sym">{fmtEur(h.total)}</td>
+                <td>{fmtPct(h.weight)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {missing.length > 0 && (
+        <div className="sub muted" style={{ marginTop: 14, fontSize: 12.5 }}>
+          Sans composition (comptés en bloc) : {missing.map((m) => m.name || m.isin).join(', ')}. Importez leurs
+          compositions depuis <strong>Import / Réglages → Compositions d'ETF</strong> pour les éclater.
+        </div>
+      )}
+      {total > 0 && (
+        <div className="sub muted" style={{ marginTop: 6, fontSize: 12.5 }}>
+          Total analysé : {fmtEur(total)} · {trueHoldings.length} titres distincts après éclatement.
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Exposure() {
   const [positions, setPositions] = useState(null);
   const [exposure, setExposure] = useState(null);
+  const [lookthrough, setLookthrough] = useState(null);
   const [enrichPending, setEnrichPending] = useState(false);
   const [error, setError] = useState(null);
 
@@ -71,6 +147,7 @@ export default function Exposure() {
     getExposure(true)
       .then(setExposure)
       .catch(() => setEnrichPending(true));
+    getLookthrough().then(setLookthrough).catch(() => {});
   }, []);
 
   if (error) return <Banner kind="err">Erreur : {error}</Banner>;
@@ -93,6 +170,11 @@ export default function Exposure() {
         {bySector.length > 0 && <Donut title="Exposition par secteur" data={bySector} note="Depuis l'enrichissement ISIN (hors ETF non éclatés). Le look-through ETF affinera cette vue." />}
         {byCountry.length > 0 && <Donut title="Exposition par pays" data={byCountry} />}
       </div>
+      {lookthrough && lookthrough.coveredCount > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Lookthrough data={lookthrough} />
+        </div>
+      )}
       {(enrichPending || bySector.length === 0) && (
         <div style={{ marginTop: 16 }}>
           <Banner kind="info">

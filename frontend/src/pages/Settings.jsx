@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { uploadCsv, getToken, setToken, clearToken, enrichNow } from '../lib/api.js';
+import { useEffect, useState } from 'react';
+import { uploadCsv, getToken, setToken, clearToken, enrichNow, getEtfHoldings, uploadEtfHoldings } from '../lib/api.js';
 import { Card, Banner } from '../components/ui.jsx';
 import IsinEditor from '../components/IsinEditor.jsx';
 
@@ -79,6 +79,96 @@ function Uploader({ hint, title, description, onImported }) {
   );
 }
 
+function EtfHoldingsUploader({ onImported }) {
+  const [etfs, setEtfs] = useState(null);
+  const [selected, setSelected] = useState('');
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function reload() {
+    try {
+      const res = await getEtfHoldings();
+      setEtfs(res.etfs || []);
+      setSelected((cur) => cur || (res.etfs?.[0]?.isin ?? ''));
+    } catch (e) {
+      setError(e.status === 404 ? null : (e.body?.error || e.message));
+      setEtfs([]);
+    }
+  }
+
+  useEffect(() => { reload(); }, []);
+
+  async function confirm() {
+    if (!selected || !file) return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const res = await uploadEtfHoldings(file, selected, 'commit');
+      setResult(res);
+      setFile(null);
+      await reload();
+      onImported?.();
+    } catch (e) {
+      setError(e.body?.error || e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="Compositions d'ETF (look-through)">
+      <p className="muted" style={{ marginTop: 0 }}>
+        Téléchargez le fichier « Holdings » d'un ETF (page de l'émetteur : iShares, Amundi, Vanguard…) puis importez-le ici.
+        Chaque ETF sera éclaté en ses titres dans <strong>Exposition → Vraie exposition</strong>, révélant vos surexpositions.
+      </p>
+
+      {etfs && etfs.length === 0 && (
+        <Banner kind="info">Aucun ETF détecté dans votre portefeuille. Importez d'abord vos positions.</Banner>
+      )}
+
+      {etfs && etfs.length > 0 && (
+        <div className="grid" style={{ gap: 14 }}>
+          <div className="field" style={{ maxWidth: 520 }}>
+            <label>ETF à composer</label>
+            <select className="input" value={selected} onChange={(e) => setSelected(e.target.value)}>
+              {etfs.map((e) => (
+                <option key={e.isin} value={e.isin}>
+                  {e.covered ? '✓ ' : '• '}{e.name || e.isin} ({e.isin}){e.covered ? ` — ${e.count} titres` : ' — à importer'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={`drop ${file ? 'armed' : ''}`}>
+            <div className="meta">
+              <span className="k">Fichier de composition</span>
+              <span className="d">{file ? file.name : 'Holdings.csv de l\'émetteur (nom, ISIN, poids %)'}</span>
+            </div>
+            <label className="btn ghost">
+              {file ? 'Changer' : 'Choisir un CSV'}
+              <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { setFile(e.target.files[0]); setResult(null); setError(null); }} />
+            </label>
+          </div>
+
+          <div>
+            <button className="btn" onClick={confirm} disabled={busy || !file || !selected}>
+              {busy ? 'Import…' : 'Importer la composition'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <div style={{ marginTop: 12 }}><Banner kind="err">{error}</Banner></div>}
+      {result && (
+        <div style={{ marginTop: 12 }}>
+          <Banner kind="info">Composition importée : {result.saved} titre(s) enregistré(s) pour {result.etf_isin}.</Banner>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Settings({ onImported }) {
   const [tokenInput, setTokenInput] = useState('');
   const [enrichMsg, setEnrichMsg] = useState(null);
@@ -118,6 +208,8 @@ export default function Settings({ onImported }) {
           <Uploader hint="auto" title="Transactions" description="Transactions.csv — vos ordres exécutés" onImported={onImported} />
         </div>
       </Card>
+
+      <EtfHoldingsUploader onImported={onImported} />
 
       <Card title="Enrichissement ISIN">
         <p className="muted" style={{ marginTop: 0 }}>
