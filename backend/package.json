@@ -11,10 +11,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "csv-parse": "^5.5.6",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
+    "multer": "^1.4.5-lts.1",
     "mysql2": "^3.11.3",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",

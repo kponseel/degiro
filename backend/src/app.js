@@ -8,6 +8,7 @@ import { logger } from './logger.js';
 import { requireAuth } from './middleware/auth.js';
 import healthRouter from './routes/health.js';
 import ingestRouter from './routes/ingest.js';
+import ingestCsvRouter from './routes/ingestCsv.js';
 import portfolioRouter from './routes/portfolio.js';
 import snapshotsRouter from './routes/snapshots.js';
 
@@ -44,6 +45,7 @@ export function createApp() {
 
   // Toutes les autres routes /api exigent le jeton bearer.
   app.use('/api', requireAuth);
+  app.use('/api/ingest/csv', ingestCsvRouter);
   app.use('/api/ingest', ingestRouter);
   app.use('/api/portfolio', portfolioRouter);
   app.use('/api/snapshots', snapshotsRouter);
