@@ -32,6 +32,7 @@ export const getSnapshots = (from, to) => api(`/api/snapshots${qs({ from, to })}
 export const getExposure = (lookthrough) => api(`/api/exposure${qs({ lookthrough: lookthrough ? 1 : undefined })}`);
 export const getRisk = () => api('/api/risk');
 export const getDividends = () => api('/api/dividends');
+export const getPerformance = () => api('/api/performance');
 export const getIsinRef = () => api('/api/isin-ref');
 export const updateIsinRef = (isin, patch) =>
   api(`/api/isin-ref/${isin}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
