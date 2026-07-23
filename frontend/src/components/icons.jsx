@@ -12,3 +12,6 @@ export const IconHistory = () => (
 export const IconSettings = () => (
   <svg {...base}><line x1="4" y1="7" x2="20" y2="7" /><circle cx="9" cy="7" r="2.5" /><line x1="4" y1="17" x2="20" y2="17" /><circle cx="15" cy="17" r="2.5" /></svg>
 );
+export const IconAI = () => (
+  <svg {...base}><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z" /><path d="M18 14l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" /></svg>
+);
