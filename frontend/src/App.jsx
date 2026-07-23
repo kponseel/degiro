@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getToken, setToken, validateToken } from './lib/api.js';
+import { getMe, requestMagicLink, verifyMagicLink, logout as apiLogout } from './lib/api.js';
 import { Spinner } from './components/ui.jsx';
 import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends } from './components/icons.jsx';
 import Overview from './pages/Overview.jsx';
@@ -18,19 +18,59 @@ const PAGES = [
   { id: 'settings', label: 'Import / Réglages', icon: IconSettings, Comp: Settings },
 ];
 
-function Gate({ onUnlock }) {
-  const [value, setValue] = useState('');
-  const [error, setError] = useState('');
+function Login({ initialError }) {
+  const [email, setEmail] = useState('');
+  const [pseudo, setPseudo] = useState('');
+  const [needPseudo, setNeedPseudo] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [devLink, setDevLink] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(initialError || '');
 
   async function submit(e) {
     e.preventDefault();
-    const token = value.trim();
-    if (!token) return;
+    const mail = email.trim();
+    if (!mail) return;
     setBusy(true); setError('');
-    const ok = await validateToken(token);
-    setBusy(false);
-    if (ok) { setToken(token); onUnlock(); } else setError('Jeton refusé par le serveur.');
+    try {
+      const res = await requestMagicLink(mail, pseudo.trim() || undefined);
+      if (res.needPseudo) {
+        setNeedPseudo(true);
+        setError('Première connexion : choisis un pseudo pour créer ton compte.');
+        return;
+      }
+      setSent(true);
+      setDevLink(res.devLink || null);
+    } catch (e2) {
+      setError(e2.status === 400 ? 'Email invalide.' : (e2.message || 'Erreur, réessaie.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="gate">
+        <div className="card card-pad">
+          <div className="brand" style={{ padding: 0, marginBottom: 16 }}>
+            <span className="brand-mark">DEGIRO Analyzer</span>
+            <span className="brand-sub">Connexion</span>
+          </div>
+          <h3 style={{ margin: '0 0 8px' }}>Vérifie ta boîte mail 📬</h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            On a envoyé un lien de connexion à <strong>{email}</strong>. Il est valable 15 minutes, à usage unique.
+          </p>
+          {devLink && (
+            <div className="banner info" style={{ marginTop: 12, wordBreak: 'break-all' }}>
+              Lien de dev : <a href={devLink}>{devLink}</a>
+            </div>
+          )}
+          <button className="btn ghost" style={{ marginTop: 16 }} onClick={() => { setSent(false); setDevLink(null); }}>
+            Changer d'email / renvoyer
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -40,14 +80,20 @@ function Gate({ onUnlock }) {
           <span className="brand-mark">DEGIRO Analyzer</span>
           <span className="brand-sub">Accès privé</span>
         </div>
-        <p className="muted" style={{ marginTop: 0 }}>Saisissez votre jeton d'accès (variable <code>API_TOKEN</code> du serveur).</p>
+        <p className="muted" style={{ marginTop: 0 }}>Connexion par lien magique — sans mot de passe.</p>
         <div className="field">
-          <label htmlFor="tok">Jeton d'accès</label>
-          <input id="tok" className="input" type="password" autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder="••••••••" />
+          <label htmlFor="email">Email</label>
+          <input id="email" className="input" type="email" autoFocus autoComplete="email"
+            value={email} onChange={(e) => setEmail(e.target.value)} placeholder="toi@exemple.com" />
         </div>
-        {error && <div className="banner err" style={{ marginTop: 12 }}>{error}</div>}
+        <div className="field">
+          <label htmlFor="pseudo">Pseudo <span className="muted">{needPseudo ? '(requis pour créer ton compte)' : '(si première connexion)'}</span></label>
+          <input id="pseudo" className="input" maxLength={60}
+            value={pseudo} onChange={(e) => setPseudo(e.target.value)} placeholder="Ton pseudo" />
+        </div>
+        {error && <div className={`banner ${needPseudo ? 'info' : 'err'}`} style={{ marginTop: 12 }}>{error}</div>}
         <button className="btn" type="submit" disabled={busy} style={{ marginTop: 16, width: '100%', justifyContent: 'center' }}>
-          {busy ? 'Vérification…' : 'Entrer'}
+          {busy ? 'Envoi…' : 'Recevoir mon lien'}
         </button>
       </form>
     </div>
@@ -55,18 +101,43 @@ function Gate({ onUnlock }) {
 }
 
 export default function App() {
-  const [status, setStatus] = useState('checking'); // checking | locked | ready
+  const [status, setStatus] = useState('checking'); // checking | login | ready
+  const [user, setUser] = useState(null);
   const [active, setActive] = useState('overview');
   const [reloadKey, setReloadKey] = useState(0);
+  const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) { setStatus('locked'); return; }
-    validateToken(token).then((ok) => setStatus(ok ? 'ready' : 'locked'));
+    const url = new URL(window.location.href);
+    if (url.pathname === '/auth/verify') {
+      const token = url.searchParams.get('token');
+      verifyMagicLink(token)
+        .then((res) => {
+          window.history.replaceState({}, '', '/');
+          setUser(res.user);
+          setStatus('ready');
+        })
+        .catch(() => {
+          window.history.replaceState({}, '', '/');
+          setLoginError('Lien invalide ou expiré. Redemande un lien de connexion.');
+          setStatus('login');
+        });
+      return;
+    }
+    getMe()
+      .then((res) => { setUser(res.user); setStatus('ready'); })
+      .catch(() => setStatus('login'));
   }, []);
 
+  async function handleLogout() {
+    try { await apiLogout(); } catch { /* ignore */ }
+    setUser(null);
+    setActive('overview');
+    setStatus('login');
+  }
+
   if (status === 'checking') return <Spinner />;
-  if (status === 'locked') return <Gate onUnlock={() => setStatus('ready')} />;
+  if (status === 'login') return <Login initialError={loginError} />;
 
   const current = PAGES.find((p) => p.id === active) || PAGES[0];
   const Comp = current.Comp;
@@ -89,7 +160,10 @@ export default function App() {
           })}
         </nav>
         <div className="sidebar-foot">
-          <span>degiro.estim.pro</span>
+          <div className="user-chip">
+            <span className="user-pseudo">{user?.pseudo}</span>
+            <button className="link-btn" onClick={handleLogout}>Déconnexion</button>
+          </div>
         </div>
       </aside>
 
@@ -99,6 +173,9 @@ export default function App() {
         </div>
         <Comp
           key={`${current.id}-${reloadKey}`}
+          user={user}
+          onUserChange={setUser}
+          onLogout={handleLogout}
           onGoImport={() => setActive('settings')}
           onImported={() => setReloadKey((k) => k + 1)}
         />
