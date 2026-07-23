@@ -40,7 +40,12 @@ export async function pingDb() {
       conn.release();
     }
   } catch (err) {
-    return { ok: false, code: err.code || err.message || 'UNKNOWN' };
+    const info = { ok: false, code: err.code || err.message || 'UNKNOWN' };
+    // Sur un refus d'accès, MySQL indique l'origine vue : "…'user'@'HOST'…".
+    // On expose UNIQUEMENT ce host (pas l'utilisateur) pour savoir quoi autoriser.
+    const m = err.sqlMessage && /@'([^']+)'/.exec(err.sqlMessage);
+    if (m) info.deniedFrom = m[1];
+    return info;
   }
 }
 
