@@ -22,6 +22,7 @@ export async function migrate() {
     database: config.db.database,
     multipleStatements: true,
     charset: 'utf8mb4',
+    connectTimeout: 5000,
   });
 
   try {

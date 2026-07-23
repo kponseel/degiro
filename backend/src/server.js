@@ -5,18 +5,17 @@ import { migrate } from './db/migrate.js';
 
 const app = createApp();
 
-// Applique les migrations au démarrage (idempotent) — évite toute étape manuelle
-// au déploiement. En cas d'échec (base injoignable), on démarre quand même :
-// GET /api/health signalera « db: down » pour faciliter le diagnostic.
-try {
-  await migrate();
-} catch (err) {
-  logger.error(`Migrations au démarrage échouées : ${err.message}`);
-}
-
+// Le serveur écoute IMMÉDIATEMENT : on ne bloque jamais le démarrage sur la base
+// (sinon une base injoignable ferait un 503, faute de port ouvert).
 const server = app.listen(config.port, () => {
   logger.info(`DEGIRO Analyzer — API à l'écoute sur le port ${config.port}`);
 });
+
+// Migrations en arrière-plan (idempotent). En cas d'échec, l'app reste debout et
+// GET /api/health signale « db: down » pour faciliter le diagnostic.
+migrate()
+  .then(() => logger.info('Migrations vérifiées'))
+  .catch((err) => logger.error(`Migrations échouées : ${err.message}`));
 
 // Arrêt propre.
 for (const signal of ['SIGTERM', 'SIGINT']) {
