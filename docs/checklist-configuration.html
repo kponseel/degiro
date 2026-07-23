@@ -1,0 +1,570 @@
+<title>DEGIRO Analyzer — Checklist de mise en place</title>
+<style>
+  :root {
+    --paper: #F6F7F4;
+    --card: #FFFFFF;
+    --ink: #20261F;
+    --ink-soft: #5A6357;
+    --line: #DDE2DA;
+    --accent: #2E7D52;
+    --accent-soft: #E3F0E8;
+    --warn: #9A6A1B;
+    --warn-soft: #F6EDDC;
+    --code-bg: #EEF1EC;
+    --shadow: 0 1px 2px rgba(32, 38, 31, 0.06), 0 4px 16px rgba(32, 38, 31, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #11150F;
+      --card: #181E16;
+      --ink: #E6EBE3;
+      --ink-soft: #9BA695;
+      --line: #2A322B;
+      --accent: #57C48C;
+      --accent-soft: #1D2E23;
+      --warn: #D9A84E;
+      --warn-soft: #2E2617;
+      --code-bg: #22291F;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #11150F;
+    --card: #181E16;
+    --ink: #E6EBE3;
+    --ink-soft: #9BA695;
+    --line: #2A322B;
+    --accent: #57C48C;
+    --accent-soft: #1D2E23;
+    --warn: #D9A84E;
+    --warn-soft: #2E2617;
+    --code-bg: #22291F;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  }
+  :root[data-theme="light"] {
+    --paper: #F6F7F4;
+    --card: #FFFFFF;
+    --ink: #20261F;
+    --ink-soft: #5A6357;
+    --line: #DDE2DA;
+    --accent: #2E7D52;
+    --accent-soft: #E3F0E8;
+    --warn: #9A6A1B;
+    --warn-soft: #F6EDDC;
+    --code-bg: #EEF1EC;
+    --shadow: 0 1px 2px rgba(32, 38, 31, 0.06), 0 4px 16px rgba(32, 38, 31, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15.5px;
+    line-height: 1.55;
+  }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+    font-size: 0.86em;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    white-space: nowrap;
+  }
+  a { color: var(--accent); }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 20px;
+  }
+  .topbar-inner {
+    max-width: 880px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .topbar-title {
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .topbar-count {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--line);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.25s ease;
+  }
+
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  h1 {
+    font-size: clamp(26px, 4.5vw, 36px);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 6px 0 10px;
+    text-wrap: balance;
+  }
+  .lede {
+    color: var(--ink-soft);
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+  .lede strong { color: var(--ink); }
+
+  .rules {
+    background: var(--warn-soft);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 36px;
+  }
+  .rules .eyebrow { color: var(--warn); }
+  .rules ul { margin: 8px 0 0; padding-left: 20px; }
+  .rules li { margin: 4px 0; }
+
+  section.step {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    margin-bottom: 22px;
+    overflow: hidden;
+  }
+  .step-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 16px 22px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .step-num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 750;
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+  }
+  .step-head h2 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0;
+    flex: 1;
+  }
+  .step-when {
+    font-size: 12px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .step-count {
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    background: var(--code-bg);
+    border-radius: 20px;
+    padding: 2px 10px;
+    white-space: nowrap;
+  }
+  .step-count.done { color: var(--accent); background: var(--accent-soft); }
+
+  .item {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 4px 14px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .item:last-child { border-bottom: none; }
+  .item input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    margin: 2px 0 0;
+    border: 1.5px solid var(--ink-soft);
+    border-radius: 6px;
+    cursor: pointer;
+    position: relative;
+    background: transparent;
+    flex-shrink: 0;
+  }
+  .item input:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .item input:checked::after {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 2.5px;
+    width: 5px;
+    height: 9px;
+    border: solid var(--card);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  .item input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .item-title {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .item.checked .item-title { color: var(--ink-soft); }
+  .item.checked .item-detail { opacity: 0.55; }
+  .item-detail {
+    grid-column: 2;
+    color: var(--ink-soft);
+    font-size: 14px;
+    max-width: 68ch;
+  }
+  .item-detail code { color: var(--ink); }
+  .chips {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .chip {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 1.5px 9px;
+    white-space: nowrap;
+  }
+  .chip.place { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+
+  footer {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 20px 60px;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  #reset {
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink-soft);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+  }
+  #reset:hover { color: var(--ink); border-color: var(--ink-soft); }
+  #reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="topbar-title">DEGIRO Analyzer</span>
+    <div class="bar"><div class="bar-fill" id="global-fill"></div></div>
+    <span class="topbar-count" id="global-count">0/0 faits</span>
+  </div>
+</div>
+
+<main>
+  <p class="eyebrow">Checklist de mise en place</p>
+  <h1>Tout ce que vous devez faire et configurer</h1>
+  <p class="lede">
+    Le développement se fait <strong>entièrement en cloud/git</strong> : le code est écrit,
+    testé et poussé sur GitHub sans aucune machine locale. Ce qui relève vraiment de vous se
+    limite à trois choses : <strong>Hostinger</strong> (étape&nbsp;3), les <strong>secrets</strong>
+    (étape&nbsp;4) et vos <strong>exports DEGIRO</strong> (étape&nbsp;2). L'étape&nbsp;1 (poste
+    local) est <strong>facultative</strong> — seulement si un jour vous voulez faire tourner
+    l'app sur votre propre machine. Vos cases cochées sont mémorisées dans ce navigateur.
+  </p>
+
+  <div class="rules">
+    <p class="eyebrow">Règles non négociables</p>
+    <ul>
+      <li>Jamais d'identifiants DEGIRO côté serveur ni dans l'extension — la capture se fait dans votre session navigateur déjà authentifiée.</li>
+      <li>Jamais de <code>.env</code>, de token ni de données financières réelles commitées dans Git.</li>
+      <li>Jamais la base de production comme base de développement.</li>
+      <li>Jamais « Any&nbsp;Host » sur Remote MySQL — restreindre à votre IP.</li>
+    </ul>
+  </div>
+
+  <section class="step" data-step="1">
+    <div class="step-head">
+      <span class="step-num">1</span>
+      <h2>Préparer le poste Windows 11 <span style="font-weight:400;color:var(--ink-soft);font-size:15px;">(facultatif)</span></h2>
+      <span class="step-when">optionnel · dev cloud</span>
+      <span class="step-count">0/3</span>
+    </div>
+    <label class="item" data-id="w1">
+      <input type="checkbox">
+      <span class="item-title">Vérifier Node 20+ et Git</span>
+      <span class="item-detail"><code>node -v</code> doit afficher v20 ou plus, <code>git --version</code> doit répondre. Sinon, installer Node LTS depuis nodejs.org et Git for Windows (qui fournit aussi Git Bash et openssl).</span>
+      <span class="chips"><span class="chip place">Windows</span></span>
+    </label>
+    <label class="item" data-id="w2">
+      <input type="checkbox">
+      <span class="item-title">Installer un MySQL local pour le développement</span>
+      <span class="item-detail">Installeur MySQL Community pour Windows, ou Docker Desktop avec une image <code>mysql:8</code>. C'est cette base-là qui servira au quotidien — la base Hostinger reste réservée à la production.</span>
+      <span class="chips"><span class="chip place">Windows</span><span class="chip warn">Règle : prod ≠ dev</span></span>
+    </label>
+    <label class="item" data-id="w3">
+      <input type="checkbox">
+      <span class="item-title">Cloner le repo</span>
+      <span class="item-detail"><code>git clone https://github.com/kponseel/degiro.git</code> — le repo s'appelle bien <code>degiro</code> (le prompt d'origine disait « estim », c'était une erreur).</span>
+      <span class="chips"><span class="chip place">Windows</span></span>
+    </label>
+  </section>
+
+  <section class="step" data-step="2">
+    <div class="step-head">
+      <span class="step-num">2</span>
+      <h2>Exporter vos données DEGIRO</h2>
+      <span class="step-when">avant de coder</span>
+      <span class="step-count">0/2</span>
+    </div>
+    <label class="item" data-id="d1">
+      <input type="checkbox">
+      <span class="item-title">Exporter les 3 fichiers CSV depuis votre compte</span>
+      <span class="item-detail"><strong>Portfolio</strong> (photo des positions), <strong>Transactions</strong> (tous vos ordres — menu Activité → Transactions), <strong>Relevé de compte / Account</strong> (dépôts, retraits, dividendes, frais — menu Activité → Relevé de compte). Ce dernier est indispensable au calcul du TWR. Ces fichiers réels trancheront aussi la question du séparateur CSV, sur laquelle les sources se contredisent.</span>
+      <span class="chips"><span class="chip place">DEGIRO</span></span>
+    </label>
+    <label class="item" data-id="d2">
+      <input type="checkbox">
+      <span class="item-title">Me transmettre une version anonymisée</span>
+      <span class="item-detail">Remplacer les montants par des valeurs factices si vous voulez, mais garder la structure exacte (en-têtes, formats de dates et de nombres). Elles deviendront les fixtures de test du parseur — committées dans le repo, donc rien de sensible dedans.</span>
+      <span class="chips"><span class="chip place">Windows</span></span>
+    </label>
+  </section>
+
+  <section class="step" data-step="3">
+    <div class="step-head">
+      <span class="step-num">3</span>
+      <h2>Vérifier et configurer Hostinger</h2>
+      <span class="step-when">avant de coder</span>
+      <span class="step-count">0/6</span>
+    </div>
+    <label class="item" data-id="h1">
+      <input type="checkbox">
+      <span class="item-title">Vérifier que votre plan supporte « Web App Node.js »</span>
+      <span class="item-detail">Le type « Déployez l'application web » (Node.js) n'existe que sur certains plans (Business/Cloud). Vérifier aussi que Node 20+ est proposé dans l'interface. Si ce n'est pas le cas, tout le plan de déploiement est à revoir — à savoir avant d'écrire du code.</span>
+      <span class="chips"><span class="chip place">hPanel</span><span class="chip warn">Peut tout invalider</span></span>
+    </label>
+    <label class="item" data-id="h2">
+      <input type="checkbox">
+      <span class="item-title">Créer le site degiro.estim.pro en type Node.js</span>
+      <span class="item-detail">Bien choisir « Déployez l'application web », pas PHP/HTML. Noter quelles commandes de build et de démarrage sont configurables (le projet utilisera <code>npm run build</code> puis <code>npm start</code> à la racine) et si un répertoire racine est sélectionnable.</span>
+      <span class="chips"><span class="chip place">hPanel</span></span>
+    </label>
+    <label class="item" data-id="h3">
+      <input type="checkbox">
+      <span class="item-title">Brancher le repo GitHub kponseel/degiro, branche main</span>
+      <span class="item-detail">Deux voies : l'assistant OAuth GitHub (il faudra autoriser l'app Hostinger sur le repo : GitHub → Settings → Applications → Hostinger → Repository access), ou la page Avancé → GIT du site en collant l'URL du repo. Attention : le déploiement se fait à chaque push sur main — d'où la CI qui tournera avant.</span>
+      <span class="chips"><span class="chip place">hPanel</span><span class="chip place">GitHub</span></span>
+    </label>
+    <label class="item" data-id="h4">
+      <input type="checkbox">
+      <span class="item-title">Créer la base MySQL et noter l'hôte de connexion</span>
+      <span class="item-detail">Menu « Bases de données ». Noter le nom de la base, l'utilisateur, et surtout l'hôte vu depuis l'application (<code>localhost</code> ou une forme <code>srvXXXX.hstgr.io</code>). Si « Remote MySQL » doit être activé pour développer, n'autoriser que votre IP — jamais « Any Host ».</span>
+      <span class="chips"><span class="chip place">hPanel</span><span class="chip warn">Jamais Any Host</span></span>
+    </label>
+    <label class="item" data-id="h5">
+      <input type="checkbox">
+      <span class="item-title">Vérifier phpMyAdmin et le SSL</span>
+      <span class="item-detail">phpMyAdmin doit être accessible pour inspecter la base au besoin (les migrations SQL seront appliquées automatiquement par l'app au démarrage). Vérifier après création du site que le certificat SSL est actif sur degiro.estim.pro.</span>
+      <span class="chips"><span class="chip place">hPanel</span></span>
+    </label>
+    <label class="item" data-id="h6">
+      <input type="checkbox">
+      <span class="item-title">Repérer les sauvegardes incluses dans votre plan</span>
+      <span class="item-detail">Fréquence des backups automatiques (hebdo ou quotidien selon plan) et procédure de restauration. La base sera le seul endroit où vivra votre historique — DEGIRO ne le garde pas. Prévoir en plus un export mensuel de la table <code>snapshots</code> conservé hors Hostinger.</span>
+      <span class="chips"><span class="chip place">hPanel</span></span>
+    </label>
+  </section>
+
+  <section class="step" data-step="4">
+    <div class="step-head">
+      <span class="step-num">4</span>
+      <h2>Secrets et variables d'environnement</h2>
+      <span class="step-when">au déploiement M0</span>
+      <span class="step-count">0/3</span>
+    </div>
+    <label class="item" data-id="s1">
+      <input type="checkbox">
+      <span class="item-title">Générer le token d'API</span>
+      <span class="item-detail">Dans Git Bash : <code>openssl rand -hex 32</code>. Ce token protégera toutes les routes de l'application (sans lui, votre patrimoine serait lisible par n'importe qui sur internet). Vous le saisirez à trois endroits : variables Hostinger, options de l'extension (plus tard), et premier écran du dashboard.</span>
+      <span class="chips"><span class="chip place">Windows</span></span>
+    </label>
+    <label class="item" data-id="s2">
+      <input type="checkbox">
+      <span class="item-title">Saisir les variables d'environnement dans Hostinger</span>
+      <span class="item-detail"><code>DB_HOST</code>, <code>DB_PORT</code>, <code>DB_USER</code>, <code>DB_PASSWORD</code>, <code>DB_NAME</code> (valeurs de l'étape 3), <code>API_TOKEN</code> (étape précédente). Le fichier <code>.env.example</code> du repo listera la version à jour. Le mot de passe DB ne transite que par cette interface, jamais par le code ni par le chat.</span>
+      <span class="chips"><span class="chip place">hPanel</span><span class="chip warn">Jamais dans Git</span></span>
+    </label>
+    <label class="item" data-id="s3">
+      <input type="checkbox">
+      <span class="item-title">Créer une clé OpenFIGI gratuite</span>
+      <span class="item-detail">Sur openfigi.com — facultatif mais recommandé : la clé gratuite augmente nettement les limites de débit pour l'enrichissement ISIN → ticker. À poser en variable <code>OPENFIGI_API_KEY</code> dans Hostinger. Nécessaire au plus tard au milestone M3.</span>
+      <span class="chips"><span class="chip">openfigi.com</span><span class="chip">pour M3</span></span>
+    </label>
+  </section>
+
+  <section class="step" data-step="5">
+    <div class="step-head">
+      <span class="step-num">5</span>
+      <h2>GitHub</h2>
+      <span class="step-when">maintenant</span>
+      <span class="step-count">0/1</span>
+    </div>
+    <label class="item" data-id="g1">
+      <input type="checkbox">
+      <span class="item-title">Relire et merger la PR #1 (analyse + plan)</span>
+      <span class="item-detail">La pull request <a href="https://github.com/kponseel/degiro/pull/1" target="_blank" rel="noopener">kponseel/degiro#1</a> contient <code>docs/ANALYSE-PROMPT.md</code> et <code>docs/PLAN.md</code> — la spec de référence du projet, qui remplace le prompt d'origine. Une fois mergée, le développement démarre au milestone M0 (squelette déployable).</span>
+      <span class="chips"><span class="chip place">GitHub</span></span>
+    </label>
+  </section>
+
+  <section class="step" data-step="6">
+    <div class="step-head">
+      <span class="step-num">6</span>
+      <h2>Plus tard, au fil des milestones</h2>
+      <span class="step-when">M4 → M7</span>
+      <span class="step-count">0/4</span>
+    </div>
+    <label class="item" data-id="l1">
+      <input type="checkbox">
+      <span class="item-title">M4 — Participer au spike de capture DEGIRO</span>
+      <span class="item-detail">Avant de coder l'extension : ouvrir votre session DEGIRO, onglet Réseau des DevTools (F12), et vérifier ensemble les appels <code>/trading/secure/...</code> (format de réponse, identifiants de session). C'est ce qui validera la technique de capture retenue.</span>
+      <span class="chips"><span class="chip place">Chrome</span><span class="chip place">DEGIRO</span></span>
+    </label>
+    <label class="item" data-id="l2">
+      <input type="checkbox">
+      <span class="item-title">M4 — Installer l'extension en mode développeur</span>
+      <span class="item-detail">chrome://extensions → activer « Mode développeur » → « Charger l'extension non empaquetée » vers le dossier <code>extension/</code> du repo. Puis saisir l'URL du backend (https uniquement) et le token dans sa page d'options. Les mises à jour se font par le bouton recharger, à chaque évolution du code.</span>
+      <span class="chips"><span class="chip place">Chrome</span></span>
+    </label>
+    <label class="item" data-id="l3">
+      <input type="checkbox">
+      <span class="item-title">M6 — Lister vos ETF pour le look-through</span>
+      <span class="item-detail">Le spike vérifiera, émetteur par émetteur (iShares, Amundi, Vanguard…), que les compositions de <em>vos</em> ETF sont téléchargeables. Les compositions se mettent à jour environ une fois par mois — un petit rituel manuel au début.</span>
+      <span class="chips"><span class="chip">pour M6</span></span>
+    </label>
+    <label class="item" data-id="l4">
+      <input type="checkbox">
+      <span class="item-title">Prendre le réflexe de capture régulière</span>
+      <span class="item-detail">Une fois l'extension en place (M4) : un clic sur « Capturer » quand vous passez sur DEGIRO. Un snapshot par jour est conservé ; les jours sans visite feront des trous tolérés dans les courbes. Et une fois par mois : exporter la table <code>snapshots</code> depuis phpMyAdmin, en lieu sûr hors Hostinger.</span>
+      <span class="chips"><span class="chip">routine</span></span>
+    </label>
+  </section>
+</main>
+
+<footer>
+  <span>Référence complète : <code>docs/PLAN.md</code> et <code>docs/ANALYSE-PROMPT.md</code> dans le repo.</span>
+  <button id="reset" type="button">Tout décocher</button>
+</footer>
+
+<script>
+  (function () {
+    var KEY = "degiro-analyzer-checklist-v1";
+    var state = {};
+    try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+
+    var items = Array.prototype.slice.call(document.querySelectorAll(".item"));
+
+    function save() {
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    }
+
+    function refresh() {
+      var total = items.length, done = 0;
+      document.querySelectorAll("section.step").forEach(function (sec) {
+        var secItems = sec.querySelectorAll(".item");
+        var secDone = 0;
+        secItems.forEach(function (it) {
+          if (it.querySelector("input").checked) secDone++;
+        });
+        done += secDone;
+        var count = sec.querySelector(".step-count");
+        count.textContent = secDone + "/" + secItems.length;
+        count.classList.toggle("done", secDone === secItems.length);
+      });
+      document.getElementById("global-count").textContent = done + "/" + total + " faits";
+      document.getElementById("global-fill").style.width = (total ? (100 * done / total) : 0) + "%";
+    }
+
+    items.forEach(function (it) {
+      var id = it.getAttribute("data-id");
+      var box = it.querySelector("input");
+      if (state[id]) { box.checked = true; it.classList.add("checked"); }
+      box.addEventListener("change", function () {
+        state[id] = box.checked;
+        if (!box.checked) delete state[id];
+        it.classList.toggle("checked", box.checked);
+        save();
+        refresh();
+      });
+    });
+
+    document.getElementById("reset").addEventListener("click", function () {
+      if (!confirm("Tout décocher ?")) return;
+      state = {};
+      save();
+      items.forEach(function (it) {
+        it.querySelector("input").checked = false;
+        it.classList.remove("checked");
+      });
+      refresh();
+    });
+
+    refresh();
+  })();
+</script>

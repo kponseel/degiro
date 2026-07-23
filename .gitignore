@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+*.log
+dist/
+build/
+coverage/
+
+# données financières — ne JAMAIS committer
+*.csv
+!**/fixtures/*.csv
+data/
+snapshots/
