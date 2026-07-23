@@ -25,18 +25,22 @@ export function getPool() {
   return pool;
 }
 
-/** Renvoie true si la base répond à un SELECT 1, false sinon (jamais throw). */
+/**
+ * Teste la base avec un SELECT 1 (ne throw jamais).
+ * @returns {Promise<{ ok: boolean, code: string|null }>} code = code d'erreur mysql2
+ *   (ECONNREFUSED, ER_ACCESS_DENIED_ERROR, ENOTFOUND, ETIMEDOUT, ER_BAD_DB_ERROR…).
+ */
 export async function pingDb() {
   try {
     const conn = await getPool().getConnection();
     try {
       await conn.query('SELECT 1');
-      return true;
+      return { ok: true, code: null };
     } finally {
       conn.release();
     }
-  } catch {
-    return false;
+  } catch (err) {
+    return { ok: false, code: err.code || err.message || 'UNKNOWN' };
   }
 }
 
