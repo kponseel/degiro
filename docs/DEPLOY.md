@@ -35,14 +35,43 @@ démarrage** (migrations idempotentes) — aucune exécution SQL manuelle néces
 | `DB_HOST` | hôte MySQL Hostinger |
 | `DB_PORT` | `3306` |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | identifiants de la base créée |
-| `API_TOKEN` | secret d'accès — générer avec `openssl rand -hex 32` |
+| `API_TOKEN` | jeton de service (accès propriétaire / scripts) — `openssl rand -hex 32` |
+| `OWNER_EMAIL` | **ton** email : devient l'utilisateur #1 et hérite des données existantes |
+| `APP_URL` | `https://degiro.estim.pro` (base des liens magiques, sans slash final) |
+| `NODE_ENV` | `production` (active le cookie de session `Secure`) |
+| `SMTP_HOST` | `smtp.hostinger.com` |
+| `SMTP_PORT` | `587` (STARTTLS) ou `465` (TLS) |
+| `SMTP_USER` | la boîte email du domaine (ex. `noreply@estim.pro`) |
+| `SMTP_PASS` | mot de passe de cette boîte |
+| `MAIL_FROM` | `DEGIRO Analyzer <noreply@estim.pro>` |
+| `SESSION_TTL_DAYS` / `MAGIC_LINK_TTL_MIN` | (optionnel) défauts `30` / `15` |
 | `OPENFIGI_API_KEY` | (optionnel) clé gratuite openfigi.com pour l'enrichissement |
+
+## Comptes & connexion (lien magique)
+
+L'app est **multi-utilisateurs** (~5-10 amis). Connexion **sans mot de passe** :
+on saisit son email (+ un pseudo à la première connexion), on reçoit un lien
+valable 15 min, un clic ouvre une session (cookie httpOnly, 30 jours).
+
+**Email via Hostinger** :
+1. hPanel → **Emails** → créer une boîte, ex. `noreply@estim.pro`.
+2. Renseigner `SMTP_HOST=smtp.hostinger.com`, `SMTP_USER=noreply@estim.pro`,
+   `SMTP_PASS=…`, `SMTP_PORT=587`, `MAIL_FROM` (voir table ci-dessus).
+3. Vérifier que **SPF/DKIM** du domaine sont actifs (hPanel → Emails → configuration)
+   pour éviter le dossier spam.
+
+Sans SMTP configuré, l'app démarre quand même en **mode dev** : le lien n'est pas
+envoyé mais journalisé (et affiché à l'écran) — pratique pour tester, à ne pas
+laisser en production.
 
 ## Premier accès
 
-Ouvrir `https://degiro.estim.pro`, saisir l'`API_TOKEN`, puis **Import / Réglages**
-→ déposer son `Portfolio.csv` (toute langue) → **Lancer l'enrichissement**.
+Ouvrir `https://degiro.estim.pro` → saisir ton email (celui de `OWNER_EMAIL`) +
+un pseudo → cliquer le lien reçu → **Import / Réglages** → déposer `Portfolio.csv`
+(toute langue) → **Lancer l'enrichissement**. Tes amis se connectent pareil avec
+leur propre email ; chacun ne voit que ses données.
 
-Vérifier la santé : `GET /api/health` doit renvoyer `{"status":"ok","db":"up"}`.
-Si `db` est `down`, revoir les variables `DB_*` (et l'autorisation Remote MySQL,
-restreinte à l'IP du serveur — jamais « Any Host »).
+Vérifier la santé : `GET /api/health` doit renvoyer `{"status":"ok","db":"up","email":"smtp"}`.
+- `db: down` → revoir les `DB_*` (et l'autorisation Remote MySQL, restreinte à l'IP
+  du serveur — jamais « Any Host »).
+- `email: dev` → SMTP non pris en compte : revoir `SMTP_*` puis redéployer.
