@@ -96,16 +96,17 @@ export async function saveHoldings(etfIsin, holdings) {
 }
 
 /** ETF détenus (dernier snapshot) avec leur couverture (composition importée ou non). */
-export async function heldEtfsWithCoverage() {
+export async function heldEtfsWithCoverage(accountId = 1) {
   const pool = getPool();
   const [held] = await pool.query(
     `SELECT p.isin, MAX(p.name) AS name
      FROM positions p LEFT JOIN isin_ref r ON r.isin = p.isin
-     WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = 1 ORDER BY captured_at DESC LIMIT 1)
+     WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
        AND (r.asset_class = 'ETF' OR p.product_type = 'ETF'
             OR p.name LIKE '%ETF%' OR p.name LIKE '%UCITS%' OR p.name LIKE '%ETC%')
      GROUP BY p.isin
      ORDER BY name`,
+    [accountId],
   );
   const [cov] = await pool.query(
     'SELECT etf_isin, COUNT(*) AS n, MAX(as_of) AS as_of FROM etf_holdings GROUP BY etf_isin',

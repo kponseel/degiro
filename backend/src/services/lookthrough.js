@@ -5,9 +5,9 @@ import { getPool } from '../db/pool.js';
  * (si sa composition est importée) pour révéler la vraie exposition par titre —
  * notamment les surexpositions cachées (un titre détenu en direct ET via un ETF).
  */
-export async function computeLookthrough() {
+export async function computeLookthrough(accountId = 1) {
   const pool = getPool();
-  const [snaps] = await pool.query('SELECT id FROM snapshots WHERE account_id = 1 ORDER BY captured_at DESC LIMIT 1');
+  const [snaps] = await pool.query('SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1', [accountId]);
   if (!snaps.length) return { total: 0, trueHoldings: [], overlaps: [], coveredCount: 0, missing: [] };
 
   const [positions] = await pool.query(

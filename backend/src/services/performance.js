@@ -11,14 +11,15 @@ const daysBetween = (a, b) => Math.max(1, Math.round((new Date(b) - new Date(a))
  * Flux externes = transactions 'deposit' (+) et 'withdrawal' (−) du relevé de
  * compte. Dividendes/frais restent internes (ils font partie de la performance).
  */
-export async function computePerformance() {
+export async function computePerformance(accountId = 1) {
   const pool = getPool();
 
   const [snaps] = await pool.query(
     `SELECT snapshot_date, total_value_eur
      FROM snapshots
-     WHERE account_id = 1 AND total_value_eur IS NOT NULL
+     WHERE account_id = ? AND total_value_eur IS NOT NULL
      ORDER BY snapshot_date ASC, (source = 'extension') DESC`,
+    [accountId],
   );
 
   // Un point par jour (préséance extension via le ORDER BY).
@@ -42,9 +43,9 @@ export async function computePerformance() {
   const [flowRows] = await pool.query(
     `SELECT DATE(tx_date) AS d, COALESCE(amount_eur, CASE WHEN currency = 'EUR' THEN amount END) AS eur
      FROM transactions
-     WHERE account_id = 1 AND type IN ('deposit', 'withdrawal')
+     WHERE account_id = ? AND type IN ('deposit', 'withdrawal')
        AND DATE(tx_date) > ? AND DATE(tx_date) <= ?`,
-    [from, to],
+    [accountId, from, to],
   );
   const flows = flowRows
     .map((r) => ({ date: String(r.d).slice(0, 10), amount: Number(r.eur) || 0 }))

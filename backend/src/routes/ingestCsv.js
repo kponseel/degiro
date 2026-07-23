@@ -58,11 +58,11 @@ router.post('/', upload.single('file'), async (req, res, next) => {
         total_value_eur: totalValueEur || null,
         cash_eur: cashEur,
         positions: normalized,
-      });
+      }, req.user.id);
       return res.status(200).json({ kind, positions: normalized.length, cash_eur: cashEur, ...result });
     }
 
-    const result = await saveTransactions(normalized);
+    const result = await saveTransactions(normalized, req.user.id);
     return res.status(200).json({ kind, ...result });
   } catch (err) {
     return next(err);

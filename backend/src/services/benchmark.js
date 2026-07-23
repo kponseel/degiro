@@ -109,10 +109,10 @@ function closeOnOrBefore(prices, date) {
  * @returns {Promise<object>} { available, symbol, name, from, to, twr,
  *   benchmarkReturn, alpha, series:[{date, twr, benchmark}], reason? }
  */
-export async function computeBenchmark(key = DEFAULT_BENCHMARK) {
+export async function computeBenchmark(key = DEFAULT_BENCHMARK, accountId = 1) {
   const conf = BENCHMARKS[key] || BENCHMARKS[DEFAULT_BENCHMARK];
   const symbol = key in BENCHMARKS ? key : DEFAULT_BENCHMARK;
-  const perf = await computePerformance();
+  const perf = await computePerformance(accountId);
 
   const base = {
     symbol,

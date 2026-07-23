@@ -7,8 +7,8 @@ const router = Router();
 // Série de valeur totale par jour. À date égale, l'extension prime sur le CSV.
 router.get('/', async (req, res, next) => {
   try {
-    const clauses = ['account_id = 1'];
-    const params = [];
+    const clauses = ['account_id = ?'];
+    const params = [req.user.id];
     if (req.query.from) {
       clauses.push('snapshot_date >= ?');
       params.push(req.query.from);

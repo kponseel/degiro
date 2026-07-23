@@ -5,9 +5,9 @@ const router = Router();
 
 // GET /api/exposure — répartitions du dernier snapshot.
 // (Le look-through ETF viendra enrichir secteur/pays dans un incrément ultérieur.)
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const exposure = await computeExposure();
+    const exposure = await computeExposure(req.user.id);
     return res.json(exposure);
   } catch (err) {
     return next(err);

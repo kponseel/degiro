@@ -5,7 +5,7 @@ import { getPool } from '../db/pool.js';
  * compte (Account.csv). Agrège par devise (les dividendes étrangers ne sont pas
  * convertis) et par titre. Le « net » retranche la retenue à la source.
  */
-export async function computeDividends() {
+export async function computeDividends(accountId = 1) {
   const pool = getPool();
   const now = new Date();
   const from = new Date(now);
@@ -16,8 +16,8 @@ export async function computeDividends() {
     `SELECT t.type, t.currency, t.isin, t.description, t.amount,
             (SELECT p.name FROM positions p WHERE p.isin = t.isin ORDER BY p.id DESC LIMIT 1) AS name
      FROM transactions t
-     WHERE t.account_id = 1 AND t.type IN ('dividend', 'tax') AND t.tx_date >= ?`,
-    [fromStr],
+     WHERE t.account_id = ? AND t.type IN ('dividend', 'tax') AND t.tx_date >= ?`,
+    [accountId, fromStr],
   );
 
   const byCurrency = new Map();

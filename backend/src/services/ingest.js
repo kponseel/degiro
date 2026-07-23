@@ -1,25 +1,24 @@
 import { getPool } from '../db/pool.js';
 import { toMysqlUtc, parisCivilDate } from '../util/date.js';
 
-const ACCOUNT_ID = 1;
-
 /**
- * Persiste un snapshot et ses positions.
+ * Persiste un snapshot et ses positions pour un utilisateur (accountId).
  * - Idempotent par capture_id : un re-POST identique renvoie le snapshot existant.
  * - Un seul snapshot conservé par (jour civil, source) : le plus récent remplace l'ancien.
  *
  * @returns {Promise<{ snapshotId: number, deduplicated: boolean, replaced: boolean }>}
  */
-export async function ingestSnapshot(payload) {
+export async function ingestSnapshot(payload, accountId = 1) {
   const pool = getPool();
   const capturedAt = new Date(payload.captured_at);
   const snapshotDate = parisCivilDate(capturedAt);
   const { source } = payload;
 
-  // Idempotence par capture_id.
-  const [existing] = await pool.query('SELECT id FROM snapshots WHERE capture_id = ?', [
-    payload.capture_id,
-  ]);
+  // Idempotence par (utilisateur, capture_id).
+  const [existing] = await pool.query(
+    'SELECT id FROM snapshots WHERE account_id = ? AND capture_id = ?',
+    [accountId, payload.capture_id],
+  );
   if (existing.length) {
     return { snapshotId: existing[0].id, deduplicated: true, replaced: false };
   }
@@ -31,7 +30,7 @@ export async function ingestSnapshot(payload) {
     // Un snapshot par jour et par source : on supprime l'éventuel existant (positions en cascade).
     const [del] = await conn.query(
       'DELETE FROM snapshots WHERE account_id = ? AND snapshot_date = ? AND source = ?',
-      [ACCOUNT_ID, snapshotDate, source],
+      [accountId, snapshotDate, source],
     );
 
     const [snapRes] = await conn.query(
@@ -40,7 +39,7 @@ export async function ingestSnapshot(payload) {
          total_value_eur, cash_eur, raw_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        ACCOUNT_ID,
+        accountId,
         toMysqlUtc(capturedAt),
         snapshotDate,
         source,

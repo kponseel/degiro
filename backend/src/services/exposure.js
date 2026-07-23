@@ -18,10 +18,11 @@ export function group(positions, keyFn, { skipNull = false } = {}) {
 }
 
 /** Exposition du dernier snapshot par devise, classe d'actifs, secteur et pays. */
-export async function computeExposure() {
+export async function computeExposure(accountId = 1) {
   const pool = getPool();
   const [snaps] = await pool.query(
-    'SELECT id FROM snapshots WHERE account_id = 1 ORDER BY captured_at DESC LIMIT 1',
+    'SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1',
+    [accountId],
   );
   if (!snaps.length) return { currency: [], asset_class: [], sector: [], country: [] };
 

@@ -13,7 +13,7 @@ const patchSchema = z.object({
 });
 
 // GET /api/isin-ref — ISIN détenus (dernier snapshot) avec leur enrichissement.
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const pool = getPool();
     const [rows] = await pool.query(
@@ -21,9 +21,10 @@ router.get('/', async (_req, res, next) => {
               r.ticker, r.sector, r.country, r.asset_class, r.manual_override
        FROM positions p
        LEFT JOIN isin_ref r ON r.isin = p.isin
-       WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = 1 ORDER BY captured_at DESC LIMIT 1)
+       WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
        GROUP BY p.isin, r.ticker, r.sector, r.country, r.asset_class, r.manual_override
        ORDER BY name`,
+      [req.user.id],
     );
     return res.json({ refs: rows });
   } catch (err) {
