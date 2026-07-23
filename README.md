@@ -8,15 +8,43 @@ au-delà de ce que montre l'interface DEGIRO.
 > contrat d'API, milestones) et [`docs/ANALYSE-PROMPT.md`](docs/ANALYSE-PROMPT.md)
 > (analyse critique du cahier des charges initial).
 
-## État — M0 (squelette déployable)
+## État — MVP fonctionnel (M0 → M3)
 
 Monorepo npm workspaces. Un seul process en production : Express sert l'API sous
 `/api/*` **et** le build React (`frontend/dist`). Point d'entrée
 `node backend/src/server.js`, port `process.env.PORT || 3000`.
 
-- `GET /api/health` → `{ status, db, version, ts }` (sans authentification).
-- Runner de migrations idempotent (`npm run migrate`) appliquant `backend/migrations/*.sql`.
-- CI GitHub Actions : lint → migrations → tests → build, avec un service MySQL.
+Ce qui marche aujourd'hui, de bout en bout :
+
+- **Import** de ses exports DEGIRO (Portfolio / Relevé de compte / Transactions)
+  avec prévisualisation, ou ingestion JSON via l'extension (à venir).
+- **Vue d'ensemble** : valeur, liquidités, P/L latent, concentration top‑5 + alerte.
+- **Exposition** : répartitions par devise, classe d'actifs, secteur et pays.
+- **Historique** : courbe de valeur totale par jour.
+- **Enrichissement ISIN** (pays déterministe + OpenFIGI best‑effort) avec
+  correction manuelle.
+- **Sécurité** : jeton bearer sur toutes les routes sauf `/api/health`.
+
+### API
+
+| Méthode | Route | Rôle |
+|--------|-------|------|
+| GET | `/api/health` | Santé (public) |
+| POST | `/api/ingest` | Ingestion d'un snapshot (JSON), idempotent |
+| POST | `/api/ingest/csv` | Import CSV (multipart), modes `preview`/`commit` |
+| GET | `/api/portfolio` | Dernier snapshot enrichi |
+| GET | `/api/snapshots` | Série de valeur par jour |
+| GET | `/api/exposure` | Répartitions devise/classe/secteur/pays |
+| POST | `/api/enrich` | Enrichit les ISIN du dernier snapshot |
+| GET/PUT | `/api/isin-ref[/:isin]` | Références ISIN + correction manuelle |
+
+Runner de migrations idempotent (`npm run migrate`) ; CI GitHub Actions
+(lint → migrations → tests → build, avec un service MySQL).
+
+### Reste à faire (post‑MVP, voir `docs/PLAN.md`)
+
+Extension Chrome (M4), look‑through ETF (M6), TWR vs benchmark + attribution +
+dividendes projetés (M7).
 
 ## Architecture
 

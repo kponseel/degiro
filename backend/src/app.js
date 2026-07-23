@@ -11,6 +11,9 @@ import ingestRouter from './routes/ingest.js';
 import ingestCsvRouter from './routes/ingestCsv.js';
 import portfolioRouter from './routes/portfolio.js';
 import snapshotsRouter from './routes/snapshots.js';
+import exposureRouter from './routes/exposure.js';
+import enrichRouter from './routes/enrich.js';
+import isinRefRouter from './routes/isinRef.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -49,6 +52,9 @@ export function createApp() {
   app.use('/api/ingest', ingestRouter);
   app.use('/api/portfolio', portfolioRouter);
   app.use('/api/snapshots', snapshotsRouter);
+  app.use('/api/exposure', exposureRouter);
+  app.use('/api/enrich', enrichRouter);
+  app.use('/api/isin-ref', isinRefRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {

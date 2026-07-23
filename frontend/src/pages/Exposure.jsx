@@ -31,7 +31,7 @@ function Donut({ title, data, note }) {
             <div style={{ width: 160, height: 160, flexShrink: 0 }}>
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={data} dataKey="value" nameKey="key" innerRadius={46} outerRadius={72} paddingAngle={2} stroke="none">
+                  <Pie data={data} dataKey="value" nameKey="key" innerRadius={46} outerRadius={72} paddingAngle={2} stroke="none" isAnimationActive={false}>
                     {data.map((d, i) => <Cell key={d.key} fill={PALETTE[i % PALETTE.length]} />)}
                   </Pie>
                   <Tooltip
@@ -89,7 +89,7 @@ export default function Exposure() {
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
         <Donut title="Exposition par devise" data={byCurrency} note="Devise de cotation — sans neutraliser l'effet de change." />
         <Donut title="Exposition par classe d'actifs" data={byType} note="Depuis le type de produit DEGIRO (absent des imports CSV)." />
-        {bySector.length > 0 && <Donut title="Exposition par secteur" data={bySector} note={exposure ? 'Avec look-through ETF.' : undefined} />}
+        {bySector.length > 0 && <Donut title="Exposition par secteur" data={bySector} note="Depuis l'enrichissement ISIN (hors ETF non éclatés). Le look-through ETF affinera cette vue." />}
         {byCountry.length > 0 && <Donut title="Exposition par pays" data={byCountry} />}
       </div>
       {(enrichPending || bySector.length === 0) && (

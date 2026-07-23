@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { uploadCsv, getToken, setToken, clearToken, enrichNow } from '../lib/api.js';
 import { Card, Banner } from '../components/ui.jsx';
+import IsinEditor from '../components/IsinEditor.jsx';
 
 const KIND_LABEL = { portfolio: 'Portefeuille', account: 'Relevé de compte', transactions: 'Transactions' };
 
@@ -104,7 +105,7 @@ export default function Settings({ onImported }) {
   }
 
   return (
-    <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: 760 }}>
+    <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: 880 }}>
       <Card title="Importer un export DEGIRO">
         <p className="muted" style={{ marginTop: 0 }}>
           Exportez vos fichiers depuis DEGIRO puis déposez-les ici. Le type est détecté automatiquement ; une prévisualisation
@@ -123,6 +124,10 @@ export default function Settings({ onImported }) {
         </p>
         <button className="btn" onClick={runEnrich}>Lancer l'enrichissement</button>
         {enrichMsg && <div style={{ marginTop: 12 }}><Banner kind={enrichMsg.kind}>{enrichMsg.text}</Banner></div>}
+        <div style={{ marginTop: 18 }}>
+          <div className="card-title">Références ISIN (correction manuelle)</div>
+          <IsinEditor reloadKey={enrichMsg?.text} />
+        </div>
       </Card>
 
       <Card title="Jeton d'accès">

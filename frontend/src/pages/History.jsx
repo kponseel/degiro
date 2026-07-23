@@ -58,7 +58,7 @@ export default function History() {
                 contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' }}
                 labelStyle={{ color: 'var(--ink-soft)' }}
               />
-              <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#g)" />
+              <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#g)" isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
