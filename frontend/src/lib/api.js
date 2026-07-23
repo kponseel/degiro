@@ -39,6 +39,7 @@ export const updateIsinRef = (isin, patch) =>
 export const enrichNow = () => api('/api/enrich', { method: 'POST' });
 export const getLookthrough = () => api('/api/lookthrough');
 export const getEtfHoldings = () => api('/api/etf-holdings');
+export const getBenchmark = (symbol) => api(`/api/benchmark${qs({ symbol })}`);
 
 export async function uploadEtfHoldings(file, etfIsin, mode = 'commit') {
   const fd = new FormData();
