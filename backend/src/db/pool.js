@@ -17,6 +17,9 @@ export function getPool() {
       connectTimeout: 3000,
       namedPlaceholders: true,
       charset: 'utf8mb4',
+      // DATE/DATETIME renvoyés en chaînes ('YYYY-MM-DD' / 'YYYY-MM-DD HH:MM:SS'),
+      // pas en objets Date — évite tout décalage de fuseau au retour.
+      dateStrings: true,
     });
   }
   return pool;

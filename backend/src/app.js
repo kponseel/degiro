@@ -5,7 +5,11 @@ import pinoHttp from 'pino-http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
+import { requireAuth } from './middleware/auth.js';
 import healthRouter from './routes/health.js';
+import ingestRouter from './routes/ingest.js';
+import portfolioRouter from './routes/portfolio.js';
+import snapshotsRouter from './routes/snapshots.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -35,8 +39,14 @@ export function createApp() {
     }),
   );
 
-  // Routes API.
+  // Santé : publique (monitoring), avant l'authentification.
   app.use('/api/health', healthRouter);
+
+  // Toutes les autres routes /api exigent le jeton bearer.
+  app.use('/api', requireAuth);
+  app.use('/api/ingest', ingestRouter);
+  app.use('/api/portfolio', portfolioRouter);
+  app.use('/api/snapshots', snapshotsRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {

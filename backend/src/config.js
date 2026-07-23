@@ -1,4 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Charge backend/.env quel que soit le répertoire d'exécution (les scripts npm
+// tournent depuis la racine du monorepo). Sans effet en CI/prod où les variables
+// d'environnement sont fournies par la plateforme (fichier absent = no-op).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 /** Configuration centralisée, lue depuis l'environnement. */
 export const config = {
