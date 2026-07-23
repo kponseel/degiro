@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { getToken, setToken, validateToken } from './lib/api.js';
 import { Spinner } from './components/ui.jsx';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends } from './components/icons.jsx';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
 import History from './pages/History.jsx';
+import Dividends from './pages/Dividends.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
 
@@ -12,6 +13,7 @@ const PAGES = [
   { id: 'overview', label: "Vue d'ensemble", icon: IconOverview, Comp: Overview },
   { id: 'exposure', label: 'Exposition', icon: IconExposure, Comp: Exposure },
   { id: 'history', label: 'Historique', icon: IconHistory, Comp: History },
+  { id: 'dividends', label: 'Dividendes', icon: IconDividends, Comp: Dividends },
   { id: 'ai', label: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
   { id: 'settings', label: 'Import / Réglages', icon: IconSettings, Comp: Settings },
 ];
