@@ -18,6 +18,7 @@ import dividendsRouter from './routes/dividends.js';
 import performanceRouter from './routes/performance.js';
 import etfHoldingsRouter from './routes/etfHoldings.js';
 import lookthroughRouter from './routes/lookthrough.js';
+import benchmarkRouter from './routes/benchmark.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -63,6 +64,7 @@ export function createApp() {
   app.use('/api/performance', performanceRouter);
   app.use('/api/etf-holdings', etfHoldingsRouter);
   app.use('/api/lookthrough', lookthroughRouter);
+  app.use('/api/benchmark', benchmarkRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {
