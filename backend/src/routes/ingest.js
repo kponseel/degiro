@@ -11,7 +11,7 @@ router.post('/', async (req, res, next) => {
     return res.status(400).json({ error: 'Payload invalide', details: parsed.error.flatten() });
   }
   try {
-    const result = await ingestSnapshot(parsed.data);
+    const result = await ingestSnapshot(parsed.data, req.user.id);
     return res.status(result.deduplicated ? 200 : 201).json(result);
   } catch (err) {
     return next(err);

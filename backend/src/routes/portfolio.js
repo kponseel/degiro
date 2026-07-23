@@ -4,13 +4,14 @@ import { getPool } from '../db/pool.js';
 const router = Router();
 
 // GET /api/portfolio — positions du dernier snapshot, enrichies par ISIN.
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const pool = getPool();
     const [snaps] = await pool.query(
       `SELECT id, captured_at, snapshot_date, source, total_value_eur, cash_eur
-       FROM snapshots WHERE account_id = 1
+       FROM snapshots WHERE account_id = ?
        ORDER BY captured_at DESC LIMIT 1`,
+      [req.user.id],
     );
     if (!snaps.length) {
       return res.json({ snapshot: null, positions: [] });

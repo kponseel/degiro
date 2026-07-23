@@ -7,9 +7,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
 
 // GET /api/etf-holdings — ETF détenus + couverture (composition importée ou non).
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    return res.json({ etfs: await heldEtfsWithCoverage() });
+    return res.json({ etfs: await heldEtfsWithCoverage(req.user.id) });
   } catch (err) {
     return next(err);
   }

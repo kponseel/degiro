@@ -7,7 +7,7 @@ const router = Router();
 router.get('/', async (req, res, next) => {
   try {
     const key = String(req.query.symbol || DEFAULT_BENCHMARK).trim().toLowerCase();
-    return res.json(await computeBenchmark(key));
+    return res.json(await computeBenchmark(key, req.user.id));
   } catch (err) {
     return next(err);
   }

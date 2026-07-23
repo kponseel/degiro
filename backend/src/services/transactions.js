@@ -1,17 +1,15 @@
 import { getPool } from '../db/pool.js';
 
-const ACCOUNT_ID = 1;
-
 /**
- * Enregistre des mouvements (relevé de compte ou ordres).
+ * Enregistre des mouvements (relevé de compte ou ordres) pour un utilisateur.
  * Idempotent via external_id (INSERT IGNORE sur la contrainte d'unicité).
  * @returns {Promise<{ received: number, inserted: number }>}
  */
-export async function saveTransactions(txs) {
+export async function saveTransactions(txs, accountId = 1) {
   if (!txs.length) return { received: 0, inserted: 0 };
   const pool = getPool();
   const rows = txs.map((t) => [
-    ACCOUNT_ID,
+    accountId,
     t.tx_date,
     t.type,
     t.isin ?? null,
