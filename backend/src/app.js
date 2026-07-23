@@ -14,6 +14,7 @@ import snapshotsRouter from './routes/snapshots.js';
 import exposureRouter from './routes/exposure.js';
 import enrichRouter from './routes/enrich.js';
 import isinRefRouter from './routes/isinRef.js';
+import dividendsRouter from './routes/dividends.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -55,6 +56,7 @@ export function createApp() {
   app.use('/api/exposure', exposureRouter);
   app.use('/api/enrich', enrichRouter);
   app.use('/api/isin-ref', isinRefRouter);
+  app.use('/api/dividends', dividendsRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {
