@@ -1,86 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  uploadCsv, enrichNow, getEtfHoldings, uploadEtfHoldings,
+  enrichNow, getEtfHoldings, uploadEtfHoldings,
   updatePseudo, deleteMyData, deleteAccount,
 } from '../lib/api.js';
 import { Card, Banner } from '../components/ui.jsx';
+import Uploader from '../components/Uploader.jsx';
 import IsinEditor from '../components/IsinEditor.jsx';
-
-const KIND_LABEL = { portfolio: 'Portefeuille', account: 'Relevé de compte', transactions: 'Transactions' };
-
-function Uploader({ hint, title, description, onImported }) {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-
-  async function choose(f) {
-    setFile(f); setPreview(null); setResult(null); setError(null);
-    if (!f) return;
-    setBusy(true);
-    try {
-      const res = await uploadCsv(f, hint, 'preview');
-      setPreview(res);
-    } catch (e) {
-      setError(e.body?.error || e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirm() {
-    setBusy(true); setError(null);
-    try {
-      const res = await uploadCsv(file, preview.kind, 'commit');
-      setResult(res);
-      setPreview(null);
-      onImported?.();
-    } catch (e) {
-      setError(e.body?.error || e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="uploader">
-      <div className={`drop ${file ? 'armed' : ''}`}>
-        <div className="meta">
-          <span className="k">{title}</span>
-          <span className="d">{file ? file.name : description}</span>
-        </div>
-        <label className="btn ghost">
-          {file ? 'Changer' : 'Choisir un CSV'}
-          <input type="file" accept=".csv,text/csv" hidden onChange={(e) => choose(e.target.files[0])} />
-        </label>
-      </div>
-
-      {busy && <div className="muted">Traitement…</div>}
-      {error && <Banner kind="err">{error}</Banner>}
-
-      {preview && (
-        <div className="card card-pad" style={{ background: 'var(--card-2)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              Détecté : <strong>{KIND_LABEL[preview.kind] || preview.kind}</strong> · {preview.count} ligne(s)
-              <span className="muted"> · délimiteur « {preview.delimiter === '\t' ? 'tab' : preview.delimiter} »</span>
-            </div>
-            <button className="btn" onClick={confirm} disabled={busy}>Confirmer l'import</button>
-          </div>
-        </div>
-      )}
-
-      {result && (
-        <Banner kind="info">
-          {result.kind === 'portfolio'
-            ? `Portefeuille importé : ${result.positions} position(s)${result.replaced ? ', snapshot du jour remplacé' : ''}${result.deduplicated ? ' (déjà importé)' : ''}.`
-            : `${KIND_LABEL[result.kind] || result.kind} : ${result.inserted} nouveau(x) mouvement(s) sur ${result.received}.`}
-        </Banner>
-      )}
-    </div>
-  );
-}
 
 function EtfHoldingsUploader({ onImported }) {
   const [etfs, setEtfs] = useState(null);
@@ -248,8 +173,9 @@ function AccountCard({ user, onUserChange, onLogout }) {
   );
 }
 
-export default function Settings({ onImported, user, onUserChange, onLogout }) {
+export default function Settings({ onImported, onGoOverview, user, onUserChange, onLogout }) {
   const [enrichMsg, setEnrichMsg] = useState(null);
+  const [portfolioJustImported, setPortfolioJustImported] = useState(false);
   const [theme, setThemeState] = useState(localStorage.getItem('degiro_theme') || 'light');
 
   function applyTheme(t) {
@@ -278,10 +204,19 @@ export default function Settings({ onImported, user, onUserChange, onLogout }) {
           s'affiche avant l'import définitif.
         </p>
         <div className="grid" style={{ gap: 22 }}>
-          <Uploader hint="auto" title="Portefeuille (positions)" description="Portfolio.csv — vos lignes actuelles" onImported={onImported} />
+          <Uploader
+            hint="auto" title="Portefeuille (positions)" description="Portfolio.csv — vos lignes actuelles"
+            onImported={onImported}
+            onDone={(res) => { if (res.kind === 'portfolio' && !res.deduplicated) setPortfolioJustImported(true); }}
+          />
           <Uploader hint="auto" title="Relevé de compte" description="Account.csv — dépôts, dividendes, frais" onImported={onImported} />
           <Uploader hint="auto" title="Transactions" description="Transactions.csv — vos ordres exécutés" onImported={onImported} />
         </div>
+        {portfolioJustImported && (
+          <div style={{ marginTop: 16 }}>
+            <button className="btn" onClick={onGoOverview}>Voir la vue d'ensemble →</button>
+          </div>
+        )}
       </Card>
 
       <EtfHoldingsUploader onImported={onImported} />

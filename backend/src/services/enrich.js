@@ -26,8 +26,11 @@ export function assetClassFromType(type) {
 /** Devine la classe d'actifs depuis le nom (utile pour les imports CSV sans type). */
 export function assetClassFromName(name) {
   const n = String(name || '');
-  if (/\betf\b|ucits|tracker/i.test(n)) return 'ETF';
   if (/\betc\b|physical (gold|silver|palladium|platinum|metal)/i.test(n)) return 'ETC';
+  // Mots-clés génériques OU marques d'émetteurs d'ETF (les exports DEGIRO abrègent
+  // souvent le nom sans « ETF »/« UCITS », ex. « ISHARES CORE MSCI WORLD »).
+  if (/\betf\b|ucits|tracker/i.test(n)) return 'ETF';
+  if (/ishares|xtrackers|lyxor|amundi|vanguard|spdr|invesco|wisdomtree|vaneck|bnp.*easy/i.test(n)) return 'ETF';
   return null;
 }
 

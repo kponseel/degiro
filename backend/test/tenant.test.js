@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
-import { closePool } from '../src/db/pool.js';
+import { getPool, closePool } from '../src/db/pool.js';
+import { config } from '../src/config.js';
 import { resetDb } from './helpers.js';
 
 const app = createApp();
@@ -67,15 +68,60 @@ describe('Isolation multi-tenant', () => {
     expect(bSnaps.body.snapshots).toEqual([]);
   });
 
-  it('le jeton bearer historique agit comme le propriétaire (utilisateur #1)', async () => {
-    // Alice, première inscrite, est l'utilisateur #1.
+  it("une inscription ne reçoit JAMAIS l'id 1 (réservé au propriétaire)", async () => {
+    // Régression du bug « données par défaut » : sans OWNER_EMAIL, le premier
+    // inscrit héritait de l'id 1 et donc des données historiques (account 1).
+    const alice = await register('alice@example.com', 'Alice');
+    const me = await alice.get('/api/auth/me');
+    expect(me.body.user.id).toBeGreaterThanOrEqual(2);
+  });
+
+  it("un nouvel inscrit ne voit pas les données historiques du compte 1", async () => {
+    // Données « legacy » (pré-auth) rattachées au compte 1, aucun utilisateur en base.
+    await getPool().query(
+      `INSERT INTO snapshots (account_id, captured_at, snapshot_date, source, capture_id, total_value_eur)
+       VALUES (1, '2026-07-01 10:00:00', '2026-07-01', 'extension', 'legacy-1', 99999)`,
+    );
+    const fresh = await register('nouveau@example.com', 'Nouveau');
+    const port = await fresh.get('/api/portfolio');
+    expect(port.body.snapshot).toBeNull();
+    expect(port.body.positions).toEqual([]);
+  });
+
+  it('le jeton bearer historique agit comme le propriétaire (#1), isolé des inscrits', async () => {
     const alice = await register('alice@example.com', 'Alice');
     await alice.post('/api/ingest').send(snapshotFor('a1', 'US67066G1040', 'NVIDIA CORP', 1500));
 
+    // Le bearer est mappé sur l'utilisateur #1 : il ne voit PAS les données d'Alice (id ≥ 2).
     const viaToken = await request(app)
       .get('/api/portfolio')
       .set({ Authorization: 'Bearer test_token_0123456789' });
     expect(viaToken.status).toBe(200);
-    expect(viaToken.body.positions.map((p) => p.isin)).toEqual(['US67066G1040']);
+    expect(viaToken.body.snapshot).toBeNull();
+  });
+});
+
+describe('Réclamation des données historiques par le propriétaire', () => {
+  it("OWNER_EMAIL récupère l'id 1 (et les données legacy) à sa première connexion", async () => {
+    const prev = config.auth.ownerEmail;
+    config.auth.ownerEmail = 'proprio@example.com';
+    try {
+      await getPool().query(
+        `INSERT INTO snapshots (account_id, captured_at, snapshot_date, source, capture_id, total_value_eur)
+         VALUES (1, '2026-07-01 10:00:00', '2026-07-01', 'extension', 'legacy-2', 12345)`,
+      );
+      // Un ami s'inscrit d'abord — il ne doit pas voler l'id 1.
+      const friend = await register('rapide@example.com', 'Rapide');
+      expect((await friend.get('/api/auth/me')).body.user.id).toBeGreaterThanOrEqual(2);
+
+      // Le propriétaire se connecte ensuite : il réclame l'id 1 et voit ses données.
+      const owner = await register('proprio@example.com', 'Proprio');
+      const me = await owner.get('/api/auth/me');
+      expect(me.body.user.id).toBe(1);
+      const port = await owner.get('/api/portfolio');
+      expect(port.body.snapshot?.total_value_eur).toBe('12345.00');
+    } finally {
+      config.auth.ownerEmail = prev;
+    }
   });
 });
