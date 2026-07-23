@@ -82,10 +82,11 @@ function Uploader({ hint, title, description, onImported }) {
 export default function Settings({ onImported }) {
   const [tokenInput, setTokenInput] = useState('');
   const [enrichMsg, setEnrichMsg] = useState(null);
-  const [theme, setThemeState] = useState(document.documentElement.getAttribute('data-theme') || 'auto');
+  const [theme, setThemeState] = useState(localStorage.getItem('degiro_theme') || 'light');
 
   function applyTheme(t) {
     setThemeState(t);
+    localStorage.setItem('degiro_theme', t);
     if (t === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', t);
   }

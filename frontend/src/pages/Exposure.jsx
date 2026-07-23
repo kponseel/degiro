@@ -31,7 +31,7 @@ function Donut({ title, data, note }) {
             <div style={{ width: 160, height: 160, flexShrink: 0 }}>
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={data} dataKey="value" nameKey="key" innerRadius={46} outerRadius={72} paddingAngle={2} stroke="none" isAnimationActive={false}>
+                  <Pie data={data} dataKey="value" nameKey="key" innerRadius={48} outerRadius={74} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
                     {data.map((d, i) => <Cell key={d.key} fill={PALETTE[i % PALETTE.length]} />)}
                   </Pie>
                   <Tooltip
