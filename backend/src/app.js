@@ -1,5 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import path from 'node:path';
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
 import { requireAuth } from './middleware/auth.js';
 import healthRouter from './routes/health.js';
+import authRouter from './routes/auth.js';
 import ingestRouter from './routes/ingest.js';
 import ingestCsvRouter from './routes/ingestCsv.js';
 import portfolioRouter from './routes/portfolio.js';
@@ -36,6 +38,7 @@ export function createApp() {
   app.use(helmet());
   app.use(pinoHttp({ logger }));
   app.use(express.json({ limit: '1mb' }));
+  app.use(cookieParser());
 
   // Rate limiting sur toute l'API.
   app.use(
@@ -51,7 +54,10 @@ export function createApp() {
   // Santé : publique (monitoring), avant l'authentification.
   app.use('/api/health', healthRouter);
 
-  // Toutes les autres routes /api exigent le jeton bearer.
+  // Authentification (liens magiques + sessions) : publique, se protège elle-même.
+  app.use('/api/auth', authRouter);
+
+  // Toutes les autres routes /api exigent le jeton bearer (migration vers sessions en cours).
   app.use('/api', requireAuth);
   app.use('/api/ingest/csv', ingestCsvRouter);
   app.use('/api/ingest', ingestRouter);

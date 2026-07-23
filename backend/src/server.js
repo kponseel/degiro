@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { migrate } from './db/migrate.js';
+import { ensureOwner } from './services/auth.js';
 
 const app = createApp();
 
@@ -15,7 +16,8 @@ const server = app.listen(config.port, () => {
 // GET /api/health signale « db: down » pour faciliter le diagnostic.
 migrate()
   .then(() => logger.info('Migrations vérifiées'))
-  .catch((err) => logger.error(`Migrations échouées : ${err.message}`));
+  .then(() => ensureOwner())
+  .catch((err) => logger.error(`Démarrage base échoué : ${err.message}`));
 
 // Arrêt propre.
 for (const signal of ['SIGTERM', 'SIGINT']) {
