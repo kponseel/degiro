@@ -3,10 +3,15 @@ import { getPortfolio } from '../lib/api.js';
 import { yahooUrl } from '../lib/links.js';
 import { fmtEur, fmtPct, fmtNum } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
+import FilterBar from '../components/FilterBar.jsx';
+import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
+
+const EMPTY_FILTER = { q: '', type: '', sector: '', country: '' };
 
 export default function Overview({ onGoImport }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [filter, setFilter] = usePersistentState('degiro_filter_overview', EMPTY_FILTER);
 
   useEffect(() => {
     getPortfolio().then(setData).catch((e) => setError(e.message));
@@ -40,6 +45,18 @@ export default function Overview({ onGoImport }) {
   const hhi = weighted.reduce((s, p) => s + p.w * p.w, 0);
   const maxW = weighted[0]?.w || 0;
   const overConcentrated = maxW > 0.25 || top5 > 0.6;
+
+  // Filtre de la table des positions (n'affecte pas les stats globales ci-dessus).
+  const typeOf = (p) => p.asset_class || p.product_type || '';
+  const filtered = applyFilters(weighted, filter, {
+    searchFields: ['name', 'symbol', 'ticker', 'isin'],
+    facetGetters: { type: typeOf, sector: (p) => p.sector || '', country: (p) => p.country || '' },
+  });
+  const facets = [
+    { key: 'type', label: 'Type', value: filter.type, options: distinctValues(weighted, typeOf), onChange: (v) => setFilter((f) => ({ ...f, type: v })) },
+    { key: 'sector', label: 'Secteur', value: filter.sector, options: distinctValues(weighted, (p) => p.sector), onChange: (v) => setFilter((f) => ({ ...f, sector: v })) },
+    { key: 'country', label: 'Pays', value: filter.country, options: distinctValues(weighted, (p) => p.country), onChange: (v) => setFilter((f) => ({ ...f, country: v })) },
+  ];
 
   return (
     <>
@@ -81,6 +98,15 @@ export default function Overview({ onGoImport }) {
       </div>
 
       <Card title="Positions">
+        <FilterBar
+          q={filter.q}
+          onQ={(v) => setFilter((f) => ({ ...f, q: v }))}
+          facets={facets}
+          onReset={() => setFilter(EMPTY_FILTER)}
+          count={filtered.length}
+          total={weighted.length}
+          placeholder="Titre, ticker, ISIN…"
+        />
         <div className="table-wrap">
           <table className="data">
             <thead>
@@ -90,7 +116,10 @@ export default function Overview({ onGoImport }) {
               </tr>
             </thead>
             <tbody>
-              {weighted.map((p) => {
+              {filtered.length === 0 && (
+                <tr><td colSpan={8} className="muted" style={{ textAlign: 'center', padding: '18px' }}>Aucune position ne correspond aux filtres.</td></tr>
+              )}
+              {filtered.map((p) => {
                 const ac = p.asset_class || p.product_type;
                 const isFund = ac === 'ETF' || ac === 'ETC';
                 return (

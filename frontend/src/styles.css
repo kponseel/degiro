@@ -258,6 +258,12 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 }
 .input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 .field { display: flex; flex-direction: column; gap: 7px; }
+
+/* ── Barre de filtres ─────────────────────────────────── */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.filter-bar .filter-search { flex: 1 1 200px; min-width: 140px; padding: 8px 12px; }
+.filter-bar .filter-select { flex: 0 1 auto; width: auto; padding: 8px 10px; }
+.filter-bar .filter-meta { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .field label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); font-weight: 650; }
 
 /* ── Uploader ─────────────────────────────────────────── */
