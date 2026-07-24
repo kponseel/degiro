@@ -24,6 +24,8 @@ export const config = {
   auth: {
     // Bootstrap : cet email devient l'utilisateur #1 (récupère les données existantes).
     ownerEmail: (process.env.OWNER_EMAIL || '').trim().toLowerCase(),
+    // Administration (gestion des inscrits). À défaut, l'admin est le propriétaire.
+    adminEmail: (process.env.ADMIN_EMAIL || process.env.OWNER_EMAIL || '').trim().toLowerCase(),
     // Base des liens magiques ; à défaut, dérivée de l'origine de la requête.
     appUrl: (process.env.APP_URL || '').replace(/\/+$/, ''),
     sessionTtlDays: Number(process.env.SESSION_TTL_DAYS) || 30,

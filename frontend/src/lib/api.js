@@ -30,6 +30,11 @@ export const updatePseudo = (pseudo) => jsonPost('/api/auth/me', { pseudo }, 'PA
 export const deleteMyData = () => api('/api/auth/me/data', { method: 'DELETE' });
 export const deleteAccount = () => api('/api/auth/me', { method: 'DELETE' });
 
+// ── Administration (ADMIN_EMAIL uniquement) ───────────────────────
+export const adminListUsers = () => api('/api/admin/users');
+export const adminUpdateUser = (id, patch) => jsonPost(`/api/admin/users/${id}`, patch, 'PATCH');
+export const adminDeleteUser = (id) => api(`/api/admin/users/${id}`, { method: 'DELETE' });
+
 // ── Données ───────────────────────────────────────────────────────
 export const getPortfolio = () => api('/api/portfolio');
 export const getSnapshots = (from, to) => api(`/api/snapshots${qs({ from, to })}`);

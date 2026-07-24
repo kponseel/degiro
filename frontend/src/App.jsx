@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { getMe, getPortfolio, requestMagicLink, verifyMagicLink, logout as apiLogout } from './lib/api.js';
 import { Spinner } from './components/ui.jsx';
 import Onboarding from './components/Onboarding.jsx';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin } from './components/icons.jsx';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
 import History from './pages/History.jsx';
 import Dividends from './pages/Dividends.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
+import Admin from './pages/Admin.jsx';
 
 const PAGES = [
   { id: 'overview', label: "Vue d'ensemble", icon: IconOverview, Comp: Overview },
@@ -17,12 +18,13 @@ const PAGES = [
   { id: 'dividends', label: 'Dividendes', icon: IconDividends, Comp: Dividends },
   { id: 'ai', label: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
   { id: 'settings', label: 'Import / Réglages', icon: IconSettings, Comp: Settings },
+  // Visible uniquement pour l'administrateur (ADMIN_EMAIL).
+  { id: 'admin', label: 'Administration', icon: IconAdmin, Comp: Admin, adminOnly: true },
 ];
 
 function Login({ initialError }) {
   const [email, setEmail] = useState('');
   const [pseudo, setPseudo] = useState('');
-  const [needPseudo, setNeedPseudo] = useState(false);
   const [sent, setSent] = useState(false);
   const [devLink, setDevLink] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -35,11 +37,6 @@ function Login({ initialError }) {
     setBusy(true); setError('');
     try {
       const res = await requestMagicLink(mail, pseudo.trim() || undefined);
-      if (res.needPseudo) {
-        setNeedPseudo(true);
-        setError('Première connexion : choisis un pseudo pour créer ton compte.');
-        return;
-      }
       setSent(true);
       setDevLink(res.devLink || null);
     } catch (e2) {
@@ -88,11 +85,11 @@ function Login({ initialError }) {
             value={email} onChange={(e) => setEmail(e.target.value)} placeholder="toi@exemple.com" />
         </div>
         <div className="field">
-          <label htmlFor="pseudo">Pseudo <span className="muted">{needPseudo ? '(requis pour créer ton compte)' : '(si première connexion)'}</span></label>
+          <label htmlFor="pseudo">Pseudo <span className="muted">(optionnel — sinon la partie avant le @)</span></label>
           <input id="pseudo" className="input" maxLength={60}
             value={pseudo} onChange={(e) => setPseudo(e.target.value)} placeholder="Ton pseudo" />
         </div>
-        {error && <div className={`banner ${needPseudo ? 'info' : 'err'}`} style={{ marginTop: 12 }}>{error}</div>}
+        {error && <div className="banner err" style={{ marginTop: 12 }}>{error}</div>}
         <button className="btn" type="submit" disabled={busy} style={{ marginTop: 16, width: '100%', justifyContent: 'center' }}>
           {busy ? 'Envoi…' : 'Recevoir mon lien'}
         </button>
@@ -163,7 +160,8 @@ export default function App() {
     return <Onboarding user={user} onFinished={finishOnboarding} onSkip={finishOnboarding} />;
   }
 
-  const current = PAGES.find((p) => p.id === active) || PAGES[0];
+  const pages = PAGES.filter((p) => !p.adminOnly || user?.isAdmin);
+  const current = pages.find((p) => p.id === active) || pages[0];
   const Comp = current.Comp;
 
   return (
@@ -174,7 +172,7 @@ export default function App() {
           <span className="brand-sub">Analyzer</span>
         </div>
         <nav className="nav">
-          {PAGES.map((p) => {
+          {pages.map((p) => {
             const Icon = p.icon;
             return (
               <button key={p.id} className={active === p.id ? 'active' : ''} onClick={() => setActive(p.id)}>

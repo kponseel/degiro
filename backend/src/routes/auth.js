@@ -8,6 +8,7 @@ import {
   updatePseudo,
   deleteUserData,
   deleteAccount,
+  isAdminUser,
 } from '../services/auth.js';
 import { requireSession, sessionToken, sessionCookieOptions } from '../middleware/session.js';
 
@@ -16,8 +17,14 @@ const router = Router();
 // Base des liens dérivée de la requête si APP_URL n'est pas fixé (dev/local).
 const requestBaseUrl = (req) => config.auth.appUrl || `${req.protocol}://${req.get('host')}`;
 
-// Limiteur strict sur l'envoi de liens (anti-abus / anti-spam).
-const linkLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 12, standardHeaders: true, legacyHeaders: false });
+// Limiteur strict sur l'envoi de liens (anti-abus / anti-spam). Neutralisé en test.
+const linkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test' || process.env.VITEST === 'true',
+});
 
 // POST /api/auth/request-link — { email, pseudo? } → envoie un lien magique.
 router.post('/request-link', linkLimiter, async (req, res, next) => {
@@ -25,6 +32,7 @@ router.post('/request-link', linkLimiter, async (req, res, next) => {
     const { email, pseudo } = req.body || {};
     const result = await requestMagicLink({ email, pseudo, appUrl: requestBaseUrl(req) });
     if (result.error === 'invalid_email') return res.status(400).json({ error: 'Email invalide' });
+    if (result.error === 'pseudo_taken') return res.status(409).json({ error: 'Ce pseudo est déjà pris — choisis-en un autre (ou laisse vide).' });
     if (result.error === 'mail_not_configured') {
       return res.status(503).json({ error: "Connexion indisponible : l'envoi d'email n'est pas configuré sur le serveur (variables SMTP_*)." });
     }
@@ -42,7 +50,7 @@ router.post('/verify', async (req, res, next) => {
     const result = await verifyMagicLink(token);
     if (!result) return res.status(401).json({ error: 'Lien invalide ou expiré' });
     res.cookie(config.auth.cookieName, result.sessionToken, sessionCookieOptions(result.maxAgeMs));
-    return res.json({ user: result.user });
+    return res.json({ user: { ...result.user, isAdmin: isAdminUser(result.user) } });
   } catch (err) {
     return next(err);
   }
@@ -61,15 +69,17 @@ router.post('/logout', async (req, res, next) => {
 
 // GET /api/auth/me — utilisateur courant.
 router.get('/me', requireSession, (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: { ...req.user, isAdmin: isAdminUser(req.user) } });
 });
 
-// PATCH /api/auth/me — modifie le pseudo.
+// PATCH /api/auth/me — modifie le pseudo (doit être libre).
 router.patch('/me', requireSession, async (req, res, next) => {
   try {
-    const user = await updatePseudo(req.user.id, req.body?.pseudo);
-    if (!user) return res.status(400).json({ error: 'Pseudo invalide' });
-    return res.json({ user: { id: user.id, email: user.email, pseudo: user.pseudo } });
+    const result = await updatePseudo(req.user.id, req.body?.pseudo);
+    if (result.error === 'invalid_pseudo') return res.status(400).json({ error: 'Pseudo invalide' });
+    if (result.error === 'pseudo_taken') return res.status(409).json({ error: 'Ce pseudo est déjà pris' });
+    const { user } = result;
+    return res.json({ user: { id: user.id, email: user.email, pseudo: user.pseudo, isAdmin: isAdminUser(user) } });
   } catch (err) {
     return next(err);
   }

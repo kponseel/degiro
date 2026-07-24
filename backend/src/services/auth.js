@@ -24,6 +24,31 @@ async function findUserByEmail(email) {
   return rows[0] || null;
 }
 
+/** L'administrateur est identifié par son email (ADMIN_EMAIL, à défaut OWNER_EMAIL). */
+export function isAdminUser(user) {
+  return Boolean(config.auth.adminEmail) && user?.email === config.auth.adminEmail;
+}
+
+/** Un pseudo est-il déjà porté par un autre utilisateur ? (collation CI de la table) */
+export async function pseudoTaken(pseudo, excludeUserId = null) {
+  const [rows] = await getPool().query(
+    'SELECT id FROM users WHERE pseudo = ? ' + (excludeUserId ? 'AND id <> ? ' : '') + 'LIMIT 1',
+    excludeUserId ? [pseudo, excludeUserId] : [pseudo],
+  );
+  return rows.length > 0;
+}
+
+/** Premier pseudo libre dérivé de `base` : base, base2, base3… */
+async function freePseudo(base) {
+  const clean = cleanPseudo(base) || 'investisseur';
+  if (!(await pseudoTaken(clean))) return clean;
+  for (let n = 2; n < 100; n += 1) {
+    const candidate = `${clean.slice(0, 56)}${n}`;
+    if (!(await pseudoTaken(candidate))) return candidate;
+  }
+  return `${clean.slice(0, 40)}-${Date.now() % 100000}`;
+}
+
 /**
  * Crée un utilisateur en protégeant l'id 1, réservé au propriétaire :
  * l'id 1 porte les données historiques (account_id = 1) et ne doit JAMAIS
@@ -32,13 +57,16 @@ async function findUserByEmail(email) {
  *  - sinon insertion normale ; si l'auto-incrément attribue quand même 1
  *    (table neuve, migration 005 pas encore passée), on répare et on réessaie.
  */
-async function createUser(email, pseudo) {
+async function createUser(email, wantedPseudo) {
   const pool = getPool();
+  // Pseudo optionnel : à défaut, partie locale de l'email ; toujours rendu unique
+  // (couvre aussi la course entre demande du lien et vérification).
+  const pseudo = await freePseudo(wantedPseudo || email.split('@')[0]);
   const isOwner = Boolean(config.auth.ownerEmail) && email === config.auth.ownerEmail;
   if (isOwner) {
     try {
       await pool.query(
-        'INSERT INTO users (id, email, pseudo, created_at, last_login_at) VALUES (1, ?, ?, NOW(), NOW())',
+        'INSERT INTO users (id, email, pseudo, created_at, last_login_at, login_count) VALUES (1, ?, ?, NOW(), NOW(), 1)',
         [email, pseudo],
       );
       logger.info(`Propriétaire connecté pour la première fois → utilisateur #1 (${email})`);
@@ -48,7 +76,7 @@ async function createUser(email, pseudo) {
     }
   }
   let [ins] = await pool.query(
-    'INSERT INTO users (email, pseudo, created_at, last_login_at) VALUES (?, ?, NOW(), NOW())',
+    'INSERT INTO users (email, pseudo, created_at, last_login_at, login_count) VALUES (?, ?, NOW(), NOW(), 1)',
     [email, pseudo],
   );
   if (ins.insertId === 1 && !isOwner) {
@@ -56,7 +84,7 @@ async function createUser(email, pseudo) {
     await pool.query('DELETE FROM users WHERE id = 1');
     await pool.query('ALTER TABLE users AUTO_INCREMENT = 2');
     [ins] = await pool.query(
-      'INSERT INTO users (email, pseudo, created_at, last_login_at) VALUES (?, ?, NOW(), NOW())',
+      'INSERT INTO users (email, pseudo, created_at, last_login_at, login_count) VALUES (?, ?, NOW(), NOW(), 1)',
       [email, pseudo],
     );
   }
@@ -78,9 +106,10 @@ async function purgeStale() {
 /**
  * Demande un lien magique.
  *  - email connu → on envoie le lien (le pseudo fourni est ignoré).
- *  - email inconnu + pseudo → l'utilisateur sera créé à la vérification.
- *  - email inconnu sans pseudo → { needPseudo: true } (rien n'est envoyé).
- * @returns {Promise<{ sent:boolean, needPseudo?:boolean, devLink?:string }>}
+ *  - email inconnu → l'utilisateur sera créé à la vérification. Le pseudo est
+ *    OPTIONNEL : à défaut, la partie avant le @ de l'email servira de pseudo
+ *    (modifiable ensuite dans Mon compte). S'il est fourni, il doit être libre.
+ * @returns {Promise<{ sent:boolean, devLink?:string, error?:string }>}
  */
 export async function requestMagicLink({ email, pseudo, appUrl }) {
   const mail = normalizeEmail(email);
@@ -89,8 +118,8 @@ export async function requestMagicLink({ email, pseudo, appUrl }) {
 
   const existing = await findUserByEmail(mail);
   const wantedPseudo = cleanPseudo(pseudo);
-  if (!existing && !wantedPseudo) {
-    return { sent: false, needPseudo: true };
+  if (!existing && wantedPseudo && (await pseudoTaken(wantedPseudo))) {
+    return { sent: false, error: 'pseudo_taken' };
   }
 
   const raw = randomToken();
@@ -139,7 +168,7 @@ export async function verifyMagicLink(rawToken) {
     const pseudo = cleanPseudo(link.pseudo) || link.email.split('@')[0].slice(0, 60);
     user = await createUser(link.email, pseudo);
   } else {
-    await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
+    await pool.query('UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = ?', [user.id]);
   }
 
   const maxAgeMs = config.auth.sessionTtlDays * 24 * 60 * 60 * 1000;
@@ -174,9 +203,10 @@ export async function destroySession(rawSessionToken) {
 
 export async function updatePseudo(userId, pseudo) {
   const clean = cleanPseudo(pseudo);
-  if (!clean) return null;
+  if (!clean) return { error: 'invalid_pseudo' };
+  if (await pseudoTaken(clean, userId)) return { error: 'pseudo_taken' };
   await getPool().query('UPDATE users SET pseudo = ? WHERE id = ?', [clean, userId]);
-  return getUserById(userId);
+  return { user: await getUserById(userId) };
 }
 
 /** Supprime toutes les données de portefeuille d'un utilisateur (positions en cascade). */
