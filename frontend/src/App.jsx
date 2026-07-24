@@ -106,6 +106,7 @@ export default function App() {
   const [active, setActive] = useState('overview');
   const [reloadKey, setReloadKey] = useState(0);
   const [loginError, setLoginError] = useState('');
+  const [navOpen, setNavOpen] = useState(false);
   // null = à déterminer ; true = compte sans données → parcours de bienvenue.
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
 
@@ -151,6 +152,7 @@ export default function App() {
     try { await apiLogout(); } catch { /* ignore */ }
     setUser(null);
     setActive('overview');
+    setNavOpen(false);
     setNeedsOnboarding(null);
     setStatus('login');
   }
@@ -165,9 +167,19 @@ export default function App() {
   const pages = PAGES.filter((p) => !p.adminOnly || user?.isAdmin);
   const current = pages.find((p) => p.id === active) || pages[0];
   const Comp = current.Comp;
+  const go = (id) => { setActive(id); setNavOpen(false); };
 
   return (
-    <div className="app">
+    <div className={`app ${navOpen ? 'nav-open' : ''}`}>
+      <header className="mobile-bar">
+        <button className="hamburger" onClick={() => setNavOpen((o) => !o)} aria-label={navOpen ? 'Fermer le menu' : 'Ouvrir le menu'} aria-expanded={navOpen}>
+          <span /><span /><span />
+        </button>
+        <span className="mobile-title">{current.label}</span>
+      </header>
+
+      {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />}
+
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">DEGIRO</span>
@@ -177,7 +189,7 @@ export default function App() {
           {pages.map((p) => {
             const Icon = p.icon;
             return (
-              <button key={p.id} className={active === p.id ? 'active' : ''} onClick={() => setActive(p.id)}>
+              <button key={p.id} className={active === p.id ? 'active' : ''} onClick={() => go(p.id)}>
                 <Icon /> {p.label}
               </button>
             );
