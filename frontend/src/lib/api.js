@@ -48,6 +48,7 @@ export const enrichNow = () => api('/api/enrich', { method: 'POST' });
 export const getLookthrough = () => api('/api/lookthrough');
 export const getEtfHoldings = () => api('/api/etf-holdings');
 export const getBenchmark = (symbol) => api(`/api/benchmark${qs({ symbol })}`);
+export const getNews = (symbol, refresh) => api(`/api/news${qs({ symbol, refresh: refresh ? 1 : undefined })}`);
 
 async function uploadForm(path, fd) {
   const res = await fetch(path, { method: 'POST', credentials: 'include', body: fd });
