@@ -24,11 +24,32 @@ async function loginAs(email, pseudo) {
 }
 
 describe('Auth par lien magique', () => {
-  it('email inconnu sans pseudo → demande un pseudo, rien n’est envoyé', async () => {
-    const res = await request(app).post('/api/auth/request-link').send({ email: 'new@example.com' });
-    expect(res.status).toBe(200);
-    expect(res.body.sent).toBe(false);
-    expect(res.body.needPseudo).toBe(true);
+  it('email inconnu sans pseudo → compte créé avec la partie locale de l’email', async () => {
+    const agent = request.agent(app);
+    const link = await agent.post('/api/auth/request-link').send({ email: 'jean.dupont@example.com' });
+    expect(link.body.sent).toBe(true);
+    const verify = await agent.post('/api/auth/verify').send({ token: tokenFrom(link.body.devLink) });
+    expect(verify.status).toBe(200);
+    expect(verify.body.user.pseudo).toBe('jean.dupont');
+  });
+
+  it('pseudo dérivé en collision → suffixe automatique', async () => {
+    await loginAs('kevin@a.com', ''); // pseudo dérivé : « kevin »
+    const { verify } = await loginAs('kevin@b.com', ''); // collision → kevin2
+    expect(verify.body.user.pseudo).toBe('kevin2');
+  });
+
+  it('pseudo déjà pris à l’inscription → 409', async () => {
+    await loginAs('alice@example.com', 'Alice');
+    const res = await request(app).post('/api/auth/request-link').send({ email: 'autre@example.com', pseudo: 'alice' });
+    expect(res.status).toBe(409);
+  });
+
+  it('modifier son pseudo vers un pseudo pris → 409', async () => {
+    await loginAs('alice@example.com', 'Alice');
+    const { agent } = await loginAs('bob@example.com', 'Bob');
+    const res = await agent.patch('/api/auth/me').send({ pseudo: 'ALICE' }); // insensible à la casse
+    expect(res.status).toBe(409);
   });
 
   it('email invalide → 400', async () => {
@@ -107,7 +128,10 @@ describe('Auth par lien magique', () => {
     expect(del.status).toBe(200);
     const me = await agent.get('/api/auth/me');
     expect(me.status).toBe(401);
-    const relogin = await request(app).post('/api/auth/request-link').send({ email: 'frank@example.com' });
-    expect(relogin.body.needPseudo).toBe(true); // le compte n'existe plus
+    // Le compte n'existe plus : une reconnexion recrée un compte NEUF (vide).
+    const { agent: again, verify } = await loginAs('frank@example.com', 'Frank');
+    expect(verify.status).toBe(200);
+    const port = await again.get('/api/portfolio');
+    expect(port.body.snapshot).toBeNull();
   });
 });

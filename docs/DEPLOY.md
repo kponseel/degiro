@@ -37,6 +37,7 @@ démarrage** (migrations idempotentes) — aucune exécution SQL manuelle néces
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | identifiants de la base créée |
 | `API_TOKEN` | jeton de service (accès propriétaire / scripts) — `openssl rand -hex 32` |
 | `OWNER_EMAIL` | **ton** email : devient l'utilisateur #1 et hérite des données existantes |
+| `ADMIN_EMAIL` | email de l'administrateur (page Administration) — à défaut, `OWNER_EMAIL` |
 | `APP_URL` | `https://degiro.estim.pro` (base des liens magiques, sans slash final) |
 | `NODE_ENV` | `production` (active le cookie de session `Secure`) |
 | `SMTP_HOST` | `smtp.hostinger.com` |

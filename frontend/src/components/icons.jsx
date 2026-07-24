@@ -18,3 +18,6 @@ export const IconAI = () => (
 export const IconDividends = () => (
   <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M15 9.5a3 3 0 0 0-3-1.5c-1.7 0-2.5 1-2.5 2s.8 1.6 2.5 2 2.5 1 2.5 2-1 2-2.5 2a3 3 0 0 1-3-1.5" /><path d="M12 6.5v11" /></svg>
 );
+export const IconAdmin = () => (
+  <svg {...base}><circle cx="9" cy="8" r="3.5" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><path d="M18 4l.9 2.1 2.1.9-2.1.9L18 10l-.9-2.1L15 7l2.1-.9z" /></svg>
+);
