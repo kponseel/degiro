@@ -186,6 +186,33 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .chip.etf { color: var(--c1); background: color-mix(in srgb, var(--c1) 11%, transparent); border-color: color-mix(in srgb, var(--c1) 26%, transparent); }
 .chip.stock { color: var(--ink-soft); }
 .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.chip.sm { font-size: 10.5px; padding: 2px 7px; }
+
+/* Chips-filtres (barre de titres) */
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip.filter { cursor: pointer; background: var(--card-2); }
+.chip.filter:hover { border-color: var(--ink-faint); }
+.chip.filter.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+/* Raccourcis finance */
+.stock-links { display: flex; flex-wrap: wrap; gap: 7px; }
+.chip.link-chip { cursor: pointer; text-decoration: none; }
+.chip.link-chip:hover { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
+
+/* Fil d'actualités */
+.news-list { display: grid; gap: 10px; }
+.news-item {
+  display: block; text-decoration: none; color: inherit;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px;
+  transition: border-color 0.12s ease, transform 0.02s ease;
+}
+.news-item:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.news-item:active { transform: translateY(0.5px); }
+.news-title { font-weight: 620; line-height: 1.35; letter-spacing: -0.01em; }
+.news-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 7px; font-size: 12.5px; color: var(--ink-soft); }
+.name-link { text-decoration: none; color: inherit; }
+.name-link:hover { color: var(--accent-ink); }
+.name-link:hover .muted { color: var(--accent-ink); }
 
 /* ── Bars ─────────────────────────────────────────────── */
 .bars { display: flex; flex-direction: column; gap: 12px; }

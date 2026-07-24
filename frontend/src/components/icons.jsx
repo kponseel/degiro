@@ -21,3 +21,6 @@ export const IconDividends = () => (
 export const IconAdmin = () => (
   <svg {...base}><circle cx="9" cy="8" r="3.5" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><path d="M18 4l.9 2.1 2.1.9-2.1.9L18 10l-.9-2.1L15 7l2.1-.9z" /></svg>
 );
+export const IconNews = () => (
+  <svg {...base}><path d="M4 4h13v16H5a1 1 0 0 1-1-1z" /><path d="M17 8h3v9a3 3 0 0 1-3 3" /><line x1="7" y1="8" x2="13" y2="8" /><line x1="7" y1="12" x2="13" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>
+);

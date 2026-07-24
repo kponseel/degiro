@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getPortfolio } from '../lib/api.js';
+import { yahooUrl } from '../lib/links.js';
 import { fmtEur, fmtPct, fmtNum } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 
@@ -94,7 +95,11 @@ export default function Overview({ onGoImport }) {
                 const isFund = ac === 'ETF' || ac === 'ETC';
                 return (
                 <tr key={p.isin}>
-                  <td><span className="sym">{p.symbol || '—'}</span> <span className="muted">{p.name || p.isin}</span></td>
+                  <td>
+                    {yahooUrl({ ticker: p.ticker, isin: p.isin })
+                      ? <a className="name-link" href={yahooUrl({ ticker: p.ticker, isin: p.isin })} target="_blank" rel="noopener noreferrer" title="Ouvrir sur Yahoo Finance"><span className="sym">{p.symbol || p.ticker || '—'}</span> <span className="muted">{p.name || p.isin}</span> ↗</a>
+                      : <><span className="sym">{p.symbol || '—'}</span> <span className="muted">{p.name || p.isin}</span></>}
+                  </td>
                   <td>{ac ? <span className={`chip ${isFund ? 'etf' : 'stock'}`}>{ac}</span> : <span className="muted">—</span>}</td>
                   <td>{fmtNum(p.qty, 0)}</td>
                   <td>{fmtNum(p.price)}</td>
