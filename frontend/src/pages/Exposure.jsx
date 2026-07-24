@@ -61,13 +61,19 @@ function Donut({ title, data, note }) {
 }
 
 function Lookthrough({ data }) {
+  const [q, setQ] = useState('');
   if (!data) return null;
   const { trueHoldings = [], overlaps = [], coveredCount = 0, missing = [], total = 0 } = data;
   if (!trueHoldings.length) return null;
 
   const overlapKeys = new Set(overlaps.map((o) => o.isin || `name:${(o.name || '').toLowerCase()}`));
   const isOverlap = (h) => overlapKeys.has(h.isin || `name:${(h.name || '').toLowerCase()}`);
-  const top = trueHoldings.filter((h) => !/·\s*reste$/i.test(h.name)).slice(0, 15);
+  const named = trueHoldings.filter((h) => !/·\s*reste$/i.test(h.name));
+  const needle = q.trim().toLowerCase();
+  // Recherche → parcourt TOUS les titres éclatés ; sinon top 15.
+  const top = needle
+    ? named.filter((h) => `${h.name} ${h.isin || ''}`.toLowerCase().includes(needle))
+    : named.slice(0, 15);
 
   return (
     <Card title="Vraie exposition (look-through ETF)" className="lookthrough">
@@ -91,7 +97,21 @@ function Lookthrough({ data }) {
         </Banner>
       )}
 
-      <div className="table-wrap" style={{ marginTop: 14 }}>
+      <div className="filter-bar" style={{ marginTop: 14, marginBottom: 10 }}>
+        <input
+          className="input filter-search"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Rechercher un titre dans tes ETF éclatés…"
+          aria-label="Rechercher un titre"
+        />
+        <div className="filter-meta">
+          <span className="muted">{top.length}{needle ? '' : ` / ${named.length}`}</span>
+          {needle && <button className="link-btn" onClick={() => setQ('')}>Réinitialiser</button>}
+        </div>
+      </div>
+      <div className="table-wrap">
         <table className="data">
           <thead>
             <tr>
@@ -103,6 +123,9 @@ function Lookthrough({ data }) {
             </tr>
           </thead>
           <tbody>
+            {top.length === 0 && (
+              <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '16px' }}>Aucun titre ne correspond.</td></tr>
+            )}
             {top.map((h) => (
               <tr key={h.isin || h.name} className={isOverlap(h) ? 'row-flag' : ''}>
                 <td>
