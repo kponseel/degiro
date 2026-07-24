@@ -87,6 +87,20 @@ describe('Auth par lien magique', () => {
     expect(res.status).toBe(401);
   });
 
+  it("en production sans SMTP, le lien n'est JAMAIS exposé par l'API", async () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const res = await request(app)
+        .post('/api/auth/request-link')
+        .send({ email: 'prod@example.com', pseudo: 'Prod' });
+      expect(res.status).toBe(503);
+      expect(JSON.stringify(res.body)).not.toContain('token=');
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  });
+
   it('supprime le compte', async () => {
     const { agent } = await loginAs('frank@example.com', 'Frank');
     const del = await agent.delete('/api/auth/me');

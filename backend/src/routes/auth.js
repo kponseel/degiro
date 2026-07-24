@@ -25,6 +25,9 @@ router.post('/request-link', linkLimiter, async (req, res, next) => {
     const { email, pseudo } = req.body || {};
     const result = await requestMagicLink({ email, pseudo, appUrl: requestBaseUrl(req) });
     if (result.error === 'invalid_email') return res.status(400).json({ error: 'Email invalide' });
+    if (result.error === 'mail_not_configured') {
+      return res.status(503).json({ error: "Connexion indisponible : l'envoi d'email n'est pas configuré sur le serveur (variables SMTP_*)." });
+    }
     return res.json(result);
   } catch (err) {
     return next(err);

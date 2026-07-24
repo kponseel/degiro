@@ -103,8 +103,17 @@ export async function requestMagicLink({ email, pseudo, appUrl }) {
   const link = `${base}/auth/verify?token=${raw}`;
   const { mode } = await sendMagicLink(mail, link, existing ? existing.pseudo : wantedPseudo);
 
-  // Le lien n'est exposé qu'en mode dev (pas de serveur mail configuré).
-  return { sent: true, ...(mode === 'dev' ? { devLink: link } : {}) };
+  if (mode === 'dev') {
+    if (process.env.NODE_ENV === 'production') {
+      // Prod sans SMTP : ne JAMAIS renvoyer le lien dans la réponse HTTP —
+      // ce serait une prise de compte ouverte à quiconque connaît un email.
+      logger.error('SMTP non configuré en production : lien magique non délivré (configurer SMTP_*)');
+      return { sent: false, error: 'mail_not_configured' };
+    }
+    // Développement : le lien est renvoyé pour dérouler le flux sans serveur mail.
+    return { sent: true, devLink: link };
+  }
+  return { sent: true };
 }
 
 /**
