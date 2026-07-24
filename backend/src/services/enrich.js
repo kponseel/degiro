@@ -1,4 +1,5 @@
 import { getPool } from '../db/pool.js';
+import { lookupSectors } from './yahoo.js';
 
 // Pays de rattachement d'après le préfixe ISO de l'ISIN.
 // ⚠️ Pour les ETF (souvent IE/LU), c'est le pays de domiciliation, pas l'exposition réelle.
@@ -65,8 +66,10 @@ async function openFigiLookup(isins) {
 
 /**
  * Enrichit les ISIN du dernier snapshot : pays (préfixe ISIN), classe d'actifs
- * (type DEGIRO), ticker/secteur (OpenFIGI best-effort). Respecte manual_override.
- * @returns {Promise<{ enriched: number, skippedManual: number, source: string }>}
+ * (type DEGIRO / nom), secteur d'activité (Yahoo Finance, best-effort) et ticker
+ * (Yahoo, sinon OpenFIGI). Respecte manual_override. Les ETF/ETC ne sont pas
+ * interrogés pour le secteur (pas de secteur unique → géré par le look-through).
+ * @returns {Promise<{ enriched:number, sectorsFilled:number, skippedManual:number, source:string }>}
  */
 export async function enrichPortfolio(accountId = 1) {
   const pool = getPool();
@@ -77,20 +80,34 @@ export async function enrichPortfolio(accountId = 1) {
      GROUP BY p.isin`,
     [accountId],
   );
-  if (!rows.length) return { enriched: 0, skippedManual: 0, source: 'none' };
+  if (!rows.length) return { enriched: 0, sectorsFilled: 0, skippedManual: 0, source: 'none' };
 
   const [refRows] = await pool.query('SELECT isin FROM isin_ref WHERE manual_override = 1');
   const manual = new Set(refRows.map((r) => r.isin));
-  const toEnrich = rows.filter((r) => !manual.has(r.isin));
 
-  const figi = await openFigiLookup(toEnrich.map((r) => r.isin));
+  const toEnrich = rows
+    .filter((r) => !manual.has(r.isin))
+    .map((r) => ({
+      isin: r.isin,
+      country: countryFromIsin(r.isin),
+      assetClass: assetClassFromType(r.product_type) || assetClassFromName(r.name) || 'Action',
+    }));
 
-  for (const r of toEnrich) {
-    const country = countryFromIsin(r.isin);
-    // Type DEGIRO si présent (extension), sinon inférence par le nom, sinon Action par défaut.
-    const assetClass =
-      assetClassFromType(r.product_type) || assetClassFromName(r.name) || 'Action';
-    const f = figi.get(r.isin) || {};
+  // Secteur d'activité uniquement pour les titres vifs (les ETF/ETC n'en ont pas un seul).
+  const stockIsins = toEnrich.filter((e) => e.assetClass !== 'ETF' && e.assetClass !== 'ETC').map((e) => e.isin);
+
+  const [figi, yahoo] = await Promise.all([
+    openFigiLookup(toEnrich.map((e) => e.isin)),
+    lookupSectors(stockIsins),
+  ]);
+
+  let sectorsFilled = 0;
+  for (const e of toEnrich) {
+    const y = yahoo.get(e.isin) || {};
+    const f = figi.get(e.isin) || {};
+    const sector = y.sector || null; // Yahoo uniquement (le marketSector OpenFIGI n'est pas un secteur d'activité)
+    const ticker = y.ticker || f.ticker || null;
+    if (sector) sectorsFilled += 1;
     await pool.query(
       `INSERT INTO isin_ref (isin, ticker, sector, country, asset_class, manual_override, updated_at)
        VALUES (?, ?, ?, ?, ?, 0, NOW())
@@ -100,9 +117,10 @@ export async function enrichPortfolio(accountId = 1) {
          country = COALESCE(VALUES(country), country),
          asset_class = COALESCE(VALUES(asset_class), asset_class),
          updated_at = NOW()`,
-      [r.isin, f.ticker || null, f.sector || null, country, assetClass],
+      [e.isin, ticker, sector, e.country, e.assetClass],
     );
   }
 
-  return { enriched: toEnrich.length, skippedManual: manual.size, source: figi.size ? 'openfigi+isin' : 'isin' };
+  const source = yahoo.size ? 'yahoo+isin' : figi.size ? 'openfigi+isin' : 'isin';
+  return { enriched: toEnrich.length, sectorsFilled, skippedManual: manual.size, source };
 }

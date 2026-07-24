@@ -186,10 +186,15 @@ export default function Settings({ onImported, onGoOverview, user, onUserChange,
   }
 
   async function runEnrich() {
-    setEnrichMsg({ kind: 'info', text: 'Enrichissement en cours…' });
+    setEnrichMsg({ kind: 'info', text: 'Enrichissement en cours… (récupération des secteurs)' });
     try {
       const res = await enrichNow();
-      setEnrichMsg({ kind: 'info', text: `Enrichissement terminé : ${res.enriched ?? 0} ISIN traité(s), ${res.failed ?? 0} échec(s).` });
+      const n = res.enriched ?? 0;
+      const s = res.sectorsFilled ?? 0;
+      const text = s > 0
+        ? `Enrichissement terminé : ${n} titre(s) traité(s), ${s} secteur(s) complété(s) automatiquement.`
+        : `Enrichissement terminé : ${n} titre(s) traité(s). Aucun secteur récupéré (source externe momentanément indisponible) — tu peux les saisir à la main ci-dessous.`;
+      setEnrichMsg({ kind: 'info', text });
       onImported?.();
     } catch (e) {
       setEnrichMsg({ kind: 'err', text: e.status === 404 ? "Endpoint d'enrichissement pas encore disponible." : (e.body?.error || e.message) });
