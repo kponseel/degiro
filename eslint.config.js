@@ -35,6 +35,18 @@ export default [
     },
   },
   {
+    // Extension Chrome MV3 : service worker, scripts de contenu et popup.
+    files: ['extension/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: { ...globals.browser, ...globals.webextensions },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
     files: ['**/*.test.js'],
     languageOptions: {
       globals: { ...globals.node },

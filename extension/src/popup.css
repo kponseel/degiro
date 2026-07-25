@@ -1,0 +1,70 @@
+:root {
+  --ink: #16181d;
+  --muted: #6b7280;
+  --line: #e4e7ec;
+  --accent: #2563eb;
+  --ok: #157347;
+  --err: #b42318;
+  color-scheme: light dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 340px;
+  margin: 0;
+  padding: 14px;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+
+header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin-bottom: 12px;
+}
+
+.muted { color: var(--muted); font-size: 11.5px; }
+
+label { display: block; margin: 9px 0 3px; font-weight: 600; font-size: 12px; }
+
+input {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px;
+  font: inherit; color: inherit; background: #fff;
+}
+input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 1px; }
+
+.hint { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
+
+button {
+  margin-top: 10px; width: 100%; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid transparent; font: inherit; font-weight: 650; cursor: pointer;
+}
+button.primary { background: var(--accent); color: #fff; }
+button.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+button.small { padding: 6px 10px; font-size: 12px; }
+button:disabled { opacity: 0.55; cursor: progress; }
+
+.settings { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+
+.msg { margin: 10px 0 0; padding: 8px 10px; border-radius: 7px; font-size: 12.5px; }
+.msg.err { background: #fdf1f0; color: var(--err); }
+.msg.ok { background: #eef8f2; color: var(--ok); }
+
+details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; font-weight: 650; font-size: 12.5px; }
+
+#steps { list-style: none; margin: 10px 0 0; padding: 0; }
+#steps li { display: flex; gap: 7px; padding: 4px 0; font-size: 12.5px; align-items: baseline; }
+#steps .mark { flex: 0 0 auto; font-weight: 700; }
+#steps .mark.ok { color: var(--ok); }
+#steps .mark.ko { color: var(--err); }
+#steps .detail { color: var(--muted); font-size: 11.5px; display: block; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #e9ebf0; --muted: #9aa3b2; --line: #2c313b; }
+  body, input, button.ghost { background: #171a20; }
+  input, button.ghost { color: var(--ink); }
+  .msg.err { background: #2a1614; }
+  .msg.ok { background: #12241a; }
+}
