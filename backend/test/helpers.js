@@ -3,7 +3,7 @@ import { getPool } from '../src/db/pool.js';
 export const TEST_TOKEN = 'test_token_0123456789';
 export const AUTH = { Authorization: `Bearer ${TEST_TOKEN}` };
 
-const TABLES = ['positions', 'snapshots', 'transactions', 'isin_ref', 'etf_holdings', 'market_prices', 'sessions', 'magic_links', 'users'];
+const TABLES = ['positions', 'snapshots', 'transactions', 'isin_ref', 'etf_holdings', 'market_prices', 'sessions', 'magic_links', 'extension_tokens', 'users'];
 
 /** Vide toutes les tables métier (à appeler en beforeEach des tests DB). */
 export async function resetDb() {

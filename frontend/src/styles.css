@@ -397,6 +397,16 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .btn.danger { background: var(--neg); color: #fff; box-shadow: none; }
 .link-btn.danger-text { color: var(--neg); }
 
+/* Jeton d'extension révélé une seule fois : doit rester lisible et copiable. */
+.token-reveal {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; padding: 9px 12px; border-radius: 9px;
+  background: var(--card); border: 1px solid var(--line);
+}
+.token-reveal code {
+  font-size: 13px; color: var(--ink); word-break: break-all; flex: 1 1 240px; user-select: all;
+}
+
 /* ── User chip (sidebar) ──────────────────────────────── */
 .user-chip { display: flex; flex-direction: column; gap: 2px; }
 .user-pseudo { font-weight: 680; color: var(--ink); font-size: 13px; }

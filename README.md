@@ -86,7 +86,23 @@ Les migrations s'appliquent via `npm run migrate` (ou phpMyAdmin pour inspecter)
 - Identifiants DEGIRO : jamais côté serveur. La capture se fait dans la session
   navigateur déjà authentifiée ; seules les données de portefeuille sont envoyées.
 - Secrets uniquement dans les variables d'environnement Hostinger, jamais commités.
-- L'API sera protégée par un jeton bearer sur toutes les routes (M1).
+- Toutes les routes de données exigent une authentification. Trois voies :
+  cookie de session (lien magique), **jeton d'extension** par utilisateur, ou
+  `API_TOKEN` (propriétaire, usage administratif).
+
+### Jetons d'extension
+
+L'extension Chrome tourne sur `trader.degiro.nl` : le cookie de session
+(`SameSite=Lax`) n'est donc pas envoyé vers l'API. Chaque utilisateur génère son
+propre jeton dans **Réglages → Extension Chrome**, et l'extension l'envoie en
+`Authorization: Bearer dgx_…`.
+
+- Le jeton n'est affiché en clair **qu'à la création** ; seul son SHA‑256 est stocké.
+- Il est révocable à tout moment, et la suppression du compte révoque les siens.
+- Il donne accès aux données de son propriétaire uniquement, et **ne permet pas**
+  de gérer les jetons (pas d'escalade : cette gestion exige une vraie session).
+- Chaque usage incrémente un compteur et horodate le dernier envoi, ce qui permet
+  de repérer un jeton inutilisé ou anormalement actif.
 
 ## Note sur l'accès aux données DEGIRO
 

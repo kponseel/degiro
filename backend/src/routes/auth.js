@@ -9,6 +9,9 @@ import {
   deleteUserData,
   deleteAccount,
   isAdminUser,
+  createExtensionToken,
+  listExtensionTokens,
+  revokeExtensionToken,
 } from '../services/auth.js';
 import { requireSession, sessionToken, sessionCookieOptions } from '../middleware/session.js';
 
@@ -80,6 +83,38 @@ router.patch('/me', requireSession, async (req, res, next) => {
     if (result.error === 'pseudo_taken') return res.status(409).json({ error: 'Ce pseudo est déjà pris' });
     const { user } = result;
     return res.json({ user: { id: user.id, email: user.email, pseudo: user.pseudo, isAdmin: isAdminUser(user) } });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// GET /api/auth/me/tokens — mes jetons d'extension (sans le clair).
+router.get('/me/tokens', requireSession, async (req, res, next) => {
+  try {
+    return res.json({ tokens: await listExtensionTokens(req.user.id) });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// POST /api/auth/me/tokens — crée un jeton. Le clair n'est renvoyé QU'ICI.
+router.post('/me/tokens', requireSession, async (req, res, next) => {
+  try {
+    const result = await createExtensionToken(req.user.id, req.body?.label);
+    return res.status(201).json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// DELETE /api/auth/me/tokens/:id — révoque un jeton.
+router.delete('/me/tokens/:id', requireSession, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Id invalide' });
+    const ok = await revokeExtensionToken(req.user.id, id);
+    if (!ok) return res.status(404).json({ error: 'Jeton introuvable' });
+    return res.json({ ok: true });
   } catch (err) {
     return next(err);
   }
