@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getMe, getPortfolio, requestMagicLink, verifyMagicLink, logout as apiLogout } from './lib/api.js';
 import { Spinner } from './components/ui.jsx';
 import Onboarding from './components/Onboarding.jsx';
+import WelcomeTour from './components/WelcomeTour.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import { useHashRoute } from './lib/useHashRoute.js';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews, IconHelp } from './components/icons.jsx';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
 import History from './pages/History.jsx';
@@ -12,9 +13,12 @@ import Dividends from './pages/Dividends.jsx';
 import News from './pages/News.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
+import Help from './pages/Help.jsx';
 import Admin from './pages/Admin.jsx';
 
-// `short` = libellé compact des onglets ; `key` = raccourci après « g ».
+// `short` = libellé compact des onglets ; `key` = raccourci après « g » ;
+// `offTab` = joignable par la palette et le tiroir, mais pas d'onglet dédié
+// (l'aide a son propre bouton « ? » dans la barre supérieure).
 const PAGES = [
   { id: 'overview', label: "Vue d'ensemble", short: 'Portefeuille', key: 'p', icon: IconOverview, Comp: Overview },
   { id: 'exposure', label: 'Exposition', short: 'Exposition', key: 'e', icon: IconExposure, Comp: Exposure },
@@ -23,6 +27,7 @@ const PAGES = [
   { id: 'news', label: 'Actus', short: 'Actus', key: 'n', icon: IconNews, Comp: News },
   { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', key: 'i', icon: IconAI, Comp: AiPrompts },
   { id: 'settings', label: 'Import / Réglages', short: 'Réglages', key: 'r', icon: IconSettings, Comp: Settings },
+  { id: 'help', label: 'Aide & astuces', short: 'Aide', key: '?', icon: IconHelp, Comp: Help, offTab: true },
   // Visible uniquement pour l'administrateur (ADMIN_EMAIL).
   { id: 'admin', label: 'Administration', short: 'Admin', key: 'a', icon: IconAdmin, Comp: Admin, adminOnly: true },
 ];
@@ -113,6 +118,10 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // null = à déterminer ; true = compte sans données → parcours de bienvenue.
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
+  const [showTour, setShowTour] = useState(false);
+  // Empêche la présentation de resurgir à chaque changement de `user`
+  // (renommage du pseudo, par exemple) quand elle a déjà été écartée.
+  const tourSeenThisSession = useRef(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -150,6 +159,31 @@ export default function App() {
       .catch(() => setNeedsOnboarding(false));
   }, [status, user]);
 
+  // Présentation du produit, une fois les données (ou leur absence) tranchées :
+  // elle passe après le parcours d'import, pour ne pas empiler deux écrans.
+  useEffect(() => {
+    if (status !== 'ready' || !user || needsOnboarding !== false) return;
+    if (tourSeenThisSession.current) return;
+    if (localStorage.getItem(`degiro_tour_v1_${user.id}`)) return;
+    tourSeenThisSession.current = true;
+    setShowTour(true);
+  }, [status, user, needsOnboarding]);
+
+  // La case fonctionne dans les deux sens : la décocher redemande la
+  // présentation au prochain démarrage, sans quoi elle mentirait une fois
+  // l'écran déjà vu.
+  const closeTour = useCallback(({ remember }) => {
+    if (user) {
+      const key = `degiro_tour_v1_${user.id}`;
+      if (remember) localStorage.setItem(key, '1');
+      else localStorage.removeItem(key);
+    }
+    tourSeenThisSession.current = true;
+    setShowTour(false);
+  }, [user]);
+
+  const replayTour = useCallback(() => setShowTour(true), []);
+
   const go = useCallback((id) => { navigate(id); setNavOpen(false); }, [navigate]);
 
   const handleLogout = useCallback(async () => {
@@ -158,6 +192,8 @@ export default function App() {
     navigate('overview', { replace: true });
     setNavOpen(false);
     setNeedsOnboarding(null);
+    setShowTour(false);
+    tourSeenThisSession.current = false;
     setStatus('login');
   }, [navigate]);
 
@@ -213,6 +249,7 @@ export default function App() {
   const commands = [
     ...pages.map((p) => ({ id: `go-${p.id}`, label: p.label, group: 'Aller à', hint: `g ${p.key}`, run: () => go(p.id) })),
     { id: 'act-import', label: 'Importer un fichier DEGIRO', group: 'Action', run: () => go('settings') },
+    { id: 'act-tour', label: 'Revoir la présentation', group: 'Action', run: replayTour },
     { id: 'act-refresh', label: 'Rafraîchir les données', group: 'Action', run: () => setReloadKey((k) => k + 1) },
     { id: 'act-theme', label: "Basculer le thème clair / sombre", group: 'Action', run: () => {
       const now = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -240,7 +277,7 @@ export default function App() {
         </span>
 
         <nav className="tabs" aria-label="Navigation principale">
-          {pages.map((p) => {
+          {pages.filter((p) => !p.offTab).map((p) => {
             const Icon = p.icon;
             return (
               <button
@@ -258,6 +295,15 @@ export default function App() {
         <div className="topbar-right">
           <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} aria-label="Ouvrir la palette de commandes">
             <span className="cmd-hint">Aller à…</span><kbd>⌘K</kbd>
+          </button>
+          <button
+            className={`help-trigger ${route === 'help' ? 'active' : ''}`}
+            onClick={() => go('help')}
+            aria-label="Aide et astuces"
+            aria-current={route === 'help' ? 'page' : undefined}
+            title="Aide & astuces"
+          >
+            <IconHelp />
           </button>
           <span className="topbar-user" title={user?.email}>{user?.pseudo}</span>
           <button className="link-btn" onClick={handleLogout}>Quitter</button>
@@ -296,10 +342,12 @@ export default function App() {
           onLogout={handleLogout}
           onGoImport={() => go('settings')}
           onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
+          onReplayTour={replayTour}
         />
       </main>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={commands} />
+      {showTour && <WelcomeTour user={user} onClose={closeTour} />}
     </div>
   );
 }
