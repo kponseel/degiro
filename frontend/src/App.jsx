@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getMe, getPortfolio, requestMagicLink, verifyMagicLink, logout as apiLogout } from './lib/api.js';
 import { Spinner } from './components/ui.jsx';
 import Onboarding from './components/Onboarding.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
+import { useHashRoute } from './lib/useHashRoute.js';
 import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews } from './components/icons.jsx';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
@@ -12,16 +14,17 @@ import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
 import Admin from './pages/Admin.jsx';
 
+// `short` = libellé compact des onglets ; `key` = raccourci après « g ».
 const PAGES = [
-  { id: 'overview', label: "Vue d'ensemble", icon: IconOverview, Comp: Overview },
-  { id: 'exposure', label: 'Exposition', icon: IconExposure, Comp: Exposure },
-  { id: 'history', label: 'Historique', icon: IconHistory, Comp: History },
-  { id: 'dividends', label: 'Dividendes', icon: IconDividends, Comp: Dividends },
-  { id: 'news', label: 'Actus', icon: IconNews, Comp: News },
-  { id: 'ai', label: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
-  { id: 'settings', label: 'Import / Réglages', icon: IconSettings, Comp: Settings },
+  { id: 'overview', label: "Vue d'ensemble", short: 'Portefeuille', key: 'p', icon: IconOverview, Comp: Overview },
+  { id: 'exposure', label: 'Exposition', short: 'Exposition', key: 'e', icon: IconExposure, Comp: Exposure },
+  { id: 'history', label: 'Historique', short: 'Performance', key: 'h', icon: IconHistory, Comp: History },
+  { id: 'dividends', label: 'Dividendes', short: 'Dividendes', key: 'd', icon: IconDividends, Comp: Dividends },
+  { id: 'news', label: 'Actus', short: 'Actus', key: 'n', icon: IconNews, Comp: News },
+  { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', key: 'i', icon: IconAI, Comp: AiPrompts },
+  { id: 'settings', label: 'Import / Réglages', short: 'Réglages', key: 'r', icon: IconSettings, Comp: Settings },
   // Visible uniquement pour l'administrateur (ADMIN_EMAIL).
-  { id: 'admin', label: 'Administration', icon: IconAdmin, Comp: Admin, adminOnly: true },
+  { id: 'admin', label: 'Administration', short: 'Admin', key: 'a', icon: IconAdmin, Comp: Admin, adminOnly: true },
 ];
 
 function Login({ initialError }) {
@@ -103,10 +106,11 @@ function Login({ initialError }) {
 export default function App() {
   const [status, setStatus] = useState('checking'); // checking | login | ready
   const [user, setUser] = useState(null);
-  const [active, setActive] = useState('overview');
+  const [route, navigate] = useHashRoute('overview');
   const [reloadKey, setReloadKey] = useState(0);
   const [loginError, setLoginError] = useState('');
   const [navOpen, setNavOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // null = à déterminer ; true = compte sans données → parcours de bienvenue.
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
 
@@ -132,6 +136,11 @@ export default function App() {
       .catch(() => setStatus('login'));
   }, []);
 
+  // Estampille la route par défaut dans l'URL (partage / rafraîchissement fiables).
+  useEffect(() => {
+    if (status === 'ready' && !window.location.hash) navigate('overview', { replace: true });
+  }, [status, navigate]);
+
   // Compte sans aucune donnée → onboarding (sauf s'il a déjà été passé sur cet appareil).
   useEffect(() => {
     if (status !== 'ready' || !user) return;
@@ -141,20 +150,54 @@ export default function App() {
       .catch(() => setNeedsOnboarding(false));
   }, [status, user]);
 
-  function finishOnboarding() {
-    if (user) localStorage.setItem(`degiro_onboarded_${user.id}`, '1');
-    setNeedsOnboarding(false);
-    setActive('overview');
-    setReloadKey((k) => k + 1);
-  }
+  const go = useCallback((id) => { navigate(id); setNavOpen(false); }, [navigate]);
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     try { await apiLogout(); } catch { /* ignore */ }
     setUser(null);
-    setActive('overview');
+    navigate('overview', { replace: true });
     setNavOpen(false);
     setNeedsOnboarding(null);
     setStatus('login');
+  }, [navigate]);
+
+  const pages = useMemo(() => PAGES.filter((p) => !p.adminOnly || user?.isAdmin), [user]);
+
+  // Raccourcis : ⌘K/Ctrl+K ouvre la palette ; « g » puis une lettre change de page.
+  useEffect(() => {
+    if (status !== 'ready') return undefined;
+    let pending = false;
+    let timer;
+    const isTyping = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (pending) {
+        const hit = pages.find((p) => p.key === e.key.toLowerCase());
+        pending = false;
+        clearTimeout(timer);
+        if (hit) { e.preventDefault(); go(hit.id); }
+        return;
+      }
+      if (e.key.toLowerCase() === 'g') {
+        pending = true;
+        timer = setTimeout(() => { pending = false; }, 1400);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); clearTimeout(timer); };
+  }, [status, pages, go]);
+
+  function finishOnboarding() {
+    if (user) localStorage.setItem(`degiro_onboarded_${user.id}`, '1');
+    setNeedsOnboarding(false);
+    navigate('overview', { replace: true });
+    setReloadKey((k) => k + 1);
   }
 
   if (status === 'checking') return <Spinner />;
@@ -164,23 +207,67 @@ export default function App() {
     return <Onboarding user={user} onFinished={finishOnboarding} onSkip={finishOnboarding} />;
   }
 
-  const pages = PAGES.filter((p) => !p.adminOnly || user?.isAdmin);
-  const current = pages.find((p) => p.id === active) || pages[0];
+  const current = pages.find((p) => p.id === route) || pages[0];
   const Comp = current.Comp;
-  const go = (id) => { setActive(id); setNavOpen(false); };
+
+  const commands = [
+    ...pages.map((p) => ({ id: `go-${p.id}`, label: p.label, group: 'Aller à', hint: `g ${p.key}`, run: () => go(p.id) })),
+    { id: 'act-import', label: 'Importer un fichier DEGIRO', group: 'Action', run: () => go('settings') },
+    { id: 'act-refresh', label: 'Rafraîchir les données', group: 'Action', run: () => setReloadKey((k) => k + 1) },
+    { id: 'act-theme', label: "Basculer le thème clair / sombre", group: 'Action', run: () => {
+      const now = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', now);
+      localStorage.setItem('degiro_theme', now);
+    } },
+    { id: 'act-logout', label: 'Se déconnecter', group: 'Compte', run: handleLogout },
+  ];
 
   return (
     <div className={`app ${navOpen ? 'nav-open' : ''}`}>
-      <header className="mobile-bar">
-        <button className="hamburger" onClick={() => setNavOpen((o) => !o)} aria-label={navOpen ? 'Fermer le menu' : 'Ouvrir le menu'} aria-expanded={navOpen}>
+      <header className="topbar">
+        <button
+          className="hamburger"
+          onClick={() => setNavOpen((o) => !o)}
+          aria-label={navOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+          aria-expanded={navOpen}
+        >
           <span /><span /><span />
         </button>
-        <span className="mobile-title">{current.label}</span>
+
+        <span className="topbar-brand">
+          <span className="brand-mark">DEGIRO</span>
+          <span className="brand-sub">Analyzer</span>
+        </span>
+
+        <nav className="tabs" aria-label="Navigation principale">
+          {pages.map((p) => {
+            const Icon = p.icon;
+            return (
+              <button
+                key={p.id}
+                className={`tab ${route === p.id ? 'active' : ''}`}
+                onClick={() => go(p.id)}
+                aria-current={route === p.id ? 'page' : undefined}
+              >
+                <Icon /> <span>{p.short}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="topbar-right">
+          <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} aria-label="Ouvrir la palette de commandes">
+            <span className="cmd-hint">Aller à…</span><kbd>⌘K</kbd>
+          </button>
+          <span className="topbar-user" title={user?.email}>{user?.pseudo}</span>
+          <button className="link-btn" onClick={handleLogout}>Quitter</button>
+        </div>
       </header>
 
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />}
 
-      <aside className="sidebar">
+      {/* Tiroir mobile : reprend la même navigation. */}
+      <aside className="drawer" aria-label="Menu">
         <div className="brand">
           <span className="brand-mark">DEGIRO</span>
           <span className="brand-sub">Analyzer</span>
@@ -189,33 +276,30 @@ export default function App() {
           {pages.map((p) => {
             const Icon = p.icon;
             return (
-              <button key={p.id} className={active === p.id ? 'active' : ''} onClick={() => go(p.id)}>
-                <Icon /> {p.label}
+              <button key={p.id} className={route === p.id ? 'active' : ''} onClick={() => go(p.id)}>
+                <Icon /> {p.short}
               </button>
             );
           })}
         </nav>
-        <div className="sidebar-foot">
-          <div className="user-chip">
-            <span className="user-pseudo">{user?.pseudo}</span>
-            <button className="link-btn" onClick={handleLogout}>Déconnexion</button>
-          </div>
+        <div className="drawer-foot">
+          <span className="user-pseudo">{user?.pseudo}</span>
+          <button className="link-btn" onClick={handleLogout}>Déconnexion</button>
         </div>
       </aside>
 
       <main className="main">
-        <div className="page-head">
-          <h1>{current.label}</h1>
-        </div>
         <Comp
           key={`${current.id}-${reloadKey}`}
           user={user}
           onUserChange={setUser}
           onLogout={handleLogout}
-          onGoImport={() => setActive('settings')}
-          onGoOverview={() => { setActive('overview'); setReloadKey((k) => k + 1); }}
+          onGoImport={() => go('settings')}
+          onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
         />
       </main>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={commands} />
     </div>
   );
 }
