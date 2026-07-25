@@ -30,6 +30,11 @@ export const updatePseudo = (pseudo) => jsonPost('/api/auth/me', { pseudo }, 'PA
 export const deleteMyData = () => api('/api/auth/me/data', { method: 'DELETE' });
 export const deleteAccount = () => api('/api/auth/me', { method: 'DELETE' });
 
+// ── Jetons d'extension (par utilisateur) ──────────────────────────
+export const listExtTokens = () => api('/api/auth/me/tokens');
+export const createExtToken = (label) => jsonPost('/api/auth/me/tokens', { label });
+export const revokeExtToken = (id) => api(`/api/auth/me/tokens/${id}`, { method: 'DELETE' });
+
 // ── Administration (ADMIN_EMAIL uniquement) ───────────────────────
 export const adminListUsers = () => api('/api/admin/users');
 export const adminUpdateUser = (id, patch) => jsonPost(`/api/admin/users/${id}`, patch, 'PATCH');

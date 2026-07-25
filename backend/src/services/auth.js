@@ -181,6 +181,51 @@ export async function verifyMagicLink(rawToken) {
   return { user: { id: user.id, email: user.email, pseudo: user.pseudo }, sessionToken, maxAgeMs };
 }
 
+// ── Jetons d'extension (Bearer, par utilisateur) ────────────────────
+// Préfixés pour être reconnaissables et évidents dans un dépôt/capture d'écran.
+const EXT_PREFIX = 'dgx_';
+
+/** Crée un jeton d'extension. Le clair n'est renvoyé QU'ICI (jamais restocké). */
+export async function createExtensionToken(userId, label) {
+  const clean = String(label || '').trim().slice(0, 60) || 'Mon navigateur';
+  const raw = `${EXT_PREFIX}${randomToken()}`;
+  await getPool().query(
+    'INSERT INTO extension_tokens (user_id, label, token_hash, prefix, created_at) VALUES (?, ?, ?, ?, NOW())',
+    [userId, clean, hashToken(raw), raw.slice(0, 8)],
+  );
+  return { token: raw, label: clean };
+}
+
+/** Jetons d'un utilisateur (sans le clair, jamais récupérable). */
+export async function listExtensionTokens(userId) {
+  const [rows] = await getPool().query(
+    'SELECT id, label, prefix, created_at, last_used_at, uses FROM extension_tokens WHERE user_id = ? ORDER BY id DESC',
+    [userId],
+  );
+  return rows;
+}
+
+export async function revokeExtensionToken(userId, id) {
+  const [res] = await getPool().query('DELETE FROM extension_tokens WHERE id = ? AND user_id = ?', [id, userId]);
+  return res.affectedRows > 0;
+}
+
+/** Résout l'utilisateur porteur d'un jeton d'extension ; compte l'usage. */
+export async function getExtensionTokenUser(rawToken) {
+  if (!rawToken || !String(rawToken).startsWith(EXT_PREFIX)) return null;
+  const pool = getPool();
+  const hash = hashToken(rawToken);
+  const [rows] = await pool.query(
+    `SELECT u.id, u.email, u.pseudo, t.id AS token_id
+     FROM extension_tokens t JOIN users u ON u.id = t.user_id
+     WHERE t.token_hash = ? LIMIT 1`,
+    [hash],
+  );
+  if (!rows.length) return null;
+  await pool.query('UPDATE extension_tokens SET last_used_at = NOW(), uses = uses + 1 WHERE id = ?', [rows[0].token_id]);
+  return { id: rows[0].id, email: rows[0].email, pseudo: rows[0].pseudo };
+}
+
 /** Résout l'utilisateur d'une session (jeton de cookie). Rafraîchit last_seen. */
 export async function getSessionUser(rawSessionToken) {
   if (!rawSessionToken) return null;
@@ -226,6 +271,7 @@ export async function deleteAccount(userId) {
     await pool.query('DELETE FROM magic_links WHERE email = ?', [rows[0].email]);
   }
   await pool.query('DELETE FROM sessions WHERE user_id = ?', [userId]);
+  await pool.query('DELETE FROM extension_tokens WHERE user_id = ?', [userId]);
   await pool.query('DELETE FROM users WHERE id = ?', [userId]);
 }
 

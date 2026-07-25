@@ -6,6 +6,7 @@ import {
 import { Card, Banner } from '../components/ui.jsx';
 import Uploader from '../components/Uploader.jsx';
 import IsinEditor from '../components/IsinEditor.jsx';
+import ExtensionTokens from '../components/ExtensionTokens.jsx';
 
 function EtfHoldingsUploader({ onImported }) {
   const [etfs, setEtfs] = useState(null);
@@ -239,6 +240,8 @@ export default function Settings({ onImported, onGoOverview, user, onUserChange,
       </Card>
 
       <AccountCard user={user} onUserChange={onUserChange} onLogout={onLogout} />
+
+      <ExtensionTokens />
 
       <Card title="Apparence">
         <div style={{ display: 'flex', gap: 8 }}>
