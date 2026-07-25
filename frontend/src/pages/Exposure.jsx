@@ -20,43 +20,48 @@ function groupBy(positions, keyFn, fallback = 'Inconnu') {
     .sort((a, b) => b.value - a.value);
 }
 
+/** Donut compact : les 4 répartitions tiennent sur une seule rangée. */
 function Donut({ title, data, note }) {
+  if (data.length === 0) return null;
+  const top = data.slice(0, 6);
+  const rest = data.slice(6);
+  const restWeight = rest.reduce((s, d) => s + d.weight, 0);
+
   return (
-    <Card title={title}>
-      {data.length === 0 ? (
-        <div className="muted">Aucune donnée.</div>
-      ) : (
-        <>
-          <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ width: 160, height: 160, flexShrink: 0 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={data} dataKey="value" nameKey="key" innerRadius={48} outerRadius={74} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
-                    {data.map((d, i) => <Cell key={d.key} fill={PALETTE[i % PALETTE.length]} />)}
-                  </Pie>
-                  <Tooltip
-                    formatter={(v, n) => [fmtEur(v), n]}
-                    contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="legend" style={{ flex: 1, minWidth: 180 }}>
-              {data.map((d, i) => (
-                <div className="legend-item" key={d.key} style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <span className="legend-dot" style={{ background: PALETTE[i % PALETTE.length] }} />
-                    {d.key}
-                  </span>
-                  <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtPct(d.weight)} · {fmtEur(d.value)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {note && <div className="sub muted" style={{ marginTop: 14, fontSize: 12.5 }}>{note}</div>}
-        </>
-      )}
-    </Card>
+    <div className="expo-cell">
+      <div className="expo-title">{title}</div>
+      <div className="expo-chart">
+        <ResponsiveContainer>
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="key" innerRadius={30} outerRadius={46} paddingAngle={2}
+              stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
+              {data.map((d, i) => <Cell key={d.key} fill={PALETTE[i % PALETTE.length]} />)}
+            </Pie>
+            <Tooltip
+              formatter={(v, n) => [fmtEur(v), n]}
+              contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)', fontSize: 13 }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <ul className="expo-legend">
+        {top.map((d, i) => (
+          <li key={d.key}>
+            <span className="legend-dot" style={{ background: PALETTE[i % PALETTE.length] }} />
+            <span className="expo-key" title={d.key}>{d.key}</span>
+            <span className="expo-pct">{fmtPct(d.weight)}</span>
+          </li>
+        ))}
+        {rest.length > 0 && (
+          <li>
+            <span className="legend-dot" style={{ background: 'var(--line)' }} />
+            <span className="expo-key">{rest.length} autres</span>
+            <span className="expo-pct">{fmtPct(restWeight)}</span>
+          </li>
+        )}
+      </ul>
+      {note && <div className="expo-note">{note}</div>}
+    </div>
   );
 }
 
@@ -196,14 +201,16 @@ export default function Exposure({ onGoImport }) {
 
   return (
     <>
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
-        <Donut title="Exposition par devise" data={byCurrency} note="Devise de cotation — sans neutraliser l'effet de change." />
-        <Donut title="Exposition par classe d'actifs" data={byType} note="Type DEGIRO, ou déduit du nom (UCITS/ETF → ETF, Physical Gold → ETC)." />
-        {bySector.length > 0 && <Donut title="Exposition par secteur" data={bySector} note="Depuis l'enrichissement ISIN (hors ETF non éclatés). Le look-through ETF affinera cette vue." />}
-        {byCountry.length > 0 && <Donut title="Exposition par pays" data={byCountry} />}
-      </div>
+      <Card title="Répartitions">
+        <div className="expo-grid">
+          <Donut title="Devise" data={byCurrency} note="Devise de cotation — sans neutraliser l'effet de change." />
+          <Donut title="Classe d'actifs" data={byType} note="Type DEGIRO, ou déduit du nom (UCITS/ETF → ETF)." />
+          {bySector.length > 0 && <Donut title="Secteur" data={bySector} note="Hors ETF non éclatés — le look-through affine cette vue." />}
+          {byCountry.length > 0 && <Donut title="Pays" data={byCountry} note="Pour les ETF, pays de domiciliation." />}
+        </div>
+      </Card>
       {lookthrough && lookthrough.coveredCount > 0 && (
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 14 }}>
           <Lookthrough data={lookthrough} />
         </div>
       )}
