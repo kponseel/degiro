@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>DEGIRO Analyzer</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <strong>DEGIRO Analyzer</strong>
+      <span id="last" class="muted"></span>
+    </header>
+
+    <section class="settings">
+      <label for="apiUrl">Adresse de ton Analyzer</label>
+      <input id="apiUrl" type="url" placeholder="https://analyzer.exemple.fr" spellcheck="false" />
+
+      <label for="token">Jeton d'extension</label>
+      <input id="token" type="password" placeholder="dgx_…" spellcheck="false" />
+      <p class="hint">Réglages → Extension Chrome, dans l'Analyzer. Le jeton n'est affiché qu'une fois.</p>
+
+      <button id="save" class="ghost">Enregistrer</button>
+      <p id="saveMsg" class="msg" hidden></p>
+    </section>
+
+    <button id="capture" class="primary">Capturer mon portefeuille</button>
+
+    <p id="error" class="msg err" hidden></p>
+    <p id="success" class="msg ok" hidden></p>
+
+    <details id="diagBox" hidden>
+      <summary>Diagnostic</summary>
+      <ul id="steps"></ul>
+      <p class="hint">
+        En cas d'échec, copie ce diagnostic : il indique exactement à quelle étape la lecture s'est arrêtée.
+      </p>
+      <button id="copyDiag" class="ghost small">Copier le diagnostic</button>
+    </details>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

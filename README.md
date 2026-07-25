@@ -43,13 +43,13 @@ Runner de migrations idempotent (`npm run migrate`) ; CI GitHub Actions
 
 ### Reste à faire (post‑MVP, voir `docs/PLAN.md`)
 
-Extension Chrome (M4), look‑through ETF (M6), TWR vs benchmark + attribution +
-dividendes projetés (M7).
+L'extension Chrome (M4) est écrite et testée hors navigateur, mais **reste à
+valider sur un compte DEGIRO réel** — voir [`extension/README.md`](extension/README.md).
 
 ## Architecture
 
 ```
-extension/   Extension Chrome MV3 — capture du portefeuille (arrive au M4)
+extension/   Extension Chrome MV3 — capture du portefeuille depuis la session ouverte
 backend/     Express + MySQL (mysql2). Sert aussi le build React en prod.
 frontend/    React + Vite + Recharts.
 docs/        Spécification et analyse.
