@@ -35,7 +35,9 @@ router.post('/', upload.single('file'), async (req, res, next) => {
       return res.status(422).json({
         error: 'Type de CSV non reconnu',
         delimiter,
-        headers: Object.keys(rows[0]),
+        // Les colonnes sans titre portent une clé interne : on la traduit
+        // plutôt que d'afficher « __c9 » à quelqu'un qui cherche pourquoi.
+        headers: Object.keys(rows[0]).map((h) => (/^__c\d+$/.test(h) ? '(sans titre)' : h)),
       });
     }
 

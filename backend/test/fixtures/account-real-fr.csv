@@ -1,0 +1,9 @@
+Date,Heure,Date de valeur,Produit,Code ISIN,Description,Taux de change,Mutation,,Solde,,ID de l'ordre
+02-01-2026,09:00,02-01-2026,,,Versement de fonds,,EUR,"1000,00",EUR,"1000,00",
+15-01-2026,11:12,15-01-2026,NVIDIA CORP,US67066G1040,Achat 10 NVIDIA CORP@120.50 USD,,EUR,"-1116,00",EUR,"-116,00",abc-123
+15-01-2026,11:12,15-01-2026,NVIDIA CORP,US67066G1040,Frais de transaction DEGIRO,,EUR,"-0,50",EUR,"-116,50",abc-123
+19-07-2026,10:30,19-07-2026,NVIDIA CORP,US67066G1040,Dividende,,USD,"12,50",USD,"12,50",
+19-07-2026,10:30,19-07-2026,NVIDIA CORP,US67066G1040,Impôt sur dividende,,USD,"-1,88",USD,"10,62",
+20-07-2026,08:00,20-07-2026,,,Opération de change - Débit,"1,0850",USD,"-10,62",USD,"0,00",
+20-07-2026,08:00,20-07-2026,,,Opération de change - Crédit,"1,0850",EUR,"9,79",EUR,"893,29",
+25-07-2026,16:00,25-07-2026,,,Retrait de fonds,,EUR,"-200,00",EUR,"693,29",

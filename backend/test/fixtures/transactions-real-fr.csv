@@ -1,0 +1,3 @@
+Date,Heure,Produit,Code ISIN,Référence,Bourse de,Quantité,Cours,,Valeur locale,,Valeur,,Taux de change,Frais de transaction et/ou de tiers,,Total,,ID de l'ordre
+20-07-2026,09:05,NVIDIA CORP,US67066G1040,ref1,NDQ,10,"120,50",USD,"1205,00",USD,"1116,00",EUR,"1,0800","-0,50",EUR,"-1116,50",EUR,abc-123
+19-07-2026,14:20,ISHARES CORE MSCI WORLD,IE00B4L5Y983,ref2,EAM,-20,"95,00",EUR,"1900,00",EUR,"1900,00",EUR,"1,0000","-1,00",EUR,"1899,00",EUR,def-456
