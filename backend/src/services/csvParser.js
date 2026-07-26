@@ -300,11 +300,22 @@ export function extractCashEur(rows) {
  * invisible pour le TWR, qui existe précisément pour neutraliser les versements.
  */
 const DESC_RULES = [
+  // Taxes de transaction (TTF française, stamp duty britannique) : ce sont des
+  // coûts d'ordre, pas des retenues sur dividende. Testées en premier, sinon
+  // « Taxe sur les Transactions Financières » tomberait dans le seau `tax` et
+  // serait retranchée des dividendes.
+  [/taxe sur les transactions|financial transaction tax|\bttf\b|stamp duty|droit de timbre/i, 'transaction_tax'],
   [/impôt|impot|belasting|withholding|précompte|precompte|retenue|\btax\b|taxe/i, 'tax'],
   [/dividende|dividend/i, 'dividend'],
   [/versement de fonds|dépôt|depot\b|storting|deposit|ideal|sofort/i, 'deposit'],
   [/retrait|withdrawal|terugstorting|payout/i, 'withdrawal'],
-  [/frais|courtage|commission|kosten|\bfee\b|costs|intérêt|interest|rente/i, 'fee'],
+  // Avant `fx` : « Changement ISIN » contient « change » et se faisait passer
+  // pour une opération de change.
+  [/changement isin|isin change|isin-wijziging/i, 'isin_change'],
+  [/fractionnement|regroupement|\bsplit\b/i, 'split'],
+  // Seul l'intérêt *dû* est un frais : « Flatex Interest Income » est un revenu
+  // et reste en « autre », faute d'un type qui lui corresponde.
+  [/frais|courtage|commission|kosten|\bfee\b|costs|intérêts? débiteur|debit interest/i, 'fee'],
   [/change|fx|conversion|valuta/i, 'fx'],
 ];
 
