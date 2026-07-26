@@ -129,10 +129,16 @@ export function InsightBadge({ insight, compact = false }) {
   const risk = insight.risk_score;
   const rec = insight.recommendation;
   const tone = rec === 'sell' || rec === 'reduce' ? 'neg' : (rec === 'buy' || rec === 'strong_buy' ? 'pos' : '');
+  // En compact (tableau), on n'affiche que le risque : la couleur porte déjà
+  // le sens achat/vente, et un libellé tronqué (« Acha ») lirait comme un bug.
+  // Le libellé complet reste dans l'info-bulle et sur la fiche.
+  const recLabel = RECOMMENDATION_LABELS[rec] || rec;
+  const title = [insight.summary, rec && `Reco : ${recLabel}`].filter(Boolean).join(' — ');
   return (
-    <span className={`insight-badge ${tone}`} title={insight.summary || ''}>
+    <span className={`insight-badge ${tone}`} title={title || 'Avis IA'}>
       {risk != null && <span className="ib-risk">R{risk}</span>}
-      {rec && <span className="ib-rec">{compact ? (RECOMMENDATION_LABELS[rec] || rec).slice(0, 4) : RECOMMENDATION_LABELS[rec] || rec}</span>}
+      {rec && !compact && <span className="ib-rec">{recLabel}</span>}
+      {compact && risk == null && rec && <span className="ib-rec">IA</span>}
     </span>
   );
 }
