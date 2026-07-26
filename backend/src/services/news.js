@@ -94,10 +94,10 @@ async function withPool(items, size, fn) {
 async function heldStocks(accountId) {
   const [rows] = await getPool().query(
     `SELECT p.isin, MAX(p.name) AS name, MAX(p.value_eur) AS value_eur,
-            r.ticker, r.asset_class
+            r.ticker, r.asset_class, r.sector
      FROM positions p LEFT JOIN isin_ref r ON r.isin = p.isin
      WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
-     GROUP BY p.isin, r.ticker, r.asset_class
+     GROUP BY p.isin, r.ticker, r.asset_class, r.sector
      ORDER BY value_eur DESC`,
     [accountId],
   );
@@ -111,7 +111,7 @@ async function heldStocks(accountId) {
  */
 export async function computeNews(accountId, { symbol, force = false } = {}) {
   const stocksAll = await heldStocks(accountId);
-  const stocks = stocksAll.map((s) => ({ isin: s.isin, name: s.name, ticker: s.ticker || null }));
+  const stocks = stocksAll.map((s) => ({ isin: s.isin, name: s.name, ticker: s.ticker || null, sector: s.sector || null }));
 
   const cached = cache.get(accountId);
   let all;
@@ -125,7 +125,7 @@ export async function computeNews(accountId, { symbol, force = false } = {}) {
     const results = await withPool(targets, 4, async (s) => {
       const term = searchTerm(s.name) || s.name;
       const items = await fetchGoogleNews(`${term} action bourse`);
-      return items.slice(0, 6).map((it) => ({ ...it, isin: s.isin, stock: s.name }));
+      return items.slice(0, 6).map((it) => ({ ...it, isin: s.isin, stock: s.name, sector: s.sector || null }));
     });
     const seen = new Set();
     all = results
