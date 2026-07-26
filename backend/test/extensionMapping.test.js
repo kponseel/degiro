@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import {
   flattenRow, parsePortfolio, parseTotals, chunk, indexProducts, toPosition, buildPayload,
+  parseTransactions, toTransaction, transactionProductIds,
 } from '../../extension/src/degiro.js';
 import { readFileSync } from 'node:fs';
 import { sniff, isComplete, intAccountFromClient, urls, PATTERNS } from '../../extension/src/session.js';
@@ -55,6 +56,25 @@ const productsInfo = [{
   },
 }];
 
+// Comme `productsInfo`, mais résout aussi la ligne soldée 999999 (position fermée).
+const productsInfoFull = [{
+  data: {
+    ...productsInfo[0].data,
+    999999: { id: '999999', isin: 'FR0000131906', symbol: 'RNO', name: 'Renault SA', productType: 'STOCK', currency: 'EUR' },
+  },
+}];
+
+/** Réponse type de l'endpoint transactions v4 (agrégée par ordre). */
+const transactions = {
+  data: [
+    // Achat NVDA (avec orderId → dédoublonnage stable).
+    { id: 1, orderId: 'ord-nvda-buy', productId: 331868, date: '2024-01-10T10:00:00+01:00', buysell: 'B', quantity: 10, price: 100, total: -1000, totalInBaseCurrency: -917, feeInBaseCurrency: -0.5 },
+    // Achat puis vente de RNO (position aujourd'hui fermée) → plus-value réalisée.
+    { id: 2, productId: 999999, date: '2023-05-01T09:00:00+02:00', buysell: 'B', quantity: 5, price: 25, total: -125, totalInBaseCurrency: -125, feeInBaseCurrency: -0.5 },
+    { id: 3, orderId: 'ord-rno-sell', productId: 999999, date: '2025-03-20T14:30:00+01:00', buysell: 'S', quantity: 5, price: 30, total: 150, totalInBaseCurrency: 150, feeInBaseCurrency: -0.5 },
+  ],
+};
+
 describe('Extension — lecture du format DEGIRO', () => {
   it('aplatit les listes [{name, value}] en objet', () => {
     expect(flattenRow(row('1', { size: 3, price: 9 }))).toEqual({ size: 3, price: 9 });
@@ -62,9 +82,11 @@ describe('Extension — lecture du format DEGIRO', () => {
     expect(flattenRow({ value: [null, { value: 1 }] })).toEqual({});
   });
 
-  it('sépare titres et liquidités, et écarte les lignes soldées', () => {
-    const { products, cashEur } = parsePortfolio(update);
+  it('sépare titres détenus, positions soldées et liquidités', () => {
+    const { products, closed, cashEur } = parsePortfolio(update);
     expect(products.map((p) => p.productId)).toEqual(['331868', '1153605']);
+    // La ligne à quantité nulle est désormais conservée à part (position fermée).
+    expect(closed.map((p) => p.productId)).toEqual(['999999']);
     // EUR + FLATEX_EUR ; l'USD est ignoré faute de taux de change ici.
     expect(cashEur).toBe(500);
   });
@@ -128,6 +150,55 @@ describe('Extension — conversion en positions', () => {
   });
 });
 
+describe('Extension — conversion des transactions', () => {
+  it('déballe la liste des ordres, quelle que soit l’enveloppe', () => {
+    expect(parseTransactions(transactions)).toHaveLength(3);
+    expect(parseTransactions([{ id: 1 }])).toHaveLength(1);
+    expect(parseTransactions(null)).toEqual([]);
+    expect(parseTransactions({})).toEqual([]);
+  });
+
+  it('collecte les identifiants produit cités par les ordres', () => {
+    expect(transactionProductIds(parseTransactions(transactions))).toEqual(['331868', '999999', '999999']);
+  });
+
+  it('mappe un achat : signe, montant brut EUR négatif, frais, orderId', () => {
+    const buy = toTransaction(transactions.data[0], productsInfoFull[0].data[331868]);
+    expect(buy).toMatchObject({
+      tx_date: '2024-01-10 10:00:00',
+      type: 'buy',
+      isin: 'US67066G1040',
+      qty: 10,
+      amount_eur: -917, // sortie de cash
+      amount: -0.5, // frais
+      currency: 'USD',
+      external_id: 'ord-nvda-buy',
+    });
+  });
+
+  it('mappe une vente : quantité resignée et montant brut EUR positif', () => {
+    const sell = toTransaction(transactions.data[2], productsInfoFull[0].data[999999]);
+    expect(sell).toMatchObject({
+      type: 'sell',
+      isin: 'FR0000131906',
+      qty: -5, // vente → quantité négative même si DEGIRO l'annonce positive
+      amount_eur: 150, // entrée de cash
+      external_id: 'ord-rno-sell',
+    });
+  });
+
+  it('forge un identifiant déterministe quand l’ordre n’a pas d’orderId', () => {
+    const buy = toTransaction(transactions.data[1], productsInfoFull[0].data[999999]);
+    expect(buy.external_id).toBe('dgx-tx-2');
+    expect(buy.qty).toBe(5);
+  });
+
+  it('écarte un ordre sans ISIN résolu ou sans date', () => {
+    expect(toTransaction(transactions.data[0], undefined)).toBeNull();
+    expect(toTransaction({ ...transactions.data[0], date: null }, productsInfoFull[0].data[331868])).toBeNull();
+  });
+});
+
 describe('Extension — payload envoyé à l’API', () => {
   const built = buildPayload({
     update, products: productsInfo, captureId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', capturedAt: '2026-07-25T09:00:00Z',
@@ -177,7 +248,32 @@ describe('Extension — payload envoyé à l’API', () => {
   it('survit à un portefeuille vide sans planter', () => {
     const p = buildPayload({ update: {}, products: [], captureId: 'x', capturedAt: '2026-07-25T09:00:00Z' });
     expect(p.payload.positions).toEqual([]);
+    expect(p.payload.transactions).toEqual([]);
     expect(p.payload.total_value_eur).toBe(0);
+  });
+
+  it('inclut la position soldée quand son ISIN se résout, à quantité nulle', () => {
+    const p = buildPayload({
+      update, products: productsInfoFull, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z',
+    });
+    expect(p.diagnostics.held).toBe(2);
+    expect(p.diagnostics.closed).toBe(1);
+    expect(p.payload.positions).toHaveLength(3);
+    const rno = p.payload.positions.find((q) => q.isin === 'FR0000131906');
+    expect(rno.qty).toBe(0);
+    expect(rno.value_eur).toBe(0);
+    // Une position soldée n'ajoute rien à la valeur totale.
+    expect(p.payload.total_value_eur).toBe(11105);
+  });
+
+  it('embarque l’historique des transactions dans le payload', () => {
+    const p = buildPayload({
+      update, products: productsInfoFull, transactions, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z',
+    });
+    expect(p.payload.transactions).toHaveLength(3);
+    expect(p.diagnostics.transactions).toBe(3);
+    expect(p.diagnostics.transactionsRead).toBe(3);
+    expect(ingestSchema.safeParse(p.payload).success).toBe(true);
   });
 });
 
@@ -281,6 +377,40 @@ describe('Extension — trajet complet jusqu’au portefeuille', () => {
 
     // La ligne soldée ne doit pas ressusciter dans le portefeuille.
     expect(body.positions).toHaveLength(2);
+  });
+
+  it('capture avec transactions : position fermée filtrée, plus-value réalisée calculée', async () => {
+    const agent = request.agent(app);
+    const link = await agent.post('/api/auth/request-link').send({ email: 'ext-tx@example.com' });
+    await agent.post('/api/auth/verify').send({ token: new URL(link.body.devLink).searchParams.get('token') });
+    const { body: created } = await agent.post('/api/auth/me/tokens').send({ label: 'Chrome' });
+    const auth = { Authorization: `Bearer ${created.token}` };
+
+    const { payload } = buildPayload({
+      update, products: productsInfoFull, transactions,
+      captureId: 'cap-with-tx', capturedAt: '2026-07-25T09:00:00Z',
+    });
+    expect(payload.positions).toHaveLength(3); // 2 détenues + 1 soldée
+    expect(payload.transactions).toHaveLength(3);
+
+    const ingest = await request(app).post('/api/ingest').set(auth).send(payload);
+    expect(ingest.status).toBe(201);
+    expect(ingest.body.transactions.inserted).toBe(3);
+
+    // La position soldée est stockée mais absente de la vue des positions courantes.
+    const { body: pf } = await agent.get('/api/portfolio');
+    expect(pf.positions).toHaveLength(2);
+    expect(pf.positions.some((p) => p.isin === 'FR0000131906')).toBe(false);
+
+    // L'achat + la vente de RNO ressortent en plus-value réalisée : 149,5 − 125,5 = 24 €.
+    const { body: an } = await agent.get('/api/analytics');
+    expect(an.realized.totals.net).toBe(24);
+    expect(an.realized.totals.sales).toBe(1);
+
+    // Rejeu idempotent : les mêmes ordres ne se dédoublent pas (INSERT IGNORE).
+    const again = await request(app).post('/api/ingest').set(auth)
+      .send(buildPayload({ update, products: productsInfoFull, transactions, captureId: 'cap-with-tx-2', capturedAt: '2026-07-25T18:00:00Z' }).payload);
+    expect(again.body.transactions.inserted).toBe(0);
   });
 
   it('deux captures le même jour : la seconde remplace, sans doubler', async () => {

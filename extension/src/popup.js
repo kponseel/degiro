@@ -89,9 +89,10 @@ els.capture.addEventListener('click', async () => {
     renderReport(res?.report);
     if (res?.ok) {
       const s = res.summary;
+      const tx = s.transactions ? `, ${s.transactions} transaction(s)` : '';
       show(els.success, s.deduplicated
-        ? `Déjà à jour : ${s.positions} position(s), ${s.total} €.`
-        : `Envoyé : ${s.positions} position(s), ${s.total} €.`);
+        ? `Déjà à jour : ${s.positions} position(s)${tx}, ${s.total} €.`
+        : `Envoyé : ${s.positions} position(s)${tx}, ${s.total} €.`);
       els.last.textContent = 'dernière capture à l’instant';
     } else {
       show(els.error, res?.error || 'Échec de la capture.');

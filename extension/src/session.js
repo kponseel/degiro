@@ -60,4 +60,12 @@ export const urls = {
   productsInfo: (intAccount, sessionId) =>
     'https://trader.degiro.nl/product_search/secure/v5/products/info'
     + `?intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
+  // Historique des ordres (achats/ventes), agrégé par ordre — la seule source des
+  // positions fermées et des plus-values réalisées. `fromDate`/`toDate` au format
+  // JJ/MM/AAAA attendu par DEGIRO ; on remonte très loin pour tout capturer.
+  transactions: (intAccount, sessionId, fromDate, toDate) =>
+    'https://trader.degiro.nl/reporting/secure/v4/transactions'
+    + `?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
+    + '&groupTransactionsByOrder=true'
+    + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
 };

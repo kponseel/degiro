@@ -31,7 +31,7 @@ export async function computeExposure(accountId = 1) {
             r.sector, r.country, r.asset_class
      FROM positions p
      LEFT JOIN isin_ref r ON r.isin = p.isin
-     WHERE p.snapshot_id = ?`,
+     WHERE p.snapshot_id = ? AND (p.qty IS NULL OR p.qty <> 0)`,
     [snaps[0].id],
   );
 

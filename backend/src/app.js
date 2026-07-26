@@ -42,7 +42,9 @@ export function createApp() {
 
   app.use(helmet());
   app.use(pinoHttp({ logger }));
-  app.use(express.json({ limit: '1mb' }));
+  // L'ingestion par l'extension embarque l'historique complet des transactions :
+  // une limite trop basse rejetterait les gros comptes (plusieurs années d'ordres).
+  app.use(express.json({ limit: '5mb' }));
   app.use(cookieParser());
 
   // Rate limiting sur toute l'API.

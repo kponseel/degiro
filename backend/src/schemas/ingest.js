@@ -15,6 +15,24 @@ const position = z.object({
   pl_day_eur: z.number().optional(),
 });
 
+// Ordres et mouvements — mêmes types que la table `transactions`. L'extension
+// n'envoie aujourd'hui que des 'buy'/'sell', mais le contrat accepte l'ensemble
+// pour couvrir une future capture du relevé de compte (dividendes, taxes…).
+const transaction = z.object({
+  tx_date: z.string().min(1),
+  type: z.enum([
+    'deposit', 'withdrawal', 'buy', 'sell', 'dividend', 'tax',
+    'transaction_tax', 'fee', 'fx', 'split', 'isin_change', 'other',
+  ]),
+  isin: z.string().length(12).nullable().optional(),
+  description: z.string().max(255).nullable().optional(),
+  qty: z.number().nullable().optional(),
+  amount: z.number().nullable().optional(),
+  currency: z.string().max(3).nullable().optional(),
+  amount_eur: z.number().nullable().optional(),
+  external_id: z.string().min(1).max(64),
+});
+
 export const ingestSchema = z.object({
   schema_version: z.number().int().positive().default(1),
   source: z.enum(['extension', 'csv']),
@@ -26,4 +44,5 @@ export const ingestSchema = z.object({
   cash_eur: z.number().optional(),
   raw_json: z.unknown().optional(),
   positions: z.array(position).default([]),
+  transactions: z.array(transaction).default([]),
 });
