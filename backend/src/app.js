@@ -25,6 +25,7 @@ import adminRouter from './routes/admin.js';
 import newsRouter from './routes/news.js';
 import aiRouter from './routes/ai.js';
 import extensionRouter from './routes/extension.js';
+import analyticsRouter from './routes/analytics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -82,6 +83,7 @@ export function createApp() {
   app.use('/api/admin', adminRouter);
   app.use('/api/news', newsRouter);
   app.use('/api/ai', aiRouter);
+  app.use('/api/analytics', analyticsRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {

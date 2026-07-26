@@ -1,15 +1,76 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { getSnapshots, getPerformance, getBenchmark } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtDate } from '../lib/format.js';
+import { getSnapshots, getPerformance, getBenchmark, getAnalytics } from '../lib/api.js';
+import { fmtEur, fmtPct, fmtDate, fmtNum } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
+import { useSort } from '../lib/useSort.js';
+import SortHeader from '../components/SortHeader.jsx';
 
 const TT = { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' };
 const axisTick = { fontSize: 12, fill: 'var(--ink-faint)' };
+const signPct = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${fmtPct(v)}`);
+const signEur = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${fmtEur(v)}`);
+const tone = (v) => (v == null ? '' : v >= 0 ? 'pos' : 'neg');
+
+/** Barre de contribution : part (signée) d'une ligne dans le P/L total. */
+function ContribBar({ value }) {
+  if (value == null) return <span className="muted">—</span>;
+  const pct = Math.max(-1, Math.min(1, value));
+  const width = `${Math.min(100, Math.abs(pct) * 100)}%`;
+  return (
+    <div className="contrib" title={signPct(value)}>
+      <div className="contrib-track">
+        <span className={`contrib-fill ${pct >= 0 ? 'pos' : 'neg'}`} style={{ width }} />
+      </div>
+      <span className="contrib-val">{signPct(value)}</span>
+    </div>
+  );
+}
+
+// ── Détail par titre ─────────────────────────────────────────────────
+function AttributionTable({ rows, hasDividends }) {
+  const { sorted, sort, toggle } = useSort(rows, { key: 'pl_eur', dir: 'desc' }, {
+    name: (r) => r.name || r.isin,
+  });
+  return (
+    <div className="table-wrap">
+      <table className="data compact">
+        <thead>
+          <tr>
+            <SortHeader label="Titre" colKey="name" sort={sort} onToggle={toggle} align="left" />
+            <SortHeader label="Poids" colKey="weight" sort={sort} onToggle={toggle} />
+            <SortHeader label="Valeur" colKey="value_eur" sort={sort} onToggle={toggle} />
+            <SortHeader label="+/- €" colKey="pl_eur" sort={sort} onToggle={toggle} />
+            <SortHeader label="+/- %" colKey="pl_pct" sort={sort} onToggle={toggle} />
+            <SortHeader label="Contribution" colKey="contribution" sort={sort} onToggle={toggle} />
+            {hasDividends && <SortHeader label="Dividendes" colKey="dividends_eur" sort={sort} onToggle={toggle} />}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={r.isin}>
+              <td>
+                <span className="sym">{r.name}</span>
+                {r.sector && <span className="muted sm"> · {r.sector}</span>}
+              </td>
+              <td>{fmtPct(r.weight)}</td>
+              <td className="sym">{fmtEur(r.value_eur)}</td>
+              <td className={tone(r.pl_eur)}>{signEur(r.pl_eur)}</td>
+              <td className={tone(r.pl_pct)}>{signPct(r.pl_pct)}</td>
+              <td><ContribBar value={r.contribution} /></td>
+              {hasDividends && <td className={r.dividends_eur ? 'pos' : 'muted'}>{r.dividends_eur ? fmtEur(r.dividends_eur) : '—'}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function History({ onGoImport }) {
   const [rows, setRows] = useState(null);
   const [perf, setPerf] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [benchKey, setBenchKey] = useState('world');
   const [bench, setBench] = useState(null);
   const [error, setError] = useState(null);
@@ -17,6 +78,7 @@ export default function History({ onGoImport }) {
   useEffect(() => {
     getSnapshots().then((d) => setRows(d.snapshots)).catch((e) => setError(e.message));
     getPerformance().then(setPerf).catch(() => setPerf({ insufficient: true }));
+    getAnalytics().then(setAnalytics).catch(() => setAnalytics(null));
   }, []);
 
   useEffect(() => {
@@ -27,139 +89,204 @@ export default function History({ onGoImport }) {
   if (error) return <Banner kind="err">Erreur : {error}</Banner>;
   if (!rows) return <Spinner />;
 
-  if (rows.length < 2) {
+  if (rows.length === 0) {
     return (
       <Card>
-        <Empty title="Pas encore assez d'historique">
-          L'historique se construit à chaque capture. Il faut au moins deux jours de données pour tracer une courbe.
-          {rows.length === 1 && <div style={{ marginTop: 8 }}>1 point enregistré pour l'instant — reviens demain après un nouvel import.</div>}
-          {rows.length === 0 && (
-            <div style={{ marginTop: 14 }}>
-              <button className="btn" onClick={onGoImport}>Importer mon portefeuille</button>
-            </div>
-          )}
+        <Empty title="Aucune donnée de performance">
+          Importe ton portefeuille pour analyser ta performance.
+          <div style={{ marginTop: 14 }}>
+            <button className="btn" onClick={onGoImport}>Importer mon portefeuille</button>
+          </div>
         </Empty>
       </Card>
     );
   }
 
   const data = rows.map((r) => ({ date: fmtDate(r.snapshot_date), value: Number(r.total_value_eur) || 0 }));
-  const first = data[0].value;
   const last = data[data.length - 1].value;
+  const first = data[0].value;
   const change = last - first;
   const twr = perf && !perf.insufficient ? perf.twr : null;
+  const risk = analytics?.risk || null;
+  const conc = analytics?.concentration || null;
+  const attr = analytics?.attribution || null;
+  const hasHistory = data.length >= 2;
 
   const benchAvailable = bench && bench.available;
   const benchName = bench?.name || 'Benchmark';
   const alpha = benchAvailable ? bench.alpha : null;
-  // Série combinée portefeuille vs benchmark (en %), issue de l'endpoint aligné.
   const compareSeries = benchAvailable
     ? bench.series.map((s) => ({ date: fmtDate(s.date), twr: s.twr * 100, benchmark: s.benchmark != null ? s.benchmark * 100 : null }))
     : (perf && perf.series ? perf.series.map((s) => ({ date: fmtDate(s.date), twr: s.twr * 100, benchmark: null })) : []);
 
+  const totalPl = attr?.totals?.pl_eur ?? null;
+  const totalPlPct = attr?.totals?.pl_pct ?? null;
+
   return (
     <>
-      <div className="grid stat-row">
-        <Stat label="Valeur actuelle" value={fmtEur(last)} sub={`au ${data[data.length - 1].date}`} />
-        <Stat
-          label="Performance (TWR)"
-          value={twr != null ? fmtPct(twr) : '—'}
-          sub={twr != null ? `du ${fmtDate(perf.from)} au ${fmtDate(perf.to)}` : '≥ 2 jours requis'}
-          tone={twr != null ? (twr >= 0 ? 'pos' : 'neg') : ''}
-        />
-        {benchAvailable && alpha != null ? (
-          <Stat
-            label={`Surperformance / ${benchName}`}
-            value={`${alpha >= 0 ? '+' : ''}${fmtPct(alpha)}`}
-            sub={`benchmark : ${fmtPct(bench.benchmarkReturn)}`}
-            tone={alpha >= 0 ? 'pos' : 'neg'}
-          />
-        ) : (
-          <Stat label="Variation de valeur" value={fmtEur(change)} sub="apports inclus" tone={change >= 0 ? 'pos' : 'neg'} />
-        )}
-        <Stat label="Points" value={data.length} sub={`depuis le ${data[0].date}`} />
+      <div className="page-head">
+        <h1>Performance</h1>
+        <p>Ta performance réelle, sa décomposition par titre, et les mesures de risque de ton portefeuille.</p>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
+      {/* KPIs principaux */}
+      <div className="grid stat-row">
+        <Stat label="Valeur actuelle" value={fmtEur(last)} sub={`au ${data[data.length - 1].date}`} />
+        <Stat label="+/- value latente" value={signEur(totalPl)} sub={totalPlPct != null ? signPct(totalPlPct) : 'apports inclus'} tone={tone(totalPl)} />
+        <Stat
+          label="Performance (TWR)"
+          value={twr != null ? signPct(twr) : '—'}
+          sub={twr != null ? `du ${fmtDate(perf.from)} au ${fmtDate(perf.to)}` : '≥ 2 jours requis'}
+          tone={tone(twr)}
+        />
+        {benchAvailable && alpha != null ? (
+          <Stat label={`vs ${benchName}`} value={signPct(alpha)} sub={`indice : ${signPct(bench.benchmarkReturn)}`} tone={tone(alpha)} />
+        ) : (
+          <Stat label="Variation de valeur" value={signEur(change)} sub="apports inclus" tone={tone(change)} />
+        )}
+      </div>
+
+      {/* Mesures de risque */}
+      {risk ? (
+        <div style={{ marginTop: 16 }}>
+          <Card title="Risque & volatilité">
+            <div className="grid stat-row">
+              <Stat label="Volatilité (ann.)" value={fmtPct(risk.volatility)} sub="amplitude des variations" />
+              <Stat label="Pire baisse (drawdown)" value={fmtPct(risk.maxDrawdown)} sub="du sommet au creux" tone="neg" />
+              <Stat label="Sharpe" value={risk.sharpe != null ? fmtNum(risk.sharpe, 2) : '—'} sub="rendement / risque" tone={risk.sharpe > 0 ? 'pos' : ''} />
+              <Stat label="Meilleur / pire jour" value={`${signPct(risk.bestPeriod)} / ${signPct(risk.worstPeriod)}`} sub={`${risk.periods} périodes`} />
+            </div>
+            {risk.currentDrawdown < -0.001 && (
+              <div style={{ marginTop: 12 }}>
+                <Banner kind="info">
+                  Actuellement à <strong>{fmtPct(risk.currentDrawdown)}</strong> sous ton plus haut historique.
+                </Banner>
+              </div>
+            )}
+          </Card>
+        </div>
+      ) : (
+        <div style={{ marginTop: 16 }}>
+          <Banner kind="info">
+            Les mesures de risque (volatilité, drawdown, Sharpe) apparaîtront avec au moins quelques jours d'historique.
+            L'historique se construit à chaque capture.
+          </Banner>
+        </div>
+      )}
+
+      {/* Concentration */}
+      {conc && conc.lines > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Card title="Concentration & diversification">
+            <div className="grid stat-row">
+              <Stat label="Plus grosse ligne" value={fmtPct(conc.top1)} sub="poids du n°1" tone={conc.top1 > 0.25 ? 'neg' : ''} />
+              <Stat label="Top 5" value={fmtPct(conc.top5)} sub={`sur ${conc.lines} lignes`} tone={conc.top5 > 0.6 ? 'neg' : ''} />
+              <Stat label="Lignes effectives" value={fmtNum(conc.effectiveHoldings, 1)} sub="diversification réelle" />
+              <Stat label="Lignes détenues" value={fmtNum(conc.lines, 0)} />
+            </div>
+            {conc.effectiveHoldings < conc.lines / 2 && (
+              <div style={{ marginTop: 12 }}>
+                <Banner kind="info">
+                  Tu détiens {conc.lines} lignes mais l'équivalent de seulement <strong>{fmtNum(conc.effectiveHoldings, 1)}</strong> en
+                  diversification réelle : quelques positions pèsent lourd.
+                </Banner>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Détail par titre */}
+      {attr && attr.rows.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Card title="Performance par titre">
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              La <strong>contribution</strong> est la part de chaque ligne dans ta +/- value totale.
+              Clique les en-têtes pour trier.
+            </p>
+            <AttributionTable rows={attr.rows} hasDividends={(attr.totals.dividends_eur || 0) !== 0} />
+          </Card>
+        </div>
+      )}
+
+      {/* Courbe de valeur */}
+      <div style={{ marginTop: 16 }}>
+        <Card title="Valeur totale du portefeuille">
+          {hasHistory ? (
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer>
+                <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gv" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="var(--line-soft)" vertical={false} />
+                  <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
+                  <YAxis tick={axisTick} tickLine={false} axisLine={false} width={70}
+                    tickFormatter={(v) => new Intl.NumberFormat('fr-FR', { notation: 'compact' }).format(v)} />
+                  <Tooltip formatter={(v) => [fmtEur(v), 'Valeur']} contentStyle={TT} labelStyle={{ color: 'var(--ink-soft)' }} />
+                  <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#gv)" isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="muted" style={{ padding: '24px 0', textAlign: 'center' }}>
+              La courbe se construit à chaque capture — reviens après un second import.
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ margin: '16px 0' }}>
         <Banner kind="info">
-          Le <strong>TWR</strong> (Time-Weighted Return) mesure ta performance réelle en neutralisant tes dépôts/retraits.
-          Pour qu'il soit exact, importe ton <strong>Account.csv</strong> (les flux).{' '}
+          Le <strong>TWR</strong> mesure ta performance réelle en neutralisant tes dépôts/retraits.
+          Pour qu'il soit exact, importe ton <strong>Account.csv</strong>.{' '}
           {perf && perf.flows ? `${perf.flows} flux externe(s) pris en compte.` : 'Aucun flux externe détecté — le TWR égale la variation de valeur.'}
         </Banner>
       </div>
 
-      <Card title="Valeur totale du portefeuille">
-        <div style={{ width: '100%', height: 300 }}>
-          <ResponsiveContainer>
-            <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gv" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} />
-                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="var(--line-soft)" vertical={false} />
-              <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
-              <YAxis tick={axisTick} tickLine={false} axisLine={false} width={70}
-                tickFormatter={(v) => new Intl.NumberFormat('fr-FR', { notation: 'compact' }).format(v)} />
-              <Tooltip formatter={(v) => [fmtEur(v), 'Valeur']} contentStyle={TT} labelStyle={{ color: 'var(--ink-soft)' }} />
-              <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#gv)" isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
       {compareSeries.length >= 2 && (
-        <div style={{ marginTop: 16 }}>
-          <Card title="Performance cumulée — portefeuille vs benchmark">
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-              {(bench?.benchmarks || [{ key: 'world', name: 'MSCI World' }]).map((b) => (
-                <button
-                  key={b.key}
-                  className={`btn ${benchKey === b.key ? '' : 'ghost'}`}
-                  style={{ padding: '5px 12px', fontSize: 13 }}
-                  onClick={() => setBenchKey(b.key)}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
+        <Card title="Performance cumulée — portefeuille vs indice">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            {(bench?.benchmarks || [{ key: 'world', name: 'MSCI World' }]).map((b) => (
+              <button key={b.key} className={`btn ${benchKey === b.key ? '' : 'ghost'}`} style={{ padding: '5px 12px', fontSize: 13 }} onClick={() => setBenchKey(b.key)}>
+                {b.name}
+              </button>
+            ))}
+          </div>
 
-            {bench && !bench.available && (
-              <div style={{ marginBottom: 14 }}>
-                <Banner kind="info">
-                  {bench.reason === 'insufficient_history'
-                    ? 'Le benchmark s’affichera dès que tu auras au moins deux jours d’historique.'
-                    : 'Cours du benchmark momentanément indisponibles (source publique injoignable). La courbe du portefeuille reste affichée ; réessaie plus tard.'}
-                </Banner>
-              </div>
-            )}
+          {bench && !bench.available && (
+            <div style={{ marginBottom: 14 }}>
+              <Banner kind="info">
+                {bench.reason === 'insufficient_history'
+                  ? 'Le comparatif s’affichera dès deux jours d’historique.'
+                  : 'Cours de l’indice momentanément indisponibles (source publique injoignable). La courbe du portefeuille reste affichée.'}
+              </Banner>
+            </div>
+          )}
 
-            <div style={{ width: '100%', height: 280 }}>
-              <ResponsiveContainer>
-                <LineChart data={compareSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <CartesianGrid stroke="var(--line-soft)" vertical={false} />
-                  <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
-                  <YAxis tick={axisTick} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => `${v.toFixed(0)} %`} />
-                  <Tooltip
-                    formatter={(v, n) => [v == null ? '—' : `${Number(v).toFixed(2)} %`, n]}
-                    contentStyle={TT}
-                    labelStyle={{ color: 'var(--ink-soft)' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 13 }} />
-                  <Line type="monotone" dataKey="twr" name="Portefeuille (TWR)" stroke="var(--c1)" strokeWidth={2.4} dot={false} isAnimationActive={false} />
-                  {benchAvailable && (
-                    <Line type="monotone" dataKey="benchmark" name={benchName} stroke="var(--c2)" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="sub muted" style={{ marginTop: 12, fontSize: 12.5 }}>
-              Comparaison équitable : le TWR neutralise tes apports, le benchmark est un investissement « buy &amp; hold »
-              sur la même période. Source des cours : Stooq (données de clôture, à titre indicatif).
-            </div>
-          </Card>
-        </div>
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <LineChart data={compareSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid stroke="var(--line-soft)" vertical={false} />
+                <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
+                <YAxis tick={axisTick} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => `${v.toFixed(0)} %`} />
+                <Tooltip formatter={(v, n) => [v == null ? '—' : `${Number(v).toFixed(2)} %`, n]} contentStyle={TT} labelStyle={{ color: 'var(--ink-soft)' }} />
+                <Legend wrapperStyle={{ fontSize: 13 }} />
+                <Line type="monotone" dataKey="twr" name="Portefeuille (TWR)" stroke="var(--c1)" strokeWidth={2.4} dot={false} isAnimationActive={false} />
+                {benchAvailable && (
+                  <Line type="monotone" dataKey="benchmark" name={benchName} stroke="var(--c2)" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="sub muted" style={{ marginTop: 12, fontSize: 12.5 }}>
+            Comparaison équitable : le TWR neutralise tes apports, l'indice est un « buy &amp; hold » sur la même période.
+            Cours : Stooq (clôtures, à titre indicatif).
+          </div>
+        </Card>
       )}
     </>
   );

@@ -55,6 +55,7 @@ export const getExposure = (lookthrough) => api(`/api/exposure${qs({ lookthrough
 export const getRisk = () => api('/api/risk');
 export const getDividends = () => api('/api/dividends');
 export const getPerformance = () => api('/api/performance');
+export const getAnalytics = () => api('/api/analytics');
 export const getIsinRef = () => api('/api/isin-ref');
 export const updateIsinRef = (isin, patch) => jsonPost(`/api/isin-ref/${isin}`, patch, 'PUT');
 export const enrichNow = () => api('/api/enrich', { method: 'POST' });
