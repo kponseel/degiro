@@ -3,6 +3,7 @@ import { getPool } from '../db/pool.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { sendMagicLink } from './mailer.js';
+import { deleteAiData } from './aiInsights.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -259,6 +260,7 @@ export async function deleteUserData(userId) {
   const pool = getPool();
   await pool.query('DELETE FROM transactions WHERE account_id = ?', [userId]);
   await pool.query('DELETE FROM snapshots WHERE account_id = ?', [userId]); // positions ON DELETE CASCADE
+  await deleteAiData(userId); // prompts générés + avis IA ré-ingérés
 }
 
 /** Supprime le compte : données + sessions + liens magiques en attente + ligne user. */
