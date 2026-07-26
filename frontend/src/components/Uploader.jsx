@@ -55,7 +55,16 @@ export default function Uploader({ hint, title, description, onImported, onDone 
         </div>
         <label className="btn ghost">
           {file ? 'Changer' : 'Choisir un CSV'}
-          <input type="file" accept=".csv,text/csv" hidden onChange={(e) => choose(e.target.files[0])} />
+          {/* Filtre large à dessein : sur mobile (iOS surtout) un accept trop
+              strict grise le CSV dans le sélecteur, et un CSV téléchargé arrive
+              souvent en octet-stream. Le serveur détecte le vrai type de toute
+              façon, donc on privilégie la sélectionnabilité. */}
+          <input
+            type="file"
+            accept=".csv,text/csv,text/comma-separated-values,text/plain,application/csv,application/octet-stream"
+            hidden
+            onChange={(e) => choose(e.target.files[0])}
+          />
         </label>
       </div>
 
