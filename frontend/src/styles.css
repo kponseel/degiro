@@ -466,6 +466,15 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .ext-instr { margin: 12px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.5; }
 .ext-instr .muted { font-size: 12.5px; margin-top: 2px; }
 .ext-instr code, .ext-help code { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 12px; }
+
+/* Barre de contribution (page Performance) */
+.contrib { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.contrib-track { flex: 1; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
+.contrib-fill { display: block; height: 100%; border-radius: 3px; }
+.contrib-fill.pos { background: var(--pos); }
+.contrib-fill.neg { background: var(--neg); }
+.contrib-val { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-soft); min-width: 48px; text-align: right; }
+.sm { font-size: 11.5px; }
 .chip.filter.sector { display: inline-flex; align-items: center; gap: 6px; }
 .sector-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .news-item:active { transform: translateY(0.5px); }
