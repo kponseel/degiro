@@ -76,7 +76,12 @@ function EtfHoldingsUploader({ onImported }) {
             </div>
             <label className="btn ghost">
               {file ? 'Changer' : 'Choisir un CSV'}
-              <input type="file" accept=".csv,text/csv" hidden onChange={(e) => { setFile(e.target.files[0]); setResult(null); setError(null); }} />
+              <input
+                type="file"
+                accept=".csv,text/csv,text/comma-separated-values,text/plain,application/csv,application/octet-stream"
+                hidden
+                onChange={(e) => { setFile(e.target.files[0]); setResult(null); setError(null); }}
+              />
             </label>
           </div>
 
