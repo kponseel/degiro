@@ -126,6 +126,76 @@ export function riskMetrics(series, periodsPerYear = 252) {
   };
 }
 
+// ── Plus/moins-values réalisées (prix moyen pondéré / PMP) ───────────
+
+/**
+ * Calcule les plus-values réalisées à chaque vente, par la méthode du prix
+ * moyen pondéré — celle qu'exige aussi le fisc français pour une même ligne.
+ *
+ * @param txs  ordres { tx_date, isin, description, qty (signé), amount_eur
+ *             (brut EUR signé : achat < 0, vente > 0), amount (frais, < 0) }
+ * @returns { events, byIsin, totals } — events = une entrée par vente
+ */
+export function realizedPnl(txs) {
+  const ordered = [...txs].sort((a, b) => String(a.tx_date).localeCompare(String(b.tx_date)));
+  const state = new Map(); // isin -> { qty, cost, reliable }
+  const events = [];
+
+  for (const t of ordered) {
+    const isin = t.isin;
+    if (!isin || t.qty == null) continue;
+    const st = state.get(isin) || { qty: 0, cost: 0, reliable: true };
+    const gross = t.amount_eur == null ? null : Math.abs(Number(t.amount_eur));
+    const fee = Math.abs(Number(t.amount) || 0);
+
+    if (t.qty > 0) {
+      // Achat : entre dans le coût de revient (frais inclus).
+      if (gross == null) st.reliable = false;
+      else st.cost += gross + fee;
+      st.qty += t.qty;
+    } else if (t.qty < 0) {
+      // Vente : réalise une plus/moins-value sur la quantité cédée.
+      const sellQty = Math.min(Math.abs(t.qty), st.qty > 0 ? st.qty : Math.abs(t.qty));
+      const avg = st.qty > 0 ? st.cost / st.qty : 0;
+      const costOfSold = round(avg * sellQty);
+      const net = gross == null ? null : round(gross - fee);
+      const unknown = !st.reliable || st.qty <= 0 || gross == null;
+      events.push({
+        date: String(t.tx_date).slice(0, 10),
+        isin,
+        name: t.description || isin,
+        qty: round(sellQty, 6),
+        proceeds_eur: net,
+        cost_eur: unknown ? null : costOfSold,
+        gain_eur: unknown || net == null ? null : round(net - costOfSold),
+        costUnknown: unknown,
+      });
+      st.qty = round(st.qty - sellQty, 6);
+      st.cost = st.qty <= 0 ? 0 : round(st.cost - costOfSold);
+    }
+    state.set(isin, st);
+  }
+
+  const byIsin = new Map();
+  for (const e of events) {
+    const b = byIsin.get(e.isin) || { isin: e.isin, name: e.name, gain_eur: 0, sales: 0, hasUnknown: false };
+    if (e.gain_eur != null) b.gain_eur = round(b.gain_eur + e.gain_eur);
+    b.sales += 1;
+    if (e.costUnknown) b.hasUnknown = true;
+    byIsin.set(e.isin, b);
+  }
+
+  const known = events.filter((e) => e.gain_eur != null);
+  const totals = {
+    gains: round(known.filter((e) => e.gain_eur > 0).reduce((s, e) => s + e.gain_eur, 0)),
+    losses: round(known.filter((e) => e.gain_eur < 0).reduce((s, e) => s + e.gain_eur, 0)),
+    net: round(known.reduce((s, e) => s + e.gain_eur, 0)),
+    sales: events.length,
+    unknown: events.filter((e) => e.costUnknown).length,
+  };
+  return { events, byIsin: [...byIsin.values()].sort((a, b) => b.gain_eur - a.gain_eur), totals };
+}
+
 // ── Assemblage ───────────────────────────────────────────────────────
 
 /** Positions du dernier snapshot enrichies (secteur), pour l'attribution. */
@@ -160,9 +230,59 @@ async function dividendsByIsin(accountId) {
   return map;
 }
 
+/** Ordres d'achat/vente (tout l'historique) pour les plus-values réalisées. */
+async function buySellTxs(accountId) {
+  const [rows] = await getPool().query(
+    `SELECT tx_date, isin, description, qty, amount, amount_eur
+     FROM transactions
+     WHERE account_id = ? AND type IN ('buy', 'sell') AND isin IS NOT NULL AND qty IS NOT NULL
+     ORDER BY tx_date ASC, id ASC`,
+    [accountId],
+  );
+  return rows;
+}
+
+/** Flux de dividendes nets (dividende + retenue à la source), datés, en EUR. */
+async function dividendFlows(accountId) {
+  const [rows] = await getPool().query(
+    `SELECT tx_date, isin, description,
+            COALESCE(amount_eur, CASE WHEN currency = 'EUR' THEN amount END) AS eur
+     FROM transactions
+     WHERE account_id = ? AND type IN ('dividend', 'tax') AND isin IS NOT NULL
+     ORDER BY tx_date ASC`,
+    [accountId],
+  );
+  return rows
+    .map((r) => ({
+      date: String(r.tx_date).slice(0, 10),
+      isin: r.isin,
+      name: r.description || r.isin,
+      amount_eur: r.eur == null ? null : round(Number(r.eur)),
+    }))
+    .filter((d) => d.amount_eur != null);
+}
+
+/**
+ * Vue « réalisé / fiscal » : plus-values encaissées à chaque vente et flux de
+ * dividendes, datés, pour un filtrage par année/mois côté client. Chiffres
+ * bruts (aucun taux d'imposition appliqué).
+ */
+export async function computeRealized(accountId = 1) {
+  const txs = await buySellTxs(accountId);
+  const { events, byIsin, totals } = realizedPnl(txs);
+  const dividends = await dividendFlows(accountId);
+  const years = [...new Set([
+    ...events.map((e) => e.date.slice(0, 4)),
+    ...dividends.map((d) => d.date.slice(0, 4)),
+  ])].filter(Boolean).sort();
+  const dividendsTotal = round(dividends.reduce((s, d) => s + d.amount_eur, 0));
+  return { events, byIsin, totals, dividends, dividendsTotal, years };
+}
+
 /**
  * Analyse complète du portefeuille : attribution par titre, concentration,
- * risque. Best-effort — chaque bloc peut être null si les données manquent.
+ * risque, et plus-values réalisées. Best-effort — chaque bloc peut être
+ * null/vide si les données manquent.
  */
 export async function computeAnalytics(accountId = 1) {
   const positions = await latestPositions(accountId);
@@ -173,11 +293,15 @@ export async function computeAnalytics(accountId = 1) {
   const perf = await computePerformance(accountId);
   const risk = perf && !perf.insufficient ? riskMetrics(perf.series) : null;
 
+  let realized = null;
+  try { realized = await computeRealized(accountId); } catch { /* best-effort */ }
+
   return {
     hasPl: positions.some((p) => p.pl_eur != null),
     attribution: attr,
     concentration: conc,
     risk,
+    realized,
     twr: perf && !perf.insufficient ? perf.twr : null,
     from: perf?.from ?? null,
     to: perf?.to ?? null,

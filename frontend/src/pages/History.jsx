@@ -5,6 +5,7 @@ import { fmtEur, fmtPct, fmtDate, fmtNum } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
+import RealizedPanel from '../components/RealizedPanel.jsx';
 
 const TT = { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' };
 const axisTick = { fontSize: 12, fill: 'var(--ink-faint)' };
@@ -121,6 +122,7 @@ export default function History({ onGoImport }) {
 
   const totalPl = attr?.totals?.pl_eur ?? null;
   const totalPlPct = attr?.totals?.pl_pct ?? null;
+  const realized = analytics?.realized || null;
 
   return (
     <>
@@ -145,6 +147,13 @@ export default function History({ onGoImport }) {
           <Stat label="Variation de valeur" value={signEur(change)} sub="apports inclus" tone={tone(change)} />
         )}
       </div>
+
+      {/* Gains / pertes réalisés + vue fiscale */}
+      {realized && (
+        <div style={{ marginTop: 16 }}>
+          <RealizedPanel realized={realized} latentPl={totalPl} />
+        </div>
+      )}
 
       {/* Mesures de risque */}
       {risk ? (

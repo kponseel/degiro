@@ -129,6 +129,10 @@ const FIELDS = {
   price: ['cours', 'price', 'koers', 'kurs'],
   currency: ['devise', 'currency', 'valuta', 'währung', 'local value', 'valeur locale', 'lokale waarde'],
   valueEur: ['valeur en eur', 'value in eur', 'waarde in eur', 'montant en eur', 'wert in eur'],
+  // Valeur EUR d'un ordre dans Transactions.csv : colonne « Valeur » / « Value »
+  // (à ne pas confondre avec « Valeur locale » / « Local value », en devise du titre).
+  tradeValue: ['valeur', 'value', 'waarde', 'wert'],
+  total: ['total', 'totaal', 'gesamt'],
   date: ['date', 'datum'],
   time: ['heure', 'time', 'tijd', 'uhrzeit'],
   description: ['description', 'omschrijving', 'beschreibung'],
@@ -363,6 +367,15 @@ export function mapTransactions(rows) {
       const currency = pickAmountCurrency(r, FIELDS.price)
         || pickAmountCurrency(r, FIELDS.currency)
         || detectCurrency(r);
+      // Valeur EUR brute de l'ordre : indispensable au calcul des plus-values.
+      // La colonne « Valeur » n'est retenue que si elle est bien en EUR (sinon
+      // c'est la valeur en devise du titre) ; à défaut on prend le « Total » EUR.
+      let grossEur = null;
+      if (pickAmountCurrency(r, FIELDS.tradeValue) === 'EUR') grossEur = pickAmount(r, FIELDS.tradeValue);
+      if (grossEur == null && pickAmountCurrency(r, FIELDS.total) === 'EUR') grossEur = Math.abs(pickAmount(r, FIELDS.total) ?? 0) || null;
+      // Signe : achat = sortie de cash (négatif), vente = entrée (positif).
+      const amountEur = grossEur == null || qty == null ? null
+        : (qty < 0 ? Math.abs(grossEur) : -Math.abs(grossEur));
       return {
         tx_date: txDate,
         type: qty !== null && qty < 0 ? 'sell' : 'buy',
@@ -371,7 +384,7 @@ export function mapTransactions(rows) {
         qty,
         amount: pickAmount(r, FIELDS.fees),
         currency,
-        amount_eur: null,
+        amount_eur: amountEur,
         external_id: orderId || syntheticId('tx', txDate, isin, qty),
       };
     })

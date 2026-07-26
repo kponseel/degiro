@@ -100,6 +100,38 @@ const LENGTH = {
   ],
 };
 
+const CASH = {
+  id: 'cash',
+  label: 'De combien de liquidités disposes-tu ?',
+  options: [
+    { value: 'none', label: 'Aucune — tout est investi', default: true },
+    { value: 'some', label: 'Un petit appoint' },
+    { value: 'fresh', label: "Je peux ajouter de l'argent frais" },
+  ],
+};
+
+const EXIT_REASON = {
+  id: 'exitReason',
+  label: 'Ton objectif ?',
+  options: [
+    { value: 'profit', label: 'Sécuriser mes gains au bon moment', default: true },
+    { value: 'cash', label: "Récupérer une partie de mon argent" },
+    { value: 'trim', label: 'Alléger ce qui est devenu trop cher' },
+  ],
+};
+
+const cashText = {
+  none: "Je n'ai plus de liquidités : chaque achat doit être financé par une vente (opération neutre en cash).",
+  some: "J'ai un petit appoint de liquidités ; l'essentiel des achats doit rester financé par des ventes.",
+  fresh: "Je peux ajouter de l'argent frais si une opportunité claire le justifie.",
+};
+
+const exitReasonText = {
+  profit: 'Je veux sécuriser mes gains au bon moment, sans sortir trop tôt.',
+  cash: "J'aurai besoin de récupérer une partie de mon argent : aide-moi à choisir quoi vendre, et quand.",
+  trim: 'Je veux alléger les lignes devenues chères ou surpondérées.',
+};
+
 const horizonText = { court: 'à court terme (< 1 an)', moyen: 'à moyen terme (1-3 ans)', long: 'à long terme (5 ans et plus)' };
 const toneText = { prudent: 'en priorisant la préservation du capital', offensif: 'avec un appétit pour le risque assumé', equilibre: '' };
 
@@ -168,17 +200,39 @@ ${compactContext(pf, expo)}
   {
     id: 'rebalance',
     scope: 'portfolio',
-    label: 'Rééquilibrage',
-    desc: 'Un plan d’action concret pour rapprocher le portefeuille d’une cible.',
-    steps: [HORIZON, TONE, LENGTH],
-    body: ({ pf, expo, answers }) => `Tu es conseiller en allocation${answers.tone && toneText[answers.tone] ? `, ${toneText[answers.tone]}` : ''}. Voici mon portefeuille (EUR).
+    label: 'Rééquilibrer / optimiser',
+    desc: 'Réallouer ce que tu détiens déjà — financer les achats par des ventes, avec ou sans argent frais.',
+    steps: [CASH, HORIZON, TONE, LENGTH],
+    body: ({ pf, expo, answers }) => `Tu es conseiller en allocation${answers.tone && toneText[answers.tone] ? `, ${toneText[answers.tone]}` : ''}. Voici mon portefeuille (DEGIRO, en EUR).
 
 ${compactContext(pf, expo)}
 
-Propose un plan de rééquilibrage ${horizonText[answers.horizon] || ''} :
-1. Les 3 déséquilibres les plus criants à corriger en priorité.
-2. Des mouvements concrets (lignes à alléger / renforcer / ouvrir), avec le raisonnement.
-3. L'ordre dans lequel les exécuter et les pièges à éviter (fiscalité, frais, market timing).`,
+Contrainte de budget : ${cashText[answers.cash] || cashText.none}
+
+Propose un plan d'optimisation ${horizonText[answers.horizon] || ''} :
+1. Les positions à alléger ou solder en priorité (valorisation, risque, redondance) et pourquoi.
+2. Où réinvestir le produit des ventes : renforcer l'existant ou ouvrir 1-2 lignes, en justifiant chaque choix.
+3. Un plan chiffré et équilibré (les ventes financent les achats), avec l'ordre d'exécution.
+4. Les pièges à éviter : fiscalité des plus-values, frais, market timing et sur-concentration.`,
+  },
+  {
+    id: 'exit',
+    scope: 'portfolio',
+    label: 'Quand vendre / récupérer mon argent',
+    desc: 'Prix de sortie, prise de profit, et le bon moment pour sécuriser ou récupérer ton capital.',
+    steps: [EXIT_REASON, HORIZON, LENGTH],
+    body: ({ pf, expo, answers }) => `Tu es analyste actions avec accès au web pour des données récentes. Voici mon portefeuille (EUR).
+
+${compactContext(pf, expo)}
+
+Objectif : ${exitReasonText[answers.exitReason] || exitReasonText.profit}
+Horizon : ${horizonText[answers.horizon] || 'à préciser'}.
+
+Pour mes principales lignes :
+1. Une estimation de valeur « juste » et une zone de prix de sortie (prise de profit partielle puis totale), avec le raisonnement.
+2. Les signaux qui justifieraient de vendre (valorisation tendue, thèse cassée, objectif atteint) plutôt que de conserver.
+3. Si je dois libérer des liquidités : dans quel ordre vendre (quoi en premier et pourquoi), en tenant compte des plus-values latentes et de la fiscalité.
+4. Un plan simple, daté, étape par étape.`,
   },
 ];
 

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
-import { attribution, concentration, riskMetrics } from '../src/services/analytics.js';
+import { attribution, concentration, riskMetrics, realizedPnl } from '../src/services/analytics.js';
 import { createApp } from '../src/app.js';
-import { closePool } from '../src/db/pool.js';
-import { resetDb } from './helpers.js';
+import { getPool, closePool } from '../src/db/pool.js';
+import { AUTH, resetDb } from './helpers.js';
 
 const app = createApp();
 beforeEach(async () => { await resetDb(); });
@@ -103,6 +103,98 @@ describe('métriques de risque', () => {
   });
 });
 
+describe('plus-values réalisées (PMP)', () => {
+  it('vente partielle : gain = produit − coût moyen × quantité', () => {
+    const { events, totals } = realizedPnl([
+      { tx_date: '2024-01-01', isin: 'A', description: 'Titre A', qty: 10, amount_eur: -1000, amount: 0 },
+      { tx_date: '2024-06-01', isin: 'A', description: 'Titre A', qty: -4, amount_eur: 600, amount: 0 },
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].qty).toBe(4);
+    expect(events[0].cost_eur).toBe(400);      // 100 × 4
+    expect(events[0].proceeds_eur).toBe(600);
+    expect(events[0].gain_eur).toBe(200);      // 600 − 400
+    expect(events[0].costUnknown).toBe(false);
+    expect(totals.net).toBe(200);
+    expect(totals.gains).toBe(200);
+    expect(totals.losses).toBe(0);
+    expect(totals.sales).toBe(1);
+  });
+
+  it('deux achats → coût moyen pondéré', () => {
+    const { events } = realizedPnl([
+      { tx_date: '2024-01-01', isin: 'A', qty: 10, amount_eur: -1000, amount: 0 },
+      { tx_date: '2024-02-01', isin: 'A', qty: 10, amount_eur: -2000, amount: 0 },
+      { tx_date: '2024-03-01', isin: 'A', qty: -5, amount_eur: 1000, amount: 0 },
+    ]);
+    // Coût moyen = (1000 + 2000) / 20 = 150 → coût cédé = 750, gain = 250.
+    expect(events[0].cost_eur).toBe(750);
+    expect(events[0].gain_eur).toBe(250);
+  });
+
+  it('les frais entrent au coût à l’achat et sont retranchés à la vente', () => {
+    const { events } = realizedPnl([
+      { tx_date: '2024-01-01', isin: 'A', qty: 10, amount_eur: -1000, amount: -5 },
+      { tx_date: '2024-06-01', isin: 'A', qty: -10, amount_eur: 1200, amount: -5 },
+    ]);
+    expect(events[0].cost_eur).toBe(1005);     // 1000 + 5 de frais
+    expect(events[0].proceeds_eur).toBe(1195); // 1200 − 5 de frais
+    expect(events[0].gain_eur).toBe(190);
+  });
+
+  it('vente à perte : comptée dans les pertes', () => {
+    const { totals } = realizedPnl([
+      { tx_date: '2024-01-01', isin: 'A', qty: 10, amount_eur: -1000, amount: 0 },
+      { tx_date: '2024-06-01', isin: 'A', qty: -10, amount_eur: 700, amount: 0 },
+    ]);
+    expect(totals.net).toBe(-300);
+    expect(totals.losses).toBe(-300);
+    expect(totals.gains).toBe(0);
+  });
+
+  it('vente sans achat connu → coût inconnu, gain non calculé', () => {
+    const { events, totals } = realizedPnl([
+      { tx_date: '2024-06-01', isin: 'A', qty: -5, amount_eur: 600, amount: 0 },
+    ]);
+    expect(events[0].costUnknown).toBe(true);
+    expect(events[0].gain_eur).toBeNull();
+    expect(events[0].cost_eur).toBeNull();
+    expect(totals.unknown).toBe(1);
+    expect(totals.net).toBe(0);
+  });
+
+  it('achat sans valeur EUR fiable → gain non calculé', () => {
+    const { events } = realizedPnl([
+      { tx_date: '2024-01-01', isin: 'A', qty: 10, amount_eur: null, amount: 0 },
+      { tx_date: '2024-06-01', isin: 'A', qty: -5, amount_eur: 600, amount: 0 },
+    ]);
+    expect(events[0].costUnknown).toBe(true);
+    expect(events[0].gain_eur).toBeNull();
+  });
+
+  it('agrège par ISIN et trie du plus gros gain au plus gros', () => {
+    const { byIsin } = realizedPnl([
+      { tx_date: '2024-01-01', isin: 'A', description: 'A', qty: 10, amount_eur: -1000, amount: 0 },
+      { tx_date: '2024-06-01', isin: 'A', description: 'A', qty: -10, amount_eur: 1300, amount: 0 },
+      { tx_date: '2024-01-01', isin: 'B', description: 'B', qty: 10, amount_eur: -1000, amount: 0 },
+      { tx_date: '2024-06-01', isin: 'B', description: 'B', qty: -10, amount_eur: 1100, amount: 0 },
+    ]);
+    expect(byIsin.map((b) => b.isin)).toEqual(['A', 'B']); // +300 avant +100
+    expect(byIsin[0].gain_eur).toBe(300);
+    expect(byIsin[1].gain_eur).toBe(100);
+  });
+
+  it('respecte l’ordre chronologique même si les lignes arrivent mélangées', () => {
+    const { events } = realizedPnl([
+      { tx_date: '2024-06-01', isin: 'A', qty: -5, amount_eur: 800, amount: 0 },
+      { tx_date: '2024-01-01', isin: 'A', qty: 10, amount_eur: -1000, amount: 0 },
+    ]);
+    // Trié : l'achat est traité avant la vente → coût connu, gain = 800 − 500.
+    expect(events[0].costUnknown).toBe(false);
+    expect(events[0].gain_eur).toBe(300);
+  });
+});
+
 describe('GET /api/analytics', () => {
   it('exige une authentification', async () => {
     expect((await request(app).get('/api/analytics')).status).toBe(401);
@@ -130,5 +222,24 @@ describe('GET /api/analytics', () => {
     expect(body.attribution.totals.pl_eur).toBe(150);
     expect(body.concentration.lines).toBe(2);
     expect(body.concentration.top1).toBeCloseTo(0.6, 2);
+  });
+
+  it('inclut les plus-values réalisées datées et les dividendes', async () => {
+    await getPool().query(
+      `INSERT INTO transactions (account_id, tx_date, type, isin, description, qty, amount, currency, amount_eur, external_id)
+       VALUES
+        (1, '2023-03-01 10:00:00', 'buy',  'US67066G1040', 'NVIDIA', 10,  0, 'EUR', -1000, 'b1'),
+        (1, '2024-05-01 10:00:00', 'sell', 'US67066G1040', 'NVIDIA', -10, 0, 'EUR',  1600, 's1'),
+        (1, '2024-09-01 10:00:00', 'dividend', 'IE00B4L5Y983', 'IWDA', NULL, 25, 'EUR', 25, 'd1')`,
+    );
+    const { body } = await request(app).get('/api/analytics').set(AUTH);
+    expect(body.realized.totals.net).toBe(600);
+    expect(body.realized.events).toHaveLength(1);
+    expect(body.realized.events[0].date).toBe('2024-05-01');
+    expect(body.realized.events[0].gain_eur).toBe(600);
+    expect(body.realized.dividends).toHaveLength(1);
+    expect(body.realized.dividendsTotal).toBe(25);
+    // Seules les années avec activité réalisée (vente ou dividende) sont listées.
+    expect(body.realized.years).toEqual(['2024']);
   });
 });
