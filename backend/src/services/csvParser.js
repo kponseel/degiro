@@ -304,7 +304,10 @@ const DESC_RULES = [
   [/dividende|dividend/i, 'dividend'],
   [/versement de fonds|dépôt|depot\b|storting|deposit|ideal|sofort/i, 'deposit'],
   [/retrait|withdrawal|terugstorting|payout/i, 'withdrawal'],
-  [/frais|courtage|commission|kosten|\bfee\b|costs|intérêt|interest|rente/i, 'fee'],
+  // Pas d'« intérêt » ici : chez DEGIRO il peut être perçu (« Flatex Interest
+  // Income ») aussi bien que dû. Faute de pouvoir trancher sur le seul libellé,
+  // il reste en « autre » plutôt que d'être compté à tort comme un frais.
+  [/frais|courtage|commission|kosten|\bfee\b|costs/i, 'fee'],
   [/change|fx|conversion|valuta/i, 'fx'],
 ];
 

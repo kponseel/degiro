@@ -134,6 +134,69 @@ describe.each([
   });
 });
 
+/**
+ * Cas relevé sur un export réel : DEGIRO écrit les **en-têtes dans la langue de
+ * l'interface** mais garde les **libellés de mouvement en français**. Un fichier
+ * peut donc être anglais et français à la fois — et c'est le libellé, pas
+ * l'en-tête, qui décide du classement.
+ */
+describe('export hybride — en-têtes anglais, libellés français', () => {
+  const rows = parseCsv(fixture('account-real-mixed.csv')).rows;
+  const txs = mapAccount(rows);
+  const byType = txs.reduce((acc, t) => { (acc[t.type] ||= []).push(t); return acc; }, {});
+
+  it('est reconnu comme un relevé de compte', () => {
+    expect(detectKind(rows)).toBe('account');
+  });
+
+  it('lit dividendes et retenues malgré l’en-tête anglais', () => {
+    expect(byType.dividend.map((t) => t.amount)).toEqual([0.15, 9.6, 28.35]);
+    expect(byType.dividend.every((t) => t.currency === 'USD')).toBe(true);
+    // « Impôts » au pluriel : la règle doit rester attrapée.
+    expect(byType.tax.map((t) => t.amount)).toEqual([-0.02, -1.44]);
+    expect(byType.dividend[0].isin).toBe('US5951121038');
+  });
+
+  it('ne prend pas les transferts internes pour des versements', () => {
+    // « Cash Sweep » déplace l'argent entre le compte espèces DEGIRO et la
+    // banque flatex : compté comme un dépôt, il ruinerait le TWR à chaque ordre.
+    const sweep = txs.filter((t) => /Cash Sweep/i.test(t.description));
+    expect(sweep).toHaveLength(1);
+    expect(sweep[0].type).toBe('other');
+
+    // Seuls les vrais mouvements externes comptent.
+    expect(byType.deposit.map((t) => t.amount)).toEqual([500]);
+    expect(byType.withdrawal.map((t) => t.amount)).toEqual([-150]);
+  });
+
+  it('écarte les lignes « Virement » sans montant plutôt que d’inventer un zéro', () => {
+    // Ces lignes doublent la ligne « Cash Sweep » et n'ont pas de colonne Change.
+    expect(txs.some((t) => /Virement/i.test(t.description))).toBe(false);
+    expect(rows.some((r) => /Virement/i.test(r.Description))).toBe(true);
+  });
+
+  it('classe les frais réels, sans y ranger un revenu d’intérêts', () => {
+    const fees = byType.fee.map((t) => t.amount);
+    expect(fees).toEqual([-2, -0.54, -5]);
+    const interest = txs.find((t) => /Interest/i.test(t.description));
+    expect(interest.type).toBe('other');
+  });
+
+  it('regroupe les opérations de change, accentuées ou non', () => {
+    // DEGIRO écrit « Operation » au crédit et « Opération » au débit.
+    expect(byType.fx).toHaveLength(2);
+    expect(byType.fx.map((t) => t.amount)).toEqual([1279.36, -1128.13]);
+  });
+
+  it('laisse achats et ventes en « autre » : ils viennent de Transactions.csv', () => {
+    // Les reprendre ici créerait un doublon de chaque ordre, avec un autre
+    // identifiant — l'ID d'ordre ne dédoublonne qu'entre fichiers de même type.
+    const ordres = txs.filter((t) => /^(Achat|Vente)/.test(t.description));
+    expect(ordres).toHaveLength(2);
+    expect(ordres.every((t) => t.type === 'other')).toBe(true);
+  });
+});
+
 describe('parité stricte entre les deux langues', () => {
   const strip = (txs) => txs.map(({ description, external_id: _id, ...rest }) => ({
     ...rest,
