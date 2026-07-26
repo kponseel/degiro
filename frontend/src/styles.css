@@ -541,6 +541,56 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .assistant-links a.chip { cursor: pointer; text-decoration: none; }
 .assistant-links a.chip:hover { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
+/* ── Générateur de prompts IA (wizard) ────────────────── */
+.wiz-goals { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.wiz-goal {
+  display: flex; flex-direction: column; gap: 5px; text-align: left;
+  padding: 16px 18px; border: 1px solid var(--line); border-radius: 13px;
+  background: var(--card); cursor: pointer; transition: border-color 0.12s, transform 0.02s;
+}
+.wiz-goal:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--card-2); }
+.wiz-goal:active { transform: translateY(0.5px); }
+.wiz-goal-title { font-weight: 700; letter-spacing: -0.01em; }
+.wiz-goal-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+
+.wiz-card { max-width: 620px; }
+.wiz-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.wiz-progress { font-size: 12px; color: var(--ink-faint); font-weight: 650; }
+.wiz-q { margin: 6px 0 16px; font-size: 18px; font-weight: 720; letter-spacing: -0.02em; }
+.wiz-opts { display: flex; flex-direction: column; gap: 9px; }
+.wiz-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left;
+  padding: 13px 16px; border: 1px solid var(--line); border-radius: 11px;
+  background: var(--card); cursor: pointer; font-size: 14.5px; font-weight: 550;
+  transition: border-color 0.12s, background 0.12s;
+}
+.wiz-opt:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--card-2); }
+.wiz-opt.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.wiz-skip { margin-top: 14px; }
+.wiz-stock-list { display: flex; flex-direction: column; gap: 7px; max-height: 52vh; overflow-y: auto; }
+.wiz-stock-list .wiz-opt { padding: 10px 14px; font-size: 13.5px; }
+
+.wiz-done-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.wiz-flow { list-style: none; margin: 16px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--card-2); display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.5; }
+.wiz-flow li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+/* ── Modal de collage ─────────────────────────────────── */
+.paste-modal { max-width: 620px; }
+.paste-area {
+  width: 100%; min-height: 180px; resize: vertical; font-family: ui-monospace, Consolas, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.5; padding: 12px 14px;
+}
+
+/* ── Badge d'avis IA ──────────────────────────────────── */
+.insight-badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
+  padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+  background: var(--card-2); border: 1px solid var(--line); color: var(--ink-soft);
+}
+.insight-badge .ib-risk { font-variant-numeric: tabular-nums; opacity: 0.85; }
+.insight-badge.pos { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); border-color: color-mix(in srgb, var(--pos) 32%, transparent); }
+.insight-badge.neg { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
+
 /* ── Gate ─────────────────────────────────────────────── */
 .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .gate .card { max-width: 420px; width: 100%; }
