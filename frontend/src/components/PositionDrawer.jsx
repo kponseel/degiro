@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { getNews } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtNum } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtNum, fmtDate } from '../lib/format.js';
 import StockLinks from './StockLinks.jsx';
+import { InsightBadge } from './InsightPasteModal.jsx';
+import { RECOMMENDATION_LABELS } from '../../../shared/aiInsightContract.js';
+
+/** Puce à puces d'une liste bull/bear (limitée pour rester lisible). */
+function Points({ title, items }) {
+  if (!items?.length) return null;
+  return (
+    <div className="dr-ai-points">
+      <span className="dr-ai-points-t">{title}</span>
+      <ul>{items.slice(0, 4).map((t, i) => <li key={i}>{t}</li>)}</ul>
+    </div>
+  );
+}
 
 function Row({ label, children }) {
   return (
@@ -17,7 +30,7 @@ function Row({ label, children }) {
  * exposition réelle (direct + via ETF), actualités du titre et liens finance.
  * Ferme sur Échap / clic extérieur ; le focus est piégé le temps de l'ouverture.
  */
-export default function PositionDrawer({ position, lookthrough, onClose }) {
+export default function PositionDrawer({ position, lookthrough, insight, onClose, onAnalyze }) {
   const [news, setNews] = useState(null);
   const panelRef = useRef(null);
   const previousFocus = useRef(null);
@@ -110,6 +123,35 @@ export default function PositionDrawer({ position, lookthrough, onClose }) {
               )}
             </section>
           )}
+
+          <section className="dr-section">
+            <div className="dr-ai-head">
+              <h4>Avis IA {insight && <InsightBadge insight={insight} />}</h4>
+              <button className="btn ghost" style={{ padding: '5px 11px', fontSize: 12.5 }} onClick={() => onAnalyze?.(p)}>
+                {insight ? 'Réanalyser' : 'Analyser avec l\'IA'}
+              </button>
+            </div>
+            {insight ? (
+              <>
+                <div className="dr-ai-grid">
+                  {insight.risk_score != null && <Row label="Risque (0-10)">{insight.risk_score}</Row>}
+                  {insight.recommendation && <Row label="Reco">{RECOMMENDATION_LABELS[insight.recommendation] || insight.recommendation}</Row>}
+                  {insight.fair_value != null && (
+                    <Row label="Valeur estimée">{fmtNum(insight.fair_value)} {insight.fair_value_ccy || ''}</Row>
+                  )}
+                  {insight.as_of && <Row label="Daté du">{fmtDate(insight.as_of)}</Row>}
+                </div>
+                {insight.summary && <p className="dr-ai-summary">{insight.summary}</p>}
+                <Points title="Points positifs" items={insight.payload?.bull_points} />
+                <Points title="Points de vigilance" items={insight.payload?.bear_points || insight.payload?.key_risks} />
+                <p className="muted dr-note">Avis d'une IA généraliste, à partir de tes chiffres — pas un conseil en investissement.</p>
+              </>
+            ) : (
+              <p className="muted dr-note">
+                Pas encore d'analyse. Génère un prompt pré-rempli pour ce titre, colle-le dans un assistant, puis reviens coller sa réponse.
+              </p>
+            )}
+          </section>
 
           <section className="dr-section">
             <h4>Pages finance</h4>

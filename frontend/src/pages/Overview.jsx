@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getPortfolio, getSnapshots, getLookthrough, getPerformance } from '../lib/api.js';
+import { getPortfolio, getSnapshots, getLookthrough, getPerformance, listAiInsights } from '../lib/api.js';
 import { fmtEur, fmtPct, fmtNum, fmtDate } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
+import { InsightBadge } from '../components/InsightPasteModal.jsx';
 import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
@@ -29,6 +30,7 @@ export default function Overview({ onGoImport }) {
   const [series, setSeries] = useState([]);
   const [perf, setPerf] = useState(null);
   const [lookthrough, setLookthrough] = useState(null);
+  const [insights, setInsights] = useState({});
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = usePersistentState('degiro_filter_overview', EMPTY_FILTER);
@@ -38,7 +40,11 @@ export default function Overview({ onGoImport }) {
     getSnapshots().then((d) => setSeries(d.snapshots || [])).catch(() => setSeries([]));
     getPerformance().then(setPerf).catch(() => setPerf(null));
     getLookthrough().then(setLookthrough).catch(() => setLookthrough(null));
+    listAiInsights().then((d) => setInsights(d.byIsin || {})).catch(() => setInsights({}));
   }, []);
+
+  // Ouvre le générateur de prompts pré-rempli pour un titre (raccourci contextuel).
+  const analyze = (p) => { window.location.hash = `#/ai?isin=${encodeURIComponent(p.isin)}`; };
 
   const positions = data?.positions || [];
   const totalPos = positions.reduce((s, p) => s + (Number(p.value_eur) || 0), 0);
@@ -233,6 +239,7 @@ export default function Overview({ onGoImport }) {
                     <td>
                       <span className="sym">{p.symbol || p.ticker || '—'}</span>{' '}
                       <span className="muted">{p.name || p.isin}</span>
+                      {insights[p.isin] && <InsightBadge insight={insights[p.isin]} compact />}
                     </td>
                     <td>{ac ? <span className={`chip ${isFund ? 'etf' : 'stock'}`}>{ac}</span> : <span className="muted">—</span>}</td>
                     <td>{fmtNum(p.qty, 0)}</td>
@@ -253,7 +260,13 @@ export default function Overview({ onGoImport }) {
         </div>
       </Card>
 
-      <PositionDrawer position={selected} lookthrough={lookthrough} onClose={() => setSelected(null)} />
+      <PositionDrawer
+        position={selected}
+        lookthrough={lookthrough}
+        insight={selected ? insights[selected.isin] : null}
+        onAnalyze={analyze}
+        onClose={() => setSelected(null)}
+      />
     </>
   );
 }

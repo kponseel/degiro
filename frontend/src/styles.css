@@ -386,6 +386,13 @@ tr.row-click:focus-visible { outline: 2px solid var(--accent); outline-offset: -
 .dr-label { color: var(--ink-soft); }
 .dr-value { font-variant-numeric: tabular-nums; text-align: right; }
 .dr-note { font-size: 12.5px; margin: 8px 0 0; line-height: 1.5; }
+.dr-ai-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.dr-ai-head h4 { margin: 0; }
+.dr-ai-summary { font-size: 13px; line-height: 1.55; margin: 10px 0 0; color: var(--ink); }
+.dr-ai-points { margin-top: 10px; }
+.dr-ai-points-t { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+.dr-ai-points ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.dr-ai-points li { font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
 .dr-news { display: block; text-decoration: none; color: inherit; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
 .dr-news:last-child { border-bottom: none; }
 .dr-news-title { display: block; font-size: 13px; font-weight: 560; line-height: 1.4; }
