@@ -97,6 +97,26 @@ describe.each([['anglais', EN], ['français', FR]])('import DEGIRO complet — %
   });
 });
 
+describe('la taxe de transaction ne rogne pas les dividendes', () => {
+  it('le net ne retranche que la retenue à la source', async () => {
+    const agent = await signIn('ttf@example.com');
+    expect((await upload(agent, 'account-real-mixed.csv')).status).toBe(200);
+
+    const { body } = await agent.get('/api/dividends');
+    const usd = body.currencies.find((c) => c.currency === 'USD');
+
+    // Le fichier porte 38,10 $ de dividendes et 1,46 $ de retenue, plus
+    // 1,95 € de TTF et stamp duty qui n'ont rien à voir avec eux.
+    expect(Number(usd.gross)).toBeCloseTo(38.1, 2);
+    expect(Number(usd.tax)).toBeCloseTo(-1.46, 2);
+    expect(Number(usd.net)).toBeCloseTo(36.64, 2);
+
+    // Aucun seau ne doit contenir la taxe de transaction, en euro comme ailleurs.
+    const eur = body.currencies.find((c) => c.currency === 'EUR');
+    expect(eur).toBeUndefined();
+  });
+});
+
 describe('les deux langues donnent le même tableau de bord', () => {
   it('mêmes positions, mêmes dividendes, mêmes liquidités', async () => {
     const en = await importAll('parite-en@example.com', EN);

@@ -164,9 +164,24 @@ describe('export hybride — en-têtes anglais, libellés français', () => {
     expect(sweep).toHaveLength(1);
     expect(sweep[0].type).toBe('other');
 
-    // Seuls les vrais mouvements externes comptent.
-    expect(byType.deposit.map((t) => t.amount)).toEqual([500]);
+    // Seuls les vrais mouvements externes comptent — « Dépôt flatex » compris.
+    expect(byType.deposit.map((t) => t.amount)).toEqual([500, 250]);
     expect(byType.withdrawal.map((t) => t.amount)).toEqual([-150]);
+  });
+
+  it('sépare taxes de transaction et retenue sur dividende', () => {
+    // La page Dividendes fait « net = brut + tax ». Mélangées, la TTF et le
+    // stamp duty seraient retranchés des dividendes auxquels ils sont étrangers.
+    expect(byType.transaction_tax.map((t) => t.amount)).toEqual([-1.2, -0.75]);
+    expect(byType.tax.every((t) => /Impôts sur dividende/.test(t.description))).toBe(true);
+  });
+
+  it('reconnaît changement d’ISIN et fractionnement', () => {
+    // « Changement ISIN » contient « change » : sans règle dédiée placée avant,
+    // il se faisait passer pour une opération de change.
+    expect(byType.isin_change).toHaveLength(1);
+    expect(byType.split).toHaveLength(1);
+    expect(byType.fx.every((t) => /Op[eé]ration de change/.test(t.description))).toBe(true);
   });
 
   it('écarte les lignes « Virement » sans montant plutôt que d’inventer un zéro', () => {
@@ -175,11 +190,13 @@ describe('export hybride — en-têtes anglais, libellés français', () => {
     expect(rows.some((r) => /Virement/i.test(r.Description))).toBe(true);
   });
 
-  it('classe les frais réels, sans y ranger un revenu d’intérêts', () => {
-    const fees = byType.fee.map((t) => t.amount);
-    expect(fees).toEqual([-2, -0.54, -5]);
-    const interest = txs.find((t) => /Interest/i.test(t.description));
-    expect(interest.type).toBe('other');
+  it('distingue l’intérêt dû du revenu d’intérêts', () => {
+    // « Intérêts débiteurs » est un coût ; « Interest Income » est un revenu.
+    // Le second reste en « autre » faute d'un type qui lui corresponde — plutôt
+    // que d'être compté comme un frais, ce qu'il n'est pas.
+    expect(byType.fee.map((t) => t.amount)).toEqual([-2, -0.54, -5, -0.45]);
+    expect(txs.find((t) => /Interest Income/i.test(t.description)).type).toBe('other');
+    expect(txs.find((t) => /débiteur/i.test(t.description)).type).toBe('fee');
   });
 
   it('regroupe les opérations de change, accentuées ou non', () => {
