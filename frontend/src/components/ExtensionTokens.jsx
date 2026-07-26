@@ -55,10 +55,49 @@ export default function ExtensionTokens() {
   }
 
   return (
-    <Card title="Extension Chrome — jetons d'accès">
+    <Card title="Extension Chrome — capture en un clic">
       <p className="muted" style={{ marginTop: 0 }}>
-        L'extension de capture automatique a besoin d'un jeton pour envoyer tes positions.
-        Génères-en un, colle-le dans l'extension. Il n'est affiché <strong>qu'une seule fois</strong> —
+        L'extension capture ton portefeuille depuis ta session DEGIRO ouverte, sans fichier à manipuler.
+        Trois étapes : <strong>1.</strong> installe-la, <strong>2.</strong> génère un jeton, <strong>3.</strong> colle-le dans l'extension.
+      </p>
+
+      <div className="ext-step">
+        <div className="ext-step-head">
+          <span className="ext-step-num">1</span>
+          <strong>Installer l'extension</strong>
+        </div>
+        <p className="muted" style={{ margin: '2px 0 10px' }}>
+          Sur ordinateur (Chrome / Edge / Brave). Pas disponible sur mobile — sur téléphone, importe plutôt un CSV.
+        </p>
+        <a className="btn" href="/api/extension/download" download>⬇ Télécharger l'extension (.zip)</a>
+
+        <details className="ext-help">
+          <summary>Instructions d'installation (Windows / Mac)</summary>
+          <ol className="ext-instr">
+            <li><strong>Décompresse le .zip</strong> téléchargé.
+              <div className="muted">Windows : clic droit → <em>Extraire tout</em>. Mac : double-clic sur le fichier.</div>
+              <div className="muted">Tu obtiens un dossier <code>degiro-analyzer</code> — retiens où il est (Téléchargements, en général).</div>
+            </li>
+            <li>Ouvre Chrome et va à l'adresse <code>chrome://extensions</code>.</li>
+            <li>Active le <strong>Mode développeur</strong> (interrupteur en haut à droite).</li>
+            <li>Clique <strong>« Charger l'extension non empaquetée »</strong> (Windows) / <strong>« Load unpacked »</strong> si Chrome est en anglais.</li>
+            <li>Sélectionne le dossier <code>degiro-analyzer</code> décompressé à l'étape 1.
+              <div className="muted">Choisis le dossier lui-même, pas un fichier à l'intérieur.</div>
+            </li>
+            <li>L'icône de l'extension apparaît dans la barre d'outils. C'est prêt — passe au jeton ci-dessous.</li>
+          </ol>
+          <p className="muted" style={{ fontSize: 12.5 }}>
+            Le dossier doit rester à sa place : Chrome le lit à chaque démarrage. Ne le supprime pas après installation.
+          </p>
+        </details>
+      </div>
+
+      <div className="ext-step-head" style={{ marginTop: 18 }}>
+        <span className="ext-step-num">2</span>
+        <strong>Générer un jeton</strong>
+      </div>
+      <p className="muted" style={{ marginTop: 2 }}>
+        Le jeton relie l'extension à ton compte. Il n'est affiché <strong>qu'une seule fois</strong> —
         si tu le perds, révoque-le et génère-en un nouveau.
       </p>
 

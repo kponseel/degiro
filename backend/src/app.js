@@ -24,6 +24,7 @@ import benchmarkRouter from './routes/benchmark.js';
 import adminRouter from './routes/admin.js';
 import newsRouter from './routes/news.js';
 import aiRouter from './routes/ai.js';
+import extensionRouter from './routes/extension.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -59,6 +60,10 @@ export function createApp() {
 
   // Authentification (liens magiques + sessions) : publique, se protège elle-même.
   app.use('/api/auth', authRouter);
+
+  // Téléchargement de l'extension : publique (code open-source, aucun secret),
+  // pour que le lien fonctionne sans dépendre du cookie de session.
+  app.use('/api/extension', extensionRouter);
 
   // Toutes les autres routes /api exigent le jeton bearer (migration vers sessions en cours).
   app.use('/api', requireAuth);
