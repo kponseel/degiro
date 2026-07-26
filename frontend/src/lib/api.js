@@ -35,6 +35,14 @@ export const listExtTokens = () => api('/api/auth/me/tokens');
 export const createExtToken = (label) => jsonPost('/api/auth/me/tokens', { label });
 export const revokeExtToken = (id) => api(`/api/auth/me/tokens/${id}`, { method: 'DELETE' });
 
+// ── Avis IA (prompts historisés + réponses ré-ingérées) ───────────
+export const listAiPrompts = () => api('/api/ai/prompts');
+export const saveAiPrompt = (p) => jsonPost('/api/ai/prompts', p);
+export const deleteAiPrompt = (id) => api(`/api/ai/prompts/${id}`, { method: 'DELETE' });
+export const listAiInsights = () => api('/api/ai/insights');
+export const ingestAiInsight = (raw, provider) => jsonPost('/api/ai/insights', { raw, provider });
+export const deleteAiInsight = (id) => api(`/api/ai/insights/${id}`, { method: 'DELETE' });
+
 // ── Administration (ADMIN_EMAIL uniquement) ───────────────────────
 export const adminListUsers = () => api('/api/admin/users');
 export const adminUpdateUser = (id, patch) => jsonPost(`/api/admin/users/${id}`, patch, 'PATCH');
