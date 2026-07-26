@@ -113,6 +113,35 @@ describe('assemblage du prompt', () => {
   });
 });
 
+describe('objectifs d’optimisation et de sortie', () => {
+  it('rééquilibrage sans cash impose de financer les achats par des ventes', () => {
+    const built = assemblePrompt({ goalId: 'rebalance', answers: { cash: 'none', horizon: 'moyen' }, pf, expo });
+    expect(built.scope).toBe('portfolio');
+    expect(built.text).toContain('neutre en cash');
+    expect(built.text).toContain('les ventes financent les achats');
+  });
+
+  it('rééquilibrage avec argent frais le mentionne', () => {
+    const built = assemblePrompt({ goalId: 'rebalance', answers: { cash: 'fresh' }, pf, expo });
+    expect(built.text).toContain('argent frais');
+  });
+
+  it('stratégie de sortie reflète le besoin de récupérer du cash et l’horizon', () => {
+    const built = assemblePrompt({ goalId: 'exit', answers: { exitReason: 'cash', horizon: 'court' }, pf, expo });
+    expect(built.scope).toBe('portfolio');
+    expect(built.isin).toBeNull();
+    expect(built.text).toContain('récupérer une partie de mon argent');
+    expect(built.text).toContain('court terme');
+    expect(built.text).toContain('prix de sortie');
+  });
+
+  it('stratégie de sortie : valeurs par défaut sans réponses', () => {
+    const built = assemblePrompt({ goalId: 'exit', answers: {}, pf, expo });
+    expect(built.text).toContain('sécuriser mes gains'); // défaut = profit
+    expect(built.text).not.toContain('undefined');
+  });
+});
+
 describe('cohérence avec le schéma serveur', () => {
   it('une réponse remplie selon le squelette d’un prompt est acceptée', () => {
     // On simule ce qu'une IA renverrait en suivant les instructions générées.

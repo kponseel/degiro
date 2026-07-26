@@ -6,9 +6,9 @@ import InsightPasteModal from '../components/InsightPasteModal.jsx';
 import { fmtEur, fmtPct, fmtDate } from '../lib/format.js';
 
 const ASSISTANTS = [
-  { name: 'ChatGPT', url: 'https://chatgpt.com/' },
-  { name: 'Claude', url: 'https://claude.ai/new' },
-  { name: 'Gemini', url: 'https://gemini.google.com/app' },
+  { name: 'Gemini', url: 'https://gemini.google.com/app', reco: 'recherche web gratuite' },
+  { name: 'ChatGPT', url: 'https://chatgpt.com/', reco: 'active la recherche web' },
+  { name: 'Claude', url: 'https://claude.ai/new', reco: 'raisonnement soigné' },
 ];
 
 /** Lit ?isin=… dans le hash (#/ai?isin=XXX), pour le raccourci depuis une position. */
@@ -40,10 +40,18 @@ function ResultStep({ built, onReset, onPasteOpen }) {
       </div>
 
       <ol className="wiz-flow">
-        <li><strong>1.</strong> Ouvre un assistant :
-          {ASSISTANTS.map((a) => (
-            <a key={a.name} className="chip link-chip" style={{ marginLeft: 6 }} href={a.url} target="_blank" rel="noopener noreferrer">{a.name} ↗</a>
-          ))}
+        <li><strong>1.</strong> Ouvre un assistant (compte web gratuit) :
+          <div className="assistant-links" style={{ marginTop: 8 }}>
+            {ASSISTANTS.map((a) => (
+              <a key={a.name} className="chip link-chip" href={a.url} target="_blank" rel="noopener noreferrer">
+                {a.name} <span className="muted sm">· {a.reco}</span> ↗
+              </a>
+            ))}
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 7 }}>
+            Astuce : choisis le modèle le plus récent proposé (souvent « Pro », « Thinking » ou « raisonnement ») et,
+            si l'option existe, active la <strong>recherche web</strong> — l'analyse s'appuiera sur des cours à jour.
+          </div>
         </li>
         <li><strong>2.</strong> Colle le prompt, envoie, attends la réponse.</li>
         <li><strong>3.</strong> Sélectionne toute la réponse, copie-la, puis :
