@@ -13,7 +13,11 @@
   --card-2: #f7f9fc;
   --ink: #0b0e14;         /* near-black, high contrast */
   --ink-soft: #545c6b;
-  --ink-faint: #8b95a6;
+  /* Texte tertiaire (ISIN, dates, libellés de colonnes) : #8b95a6 ne tenait
+     que 3,02:1 sur blanc, sous le seuil AA de 4,5:1. Assombri juste assez
+     pour passer (4,9:1) en restant nettement en retrait de --ink-soft
+     (6,7:1) : la hiérarchie secondaire / tertiaire est préservée. */
+  --ink-faint: #6a717e;
   --line: #e5e9f0;        /* hairline */
   --line-soft: #eef1f6;
 
@@ -23,10 +27,19 @@
   --accent-soft: #eaf2fe; /* active wash */
 
   /* Semantic (gains / losses / caution) — distinct from accent */
-  --pos: #0a8f5b;
-  --neg: #d83a3a;
-  --warn: #b0740e;
+  /* Teintes assombries d'un cran, hue conservée : les précédentes plafonnaient
+     entre 3,5 et 4,2:1 sur les fonds clairs et sur leurs propres lavis
+     (bannières, badges d'avis), sous le seuil AA de 4,5:1. */
+  --pos: #08794c;
+  --neg: #c62d2d;
+  --warn: #96640c;
   --warn-soft: #fbf1dc;
+
+  /* Encre posée sur un aplat saturé (bouton principal, bouton danger, chip
+     actif). Blanche en clair ; en sombre les mêmes aplats sont pastel et le
+     blanc n'y tenait que 3,1–3,3:1 — d'où une encre quasi noire. Assombrir
+     --accent à la place aurait dégradé l'anneau de focus et les liens. */
+  --fill-ink: #ffffff;
 
   /* Depth */
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 10px 28px rgba(16, 24, 40, 0.06);
@@ -52,7 +65,8 @@
     --card-2: #1a1e26;
     --ink: #eaedf2;
     --ink-soft: #97a1b2;
-    --ink-faint: #667085;
+    --ink-faint: #7d8597;   /* 3,61:1 → 4,87:1 sur --card */
+    --fill-ink: #0b0d11;    /* aplats accent/danger pastel : encre sombre */
     --line: #262b35;
     --line-soft: #1e232c;
     --accent: #4c8df6;
@@ -73,7 +87,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --paper: #0b0d11; --card: #14171d; --card-2: #1a1e26;
-  --ink: #eaedf2; --ink-soft: #97a1b2; --ink-faint: #667085;
+  --ink: #eaedf2; --ink-soft: #97a1b2; --ink-faint: #7d8597; --fill-ink: #0b0d11;
   --line: #262b35; --line-soft: #1e232c;
   --accent: #4c8df6; --accent-ink: #85b3fa; --accent-soft: #16233c;
   --pos: #34c08a; --neg: #f0656b; --warn: #e0a64b; --warn-soft: #2a2214;
@@ -100,6 +114,20 @@ a { color: var(--accent); }
 code { font-family: ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace; font-size: 0.88em; }
 button { font: inherit; cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+/* Masquage visuel qui PRÉSERVE le clavier. `hidden` pose display:none et sort
+   l'élément de l'ordre de tabulation : les <input type="file"> d'import
+   étaient injoignables sans souris (60 tabulations sans les atteindre), alors
+   qu'un <label> n'est jamais focalisable non plus. Ici l'input reste dans le
+   flux de focus et le lecteur d'écran annonce « Choisir un CSV, bouton ». */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+/* L'input masqué ne peut pas montrer son anneau de focus (le clip l'emporte) :
+   c'est son <label>, le bouton réellement vu, qui doit le porter. */
+.btn:has(.sr-only:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── App shell : barre supérieure + contenu pleine largeur ─ */
 .app { min-height: 100vh; display: flex; flex-direction: column; }
@@ -442,7 +470,7 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip.filter { cursor: pointer; background: var(--card-2); }
 .chip.filter:hover { border-color: var(--ink-faint); }
-.chip.filter.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.chip.filter.on { color: var(--fill-ink); background: var(--accent); border-color: var(--accent); }
 
 /* Raccourcis finance */
 .stock-links { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -468,7 +496,7 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .ext-step-head { display: flex; align-items: center; gap: 9px; }
 .ext-step-num {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
+  width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--fill-ink);
   font-size: 12.5px; font-weight: 700;
 }
 .ext-help { margin-top: 12px; }
@@ -521,7 +549,7 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 10px 17px; border-radius: 10px; border: 1px solid transparent;
-  background: var(--accent); color: #fff; font-weight: 650; letter-spacing: -0.01em;
+  background: var(--accent); color: var(--fill-ink); font-weight: 650; letter-spacing: -0.01em;
   box-shadow: var(--shadow-sm); transition: filter 0.12s ease, transform 0.02s ease;
 }
 .btn:hover { filter: brightness(1.06); }
@@ -529,7 +557,7 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
 .btn.ghost { background: var(--card); color: var(--ink); border-color: var(--line); box-shadow: none; }
 .btn.ghost:hover { border-color: var(--ink-faint); background: var(--card-2); filter: none; }
-.btn.danger { background: var(--neg); color: #fff; box-shadow: none; }
+.btn.danger { background: var(--neg); color: var(--fill-ink); box-shadow: none; }
 .link-btn.danger-text { color: var(--neg); }
 
 /* Jeton d'extension révélé une seule fois : doit rester lisible et copiable. */
@@ -642,6 +670,22 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .insight-badge.pos { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); border-color: color-mix(in srgb, var(--pos) 32%, transparent); }
 .insight-badge.neg { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
 
+/* ── Carte « Avis IA du portefeuille » (Vue d'ensemble) ─ */
+.pf-ai { margin-bottom: 14px; }
+.pf-ai-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.pf-ai-scores { display: flex; gap: 26px; flex-wrap: wrap; }
+/* Deux colonnes tant qu'il y a la place ; `minmax(min(280px, 100%), …)` pour que
+   les libellés longs de l'IA se replient au lieu d'élargir la grille. */
+.pf-ai-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 18px; }
+.pf-ai-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.pf-ai-list li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
+.pf-ai-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pf-ai-ref { font-size: 12px; flex-shrink: 0; }
+/* Sévérité haute : le rouge des pertes, seul ton « alerte » du système. */
+.chip.sev-high { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
+.chip.pos { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); border-color: color-mix(in srgb, var(--pos) 32%, transparent); }
+.chip.neg { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
+
 /* ── Gate ─────────────────────────────────────────────── */
 .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .gate .card { max-width: 420px; width: 100%; }
@@ -707,10 +751,29 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .kpi-value { font-size: 18px; }
   .alloc-wrap { flex-direction: column; align-items: stretch; }
+  /* Avis IA : une seule colonne, scores resserrés. */
+  .pf-ai-cols { grid-template-columns: minmax(0, 1fr); }
+  .pf-ai-scores { gap: 18px; }
   .alloc-chart { width: 100%; height: 150px; }
   .filter-bar .filter-search { flex-basis: 100%; }
   .filter-bar .filter-select { flex: 1 1 44%; }
   .filter-bar .filter-meta { margin-left: 0; width: 100%; justify-content: space-between; }
+
+  /* Tableaux : seul le libellé se replie. En `nowrap` il prenait la largeur du
+     nom complet (« ADR ON ALIBABA GROUP HOLDING LTD ») et repoussait tous les
+     montants hors de la carte — on ne voyait qu'une colonne de noms de sociétés.
+     Les nombres, eux, restent sur une ligne et alignés à droite. */
+  table.data th:first-child, table.data td:first-child { white-space: normal; }
+}
+
+/* En dessous de la tablette en portrait (768 px), les sept colonnes des positions
+   ne tiennent plus : on resserre la densité et on ne garde que ce que l'on vient
+   chercher depuis un canapé — la valeur et la plus/moins-value. Type, quantité,
+   cours et poids restent à un clic, dans le tiroir de détail de la ligne. */
+@media (max-width: 767px) {
+  table.data th, table.data td,
+  table.data.compact th, table.data.compact td { padding: 10px 8px; font-size: 13.5px; }
+  table.data .col-opt { display: none; }
 }
 
 @media (max-width: 420px) {

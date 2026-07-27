@@ -6,6 +6,12 @@ import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 
 const PALETTE = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)'];
 
+/** Doit rester aligné sur UNCLASSIFIED côté serveur (backend/src/services/exposure.js). */
+const UNCLASSIFIED = 'Non classé';
+
+// Gris neutre : la part non enrichie ne doit pas se lire comme une catégorie de plus.
+const colorAt = (d, i) => (d.key === UNCLASSIFIED ? 'var(--ink-faint)' : PALETTE[i % PALETTE.length]);
+
 function groupBy(positions, keyFn, fallback = 'Inconnu') {
   const map = new Map();
   let total = 0;
@@ -35,7 +41,7 @@ function Donut({ title, data, note }) {
           <PieChart>
             <Pie data={data} dataKey="value" nameKey="key" innerRadius={30} outerRadius={46} paddingAngle={2}
               stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
-              {data.map((d, i) => <Cell key={d.key} fill={PALETTE[i % PALETTE.length]} />)}
+              {data.map((d, i) => <Cell key={d.key} fill={colorAt(d, i)} />)}
             </Pie>
             <Tooltip
               formatter={(v, n) => [fmtEur(v), n]}
@@ -47,7 +53,7 @@ function Donut({ title, data, note }) {
       <ul className="expo-legend">
         {top.map((d, i) => (
           <li key={d.key}>
-            <span className="legend-dot" style={{ background: PALETTE[i % PALETTE.length] }} />
+            <span className="legend-dot" style={{ background: colorAt(d, i) }} />
             <span className="expo-key" title={d.key}>{d.key}</span>
             <span className="expo-pct">{fmtPct(d.weight)}</span>
           </li>
@@ -198,6 +204,13 @@ export default function Exposure({ onGoImport }) {
   const byType = exposure?.asset_class?.length ? exposure.asset_class : groupBy(positions, (p) => p.product_type, 'Non typé');
   const bySector = exposure?.sector || [];
   const byCountry = exposure?.country || [];
+  // Les poids portent désormais sur le portefeuille entier : on chiffre la part non enrichie
+  // pour que l'utilisateur sache sur quelle assiette réelle le camembert repose.
+  const sectorUnknown = bySector.find((d) => d.key === UNCLASSIFIED)?.weight || 0;
+  const countryUnknown = byCountry.find((d) => d.key === UNCLASSIFIED)?.weight || 0;
+  // Un camembert 100 % « Non classé » n'apprend rien : on le masque au profit de l'alerte.
+  const hasSector = bySector.some((d) => d.key !== UNCLASSIFIED);
+  const hasCountry = byCountry.some((d) => d.key !== UNCLASSIFIED);
 
   return (
     <>
@@ -205,8 +218,16 @@ export default function Exposure({ onGoImport }) {
         <div className="expo-grid">
           <Donut title="Devise" data={byCurrency} note="Devise de cotation — sans neutraliser l'effet de change." />
           <Donut title="Classe d'actifs" data={byType} note="Type DEGIRO, ou déduit du nom (UCITS/ETF → ETF)." />
-          {bySector.length > 0 && <Donut title="Secteur" data={bySector} note="Hors ETF non éclatés — le look-through affine cette vue." />}
-          {byCountry.length > 0 && <Donut title="Pays" data={byCountry} note="Pour les ETF, pays de domiciliation." />}
+          {hasSector && (
+            <Donut title="Secteur" data={bySector} note={sectorUnknown > 0
+              ? '« Non classé » = ETF et ISIN sans secteur renseigné. Le look-through affine cette vue.'
+              : 'Hors ETF non éclatés — le look-through affine cette vue.'} />
+          )}
+          {hasCountry && (
+            <Donut title="Pays" data={byCountry} note={countryUnknown > 0
+              ? 'Pour les ETF, pays de domiciliation. « Non classé » = ISIN dont le pays reste inconnu.'
+              : 'Pour les ETF, pays de domiciliation.'} />
+          )}
         </div>
       </Card>
       {lookthrough && lookthrough.coveredCount > 0 && (
@@ -214,11 +235,16 @@ export default function Exposure({ onGoImport }) {
           <Lookthrough data={lookthrough} />
         </div>
       )}
-      {(enrichPending || bySector.length === 0) && (
+      {(enrichPending || sectorUnknown > 0) && (
         <div style={{ marginTop: 16 }}>
           <Banner kind="info">
-            La répartition par secteur nécessite l'enrichissement ISIN (source externe) ou une saisie
-            manuelle. Renseignez-la depuis <strong>Import / Réglages → Références ISIN</strong>.
+            {enrichPending || !hasSector ? (
+              <>La répartition par secteur nécessite l'enrichissement ISIN (source externe) ou une saisie manuelle.</>
+            ) : (
+              <><strong>{fmtPct(sectorUnknown)} du portefeuille n'a pas de secteur renseigné</strong> (ETF et ISIN non
+              enrichis) : ces lignes sont regroupées sous « Non classé » dans le camembert ci-dessus.</>
+            )}{' '}
+            Renseignez-les depuis <strong>Import / Réglages → Références ISIN</strong>.
           </Banner>
         </div>
       )}

@@ -1,13 +1,20 @@
 import { getPool } from '../db/pool.js';
 
-/** Agrège des positions par clé, pondéré par la valeur EUR. */
-export function group(positions, keyFn, { skipNull = false } = {}) {
+/** Libellé de la part non enrichie — partagé avec le front (légende + alerte). */
+export const UNCLASSIFIED = 'Non classé';
+
+/**
+ * Agrège des positions par clé, pondéré par la valeur EUR.
+ * Les positions sans clé sont regroupées sous `fallback` plutôt qu'exclues :
+ * le dénominateur reste le portefeuille entier, sinon un poids de 100 % peut
+ * ne représenter qu'une fraction du patrimoine.
+ */
+export function group(positions, keyFn, { fallback = 'Inconnu' } = {}) {
   const map = new Map();
   let total = 0;
   for (const p of positions) {
     const raw = keyFn(p);
-    if (skipNull && (raw === null || raw === undefined || raw === '')) continue;
-    const key = raw || 'Inconnu';
+    const key = raw || fallback;
     const value = Number(p.value_eur) || 0;
     map.set(key, (map.get(key) || 0) + value);
     total += value;
@@ -38,7 +45,7 @@ export async function computeExposure(accountId = 1) {
   return {
     currency: group(positions, (p) => p.currency),
     asset_class: group(positions, (p) => p.asset_class || p.product_type || 'Non typé'),
-    sector: group(positions, (p) => p.sector, { skipNull: true }),
-    country: group(positions, (p) => p.country, { skipNull: true }),
+    sector: group(positions, (p) => p.sector, { fallback: UNCLASSIFIED }),
+    country: group(positions, (p) => p.country, { fallback: UNCLASSIFIED }),
   };
 }

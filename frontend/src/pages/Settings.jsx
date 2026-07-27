@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   enrichNow, getEtfHoldings, uploadEtfHoldings,
   updatePseudo, deleteMyData, deleteAccount,
@@ -9,6 +9,7 @@ import IsinEditor from '../components/IsinEditor.jsx';
 import ExtensionTokens from '../components/ExtensionTokens.jsx';
 
 function EtfHoldingsUploader({ onImported }) {
+  const inputId = useId();
   const [etfs, setEtfs] = useState(null);
   const [selected, setSelected] = useState('');
   const [file, setFile] = useState(null);
@@ -74,12 +75,15 @@ function EtfHoldingsUploader({ onImported }) {
               <span className="k">Fichier de composition</span>
               <span className="d">{file ? file.name : 'Holdings.csv de l\'émetteur (nom, ISIN, poids %)'}</span>
             </div>
-            <label className="btn ghost">
+            {/* Même défaut que dans Uploader.jsx : `hidden` sortait l'input de
+                l'ordre de tabulation. Voir .sr-only dans styles.css. */}
+            <label className="btn ghost" htmlFor={inputId}>
               {file ? 'Changer' : 'Choisir un CSV'}
               <input
+                id={inputId}
+                className="sr-only"
                 type="file"
                 accept=".csv,text/csv,text/comma-separated-values,text/plain,application/csv,application/octet-stream"
-                hidden
                 onChange={(e) => { setFile(e.target.files[0]); setResult(null); setError(null); }}
               />
             </label>
@@ -179,17 +183,9 @@ function AccountCard({ user, onUserChange, onLogout }) {
   );
 }
 
-export default function Settings({ onImported, onGoOverview, user, onUserChange, onLogout }) {
+export default function Settings({ onImported, onGoOverview, user, onUserChange, onLogout, theme, onThemeChange }) {
   const [enrichMsg, setEnrichMsg] = useState(null);
   const [portfolioJustImported, setPortfolioJustImported] = useState(false);
-  const [theme, setThemeState] = useState(localStorage.getItem('degiro_theme') || 'light');
-
-  function applyTheme(t) {
-    setThemeState(t);
-    localStorage.setItem('degiro_theme', t);
-    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', t);
-  }
 
   async function runEnrich() {
     setEnrichMsg({ kind: 'info', text: 'Enrichissement en cours… (récupération des secteurs)' });
@@ -249,9 +245,11 @@ export default function Settings({ onImported, onGoOverview, user, onUserChange,
       <ExtensionTokens />
 
       <Card title="Apparence">
-        <div style={{ display: 'flex', gap: 8 }}>
+        {/* « Système » est le défaut : sans choix explicite, la feuille de styles
+            suit prefers-color-scheme — plus d'écran blanc sur un OS en sombre. */}
+        <div style={{ display: 'flex', gap: 8 }} role="group" aria-label="Thème de l'interface">
           {['auto', 'light', 'dark'].map((t) => (
-            <button key={t} className={`btn ${theme === t ? '' : 'ghost'}`} onClick={() => applyTheme(t)}>
+            <button key={t} className={`btn ${theme === t ? '' : 'ghost'}`} aria-pressed={theme === t} onClick={() => onThemeChange(t)}>
               {t === 'auto' ? 'Système' : t === 'light' ? 'Clair' : 'Sombre'}
             </button>
           ))}
