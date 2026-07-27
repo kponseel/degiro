@@ -1,0 +1,63 @@
+name: Deploy
+
+# Déploiement en production (Hostinger).
+#
+# Pourquoi ce workflow : Hostinger déploie depuis son interface, ce qui fait du
+# déploiement une action manuelle — et donc l'étape qui traîne après un merge.
+# En passant par le « deploy hook » que Hostinger expose (réglages Git de
+# l'application web), la mise en ligne devient déclenchable depuis GitHub :
+# automatiquement à chaque arrivée sur `main`, ou à la demande.
+#
+# Mise en place, une seule fois :
+#   1. hPanel → ton application → réglages Git → copier l'URL du « deploy hook ».
+#   2. GitHub → Settings → Secrets and variables → Actions → New repository secret
+#      Nom : HOSTINGER_DEPLOY_HOOK — Valeur : l'URL copiée.
+#
+# Sans ce secret, le workflow ne fait rien et le dit : il n'échoue pas, pour ne
+# pas afficher une croix rouge sur un dépôt dont le déploiement reste manuel.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un déploiement à la fois, et on ne met pas en ligne une version déjà dépassée.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déclencher le déploiement Hostinger
+        env:
+          HOOK: ${{ secrets.HOSTINGER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice title=Déploiement non configuré::Le secret HOSTINGER_DEPLOY_HOOK est absent — déploiement à faire depuis hPanel. Voir l'en-tête de .github/workflows/deploy.yml pour l'activer."
+            exit 0
+          fi
+
+          # --fail-with-body : un hook qui répond 4xx/5xx doit faire échouer le
+          # job, sinon un déploiement refusé passerait pour un succès.
+          code=$(curl -sS -X POST "$HOOK" \
+            --max-time 60 --retry 3 --retry-delay 5 --retry-connrefused \
+            -o response.txt -w '%{http_code}') || {
+              echo "::error title=Hook injoignable::Impossible de joindre le deploy hook Hostinger."
+              exit 1
+            }
+
+          echo "Réponse du hook : HTTP $code"
+          head -c 500 response.txt || true
+
+          case "$code" in
+            2*) echo "::notice title=Déploiement déclenché::Hostinger a accepté la demande (HTTP $code). La mise en ligne se poursuit de son côté." ;;
+            *)  echo "::error title=Déploiement refusé::Le hook a répondu HTTP $code — vérifier que l'URL du secret est toujours valide."
+                exit 1 ;;
+          esac
+
+      - name: Rappel de vérification
+        if: success()
+        run: |
+          echo "::notice title=À vérifier après la mise en ligne::GET https://degiro.estim.pro/api/health doit renvoyer status ok et db up."

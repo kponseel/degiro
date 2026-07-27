@@ -22,6 +22,25 @@ Hostinger n'importe que les dépôts auxquels son **application GitHub** a accè
 - **Build** : `npm install && npm run build`
 - **Démarrage** : `npm start`  (→ `node backend/src/server.js`, port `process.env.PORT`)
 
+## Déploiement automatique (facultatif, recommandé)
+
+Par défaut, la mise en ligne se fait à la main : hPanel → l'application →
+**Deploy**. C'est l'étape qui traîne après un merge.
+
+Pour l'automatiser, une seule fois :
+
+1. hPanel → l'application → réglages **Git** → copier l'URL du **deploy hook**.
+2. GitHub → *Settings* → *Secrets and variables* → *Actions* → **New repository
+   secret**. Nom : `HOSTINGER_DEPLOY_HOOK`, valeur : l'URL copiée.
+
+Le workflow `.github/workflows/deploy.yml` appelle alors ce hook à chaque arrivée
+sur `main`, et se déclenche aussi à la demande (onglet *Actions* → *Deploy* →
+*Run workflow*). Tant que le secret est absent, il ne fait rien et le signale —
+il n'échoue pas, pour ne pas afficher d'échec sur un dépôt volontairement manuel.
+
+L'URL du hook vaut déclenchement de déploiement : elle se traite comme un secret
+et se régénère depuis hPanel si elle a fuité.
+
 ## Base de données
 
 Créer une base **MySQL** (menu Bases de données) et noter l'hôte affiché
