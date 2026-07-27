@@ -17,7 +17,7 @@ Hostinger n'importe que les dépôts auxquels son **application GitHub** a accè
 
 ## Configuration du site
 
-- Type : **Web App Node.js** (« Déployez l'application web »), Node **20+**.
+- Type : **Web App Node.js** (« Déployez l'application web »), Node **22** (minimum 20.19 — voir `.nvmrc` ; la chaîne de build Vite refuse les versions antérieures).
 - Dépôt : `kponseel/degiro`, branche **`main`**, répertoire racine.
 - **Build** : `npm install && npm run build`
 - **Démarrage** : `npm start`  (→ `node backend/src/server.js`, port `process.env.PORT`)
@@ -38,8 +38,9 @@ démarrage** (migrations idempotentes) — aucune exécution SQL manuelle néces
 | `API_TOKEN` | jeton de service (accès propriétaire / scripts) — `openssl rand -hex 32` |
 | `OWNER_EMAIL` | **ton** email : devient l'utilisateur #1 et hérite des données existantes |
 | `ADMIN_EMAIL` | email de l'administrateur (page Administration) — à défaut, `OWNER_EMAIL` |
-| `APP_URL` | `https://degiro.estim.pro` (base des liens magiques, sans slash final) |
-| `NODE_ENV` | `production` (active le cookie de session `Secure`) |
+| `APP_URL` | **OBLIGATOIRE** — `https://degiro.estim.pro` (sans slash final). Le démarrage est **refusé** si elle manque : sans elle, la base du lien de connexion se déduirait de l'en-tête `Host` envoyé par le client, ce qui permettrait de faire parvenir à une victime un lien valide pointant ailleurs. |
+| `ALLOWED_EMAILS` | (optionnel) liste blanche d'inscription, adresses séparées par des virgules. **Vide = inscription ouverte à tout internet.** |
+| `NODE_ENV` | (optionnel) inutile : les protections — cookie `Secure`, refus d'exposer le lien — sont actives **par défaut** et ne s'assouplissent que sur `development`/`test` explicites. |
 | `SMTP_HOST` | `smtp.hostinger.com` |
 | `SMTP_PORT` | `587` (STARTTLS) ou `465` (TLS) |
 | `SMTP_USER` | la boîte email du domaine (ex. `noreply@estim.pro`) |
@@ -61,9 +62,11 @@ valable 15 min, un clic ouvre une session (cookie httpOnly, 30 jours).
 3. Vérifier que **SPF/DKIM** du domaine sont actifs (hPanel → Emails → configuration)
    pour éviter le dossier spam.
 
-Sans SMTP configuré, l'app démarre quand même en **mode dev** : le lien n'est pas
-envoyé mais journalisé (et affiché à l'écran) — pratique pour tester, à ne pas
-laisser en production.
+> **SMTP est indispensable en production.** Sans lui, l'application démarre (avec
+> un avertissement dans les journaux) mais **personne ne peut se connecter** :
+> chaque demande de lien renvoie un 503 explicite. Le repli « mode dev », où le
+> lien était renvoyé dans la réponse HTTP, n'existe plus hors développement — il
+> constituait une prise de compte ouverte à quiconque connaît une adresse email.
 
 ## Premier accès
 
@@ -72,7 +75,11 @@ un pseudo → cliquer le lien reçu → **Import / Réglages** → déposer `Por
 (toute langue) → **Lancer l'enrichissement**. Tes amis se connectent pareil avec
 leur propre email ; chacun ne voit que ses données.
 
-Vérifier la santé : `GET /api/health` doit renvoyer `{"status":"ok","db":"up","email":"smtp"}`.
+Vérifier la santé : `GET /api/health` doit renvoyer `{"status":"ok","db":"up",…}`.
 - `db: down` → revoir les `DB_*` (et l'autorisation Remote MySQL, restreinte à l'IP
   du serveur — jamais « Any Host »).
-- `email: dev` → SMTP non pris en compte : revoir `SMTP_*` puis redéployer.
+- Le diagnostic détaillé (code d'erreur MySQL, hôte refusé, état SMTP) n'est plus
+  public : il renseignait un attaquant sur l'infrastructure. Pour l'obtenir :
+  `curl -H "Authorization: Bearer $API_TOKEN" https://degiro.estim.pro/api/health`.
+- Si la connexion échoue alors que `db: up`, vérifier `email` dans cette réponse
+  authentifiée : `dev` signifie que SMTP n'est pas pris en compte.

@@ -1,5 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
@@ -49,6 +50,9 @@ export function createApp() {
   app.set('trust proxy', 1);
 
   app.use(helmet());
+  // Le front pèse 728 Ko d'assets bruts pour 194 Ko compressés : sans cela,
+  // chaque première visite télécharge 530 Ko inutiles — sensible sur mobile.
+  app.use(compression());
   app.use(pinoHttp({
     logger,
     // Le lien de connexion transporte son jeton dans l'URL (/auth/verify?token=…).

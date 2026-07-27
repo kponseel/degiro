@@ -35,12 +35,33 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
-// Migrations en arrière-plan (idempotent). En cas d'échec, l'app reste debout et
-// GET /api/health signale « db: down » pour faciliter le diagnostic.
-migrate()
-  .then(() => logger.info('Migrations vérifiées'))
-  .then(() => ensureOwner())
-  .catch((err) => logger.error(`Démarrage base échoué : ${err.message}`));
+/**
+ * Migrations en arrière-plan (idempotentes), avec réessais.
+ *
+ * La base n'est pas toujours prête quand le process démarre — hébergement
+ * mutualisé, redémarrage simultané, autorisation d'accès distante appliquée avec
+ * quelques secondes de retard. Sans réessai, un seul échec au démarrage laissait
+ * l'application debout sur un schéma vide, **définitivement** : les migrations
+ * n'étaient jamais rejouées, et il fallait redéployer pour s'en sortir.
+ */
+async function prepareDatabase(attempt = 1) {
+  const MAX = 5;
+  try {
+    await migrate();
+    logger.info('Migrations vérifiées');
+    await ensureOwner();
+  } catch (err) {
+    if (attempt >= MAX) {
+      logger.error(`Démarrage base échoué après ${MAX} tentatives : ${err.message}. Vérifie les variables DB_* et l'autorisation d'accès distant, puis redémarre.`);
+      return;
+    }
+    const delay = 5000 * 2 ** (attempt - 1); // 5 s, 10 s, 20 s, 40 s
+    logger.warn(`Base indisponible (${err.message}) — nouvelle tentative dans ${delay / 1000} s (${attempt}/${MAX - 1}).`);
+    setTimeout(() => { prepareDatabase(attempt + 1); }, delay).unref();
+  }
+}
+
+prepareDatabase();
 
 // Arrêt propre.
 for (const signal of ['SIGTERM', 'SIGINT']) {
