@@ -142,6 +142,13 @@ export function riskMetrics(series, periodsPerYear = 252) {
 
 // ── Plus/moins-values réalisées (prix moyen pondéré / PMP) ───────────
 
+/** Compte les occurrences de chaque valeur → { valeur: n }. */
+function countBy(values) {
+  const out = {};
+  for (const v of values) if (v) out[v] = (out[v] || 0) + 1;
+  return out;
+}
+
 /**
  * Calcule les plus-values réalisées à chaque vente, par la méthode du prix
  * moyen pondéré — celle qu'exige aussi le fisc français pour une même ligne.
@@ -159,33 +166,54 @@ export function realizedPnl(txs) {
     const isin = t.isin;
     if (!isin || t.qty == null) continue;
     const st = state.get(isin) || { qty: 0, cost: 0, reliable: true };
+    // Conversion explicite : les DECIMAL peuvent arriver en chaînes selon le
+    // pilote, et `st.qty += "10.000000"` concatène au lieu d'additionner. Le
+    // pool force déjà `decimalNumbers`, mais cette fonction est pure et doit
+    // rester juste quelle que soit sa source d'appel.
+    const qty = Number(t.qty);
+    if (!Number.isFinite(qty) || qty === 0) continue;
     const gross = t.amount_eur == null ? null : Math.abs(Number(t.amount_eur));
     const fee = Math.abs(Number(t.amount) || 0);
 
-    if (t.qty > 0) {
+    if (qty > 0) {
       // Achat : entre dans le coût de revient (frais inclus).
       if (gross == null) st.reliable = false;
       else st.cost += gross + fee;
-      st.qty += t.qty;
-    } else if (t.qty < 0) {
+      st.qty += qty;
+    } else {
       // Vente : réalise une plus/moins-value sur la quantité cédée.
-      const sellQty = Math.min(Math.abs(t.qty), st.qty > 0 ? st.qty : Math.abs(t.qty));
+      const sellQty = Math.min(Math.abs(qty), st.qty > 0 ? st.qty : Math.abs(qty));
       const avg = st.qty > 0 ? st.cost / st.qty : 0;
       const costOfSold = round(avg * sellQty);
       const net = gross == null ? null : round(gross - fee);
-      const unknown = !st.reliable || st.qty <= 0 || gross == null;
+      // Trois causes distinctes d'un calcul impossible. Les confondre revenait à
+      // afficher « — » sans jamais pouvoir dire à l'utilisateur ce qui manque.
+      const reason = st.qty <= 0 ? 'no_history'
+        : !st.reliable ? 'incomplete_cost'
+          : gross == null ? 'amount_missing'
+            : null;
       events.push({
         date: String(t.tx_date).slice(0, 10),
         isin,
         name: t.description || isin,
         qty: round(sellQty, 6),
         proceeds_eur: net,
-        cost_eur: unknown ? null : costOfSold,
-        gain_eur: unknown || net == null ? null : round(net - costOfSold),
-        costUnknown: unknown,
+        cost_eur: reason ? null : costOfSold,
+        gain_eur: reason || net == null ? null : round(net - costOfSold),
+        costUnknown: Boolean(reason),
+        unknownReason: reason,
       });
       st.qty = round(st.qty - sellQty, 6);
       st.cost = st.qty <= 0 ? 0 : round(st.cost - costOfSold);
+      // Position soldée : la ligne repart de zéro, y compris sa fiabilité.
+      //
+      // `reliable` était jusqu'ici définitif : un seul achat sans montant en EUR
+      // — une ligne atypique dans un historique de plusieurs milliers d'ordres —
+      // annulait TOUTES les plus-values de ce titre, à jamais, y compris celles
+      // parfaitement calculables des années suivantes. Or un rachat après une
+      // sortie complète ouvre un nouveau prix moyen pondéré, sans rapport avec
+      // ce qui précède : c'est aussi ce que retient le fisc français.
+      if (st.qty <= 0) { st.qty = 0; st.cost = 0; st.reliable = true; }
     }
     state.set(isin, st);
   }
@@ -206,6 +234,9 @@ export function realizedPnl(txs) {
     net: round(known.reduce((s, e) => s + e.gain_eur, 0)),
     sales: events.length,
     unknown: events.filter((e) => e.costUnknown).length,
+    // Ventilation des ventes incalculables : c'est elle qui permet de dire à
+    // l'utilisateur quoi importer plutôt que de lui laisser un tableau de tirets.
+    unknownBy: countBy(events.filter((e) => e.costUnknown).map((e) => e.unknownReason)),
   };
   return { events, byIsin: [...byIsin.values()].sort((a, b) => b.gain_eur - a.gain_eur), totals };
 }
