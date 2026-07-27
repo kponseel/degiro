@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { adminListUsers, adminUpdateUser, adminDeleteUser, adminGetInviteCode, adminSetInviteCode } from '../lib/api.js';
-import { fmtDate, fmtNum } from '../lib/format.js';
+import { fmtDate, fmtNum, plural } from '../lib/format.js';
 import { Spinner, Card, Banner, Stat } from '../components/ui.jsx';
 
 function UserRow({ u, isSelf, onSaved, onDeleted, onError }) {
@@ -57,7 +57,7 @@ function UserRow({ u, isSelf, onSaved, onDeleted, onError }) {
       <td>{fmtNum(u.login_count, 0)}</td>
       <td style={{ fontSize: 13 }}>
         {fmtNum(u.snapshots, 0)} snap · {fmtNum(u.transactions, 0)} mvt
-        {u.active_sessions > 0 && <div className="muted" style={{ fontSize: 11.5 }}>{u.active_sessions} session(s)</div>}
+        {u.active_sessions > 0 && <div className="muted" style={{ fontSize: 11.5 }}>{plural(u.active_sessions, 'session')}</div>}
       </td>
       <td style={{ whiteSpace: 'nowrap' }}>
         <button className="btn" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!dirty || busy} onClick={save}>

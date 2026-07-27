@@ -3,6 +3,7 @@ import {
   enrichNow, getEtfHoldings, uploadEtfHoldings,
   updatePseudo, deleteMyData, deleteAccount,
 } from '../lib/api.js';
+import { plural } from '../lib/format.js';
 import { Card, Banner } from '../components/ui.jsx';
 import Uploader from '../components/Uploader.jsx';
 import IsinEditor from '../components/IsinEditor.jsx';
@@ -100,7 +101,7 @@ function EtfHoldingsUploader({ onImported }) {
       {error && <div style={{ marginTop: 12 }}><Banner kind="err">{error}</Banner></div>}
       {result && (
         <div style={{ marginTop: 12 }}>
-          <Banner kind="info">Composition importée : {result.saved} titre(s) enregistré(s) pour {result.etf_isin}.</Banner>
+          <Banner kind="info">Composition importée : {plural(result.saved, 'titre enregistré', 'titres enregistrés')} pour {result.etf_isin}.</Banner>
         </div>
       )}
     </Card>
@@ -193,9 +194,10 @@ export default function Settings({ onImported, onGoOverview, user, onUserChange,
       const res = await enrichNow();
       const n = res.enriched ?? 0;
       const s = res.sectorsFilled ?? 0;
+      const traites = plural(n, 'titre traité', 'titres traités');
       const text = s > 0
-        ? `Enrichissement terminé : ${n} titre(s) traité(s), ${s} secteur(s) complété(s) automatiquement.`
-        : `Enrichissement terminé : ${n} titre(s) traité(s). Aucun secteur récupéré (source externe momentanément indisponible) — tu peux les saisir à la main ci-dessous.`;
+        ? `Enrichissement terminé : ${traites}, ${plural(s, 'secteur complété', 'secteurs complétés')} automatiquement.`
+        : `Enrichissement terminé : ${traites}. Aucun secteur récupéré (source externe momentanément indisponible) — tu peux les saisir à la main ci-dessous.`;
       setEnrichMsg({ kind: 'info', text });
       onImported?.();
     } catch (e) {

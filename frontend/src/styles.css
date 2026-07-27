@@ -363,7 +363,11 @@ button { font: inherit; cursor: pointer; }
   font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: left;
 }
 .mover:hover { background: var(--card-2); }
-.mover-sym { font-weight: 640; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* `min-width: 0` : sans lui, la taille minimale automatique d'un élément flex vaut
+   la largeur de son texte — le nom ne se coupait donc pas, il poussait le montant
+   hors de la carte. C'est le montant qu'on vient lire ; c'est le nom qui cède. */
+.mover-sym { flex: 1; min-width: 0; font-weight: 640; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mover-val { flex: none; }
 
 /* ── Tableau : tri + lignes cliquables ────────────────── */
 .th-sort {
@@ -751,6 +755,10 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .kpi-value { font-size: 18px; }
   .alloc-wrap { flex-direction: column; align-items: stretch; }
+  /* « Meilleures / moins bonnes » côte à côte, c'est ~145 px par ligne sur un
+     téléphone — dont 80 pour le montant. Il ne restait pas de quoi écrire un nom :
+     « ASML » s'affichait « A… ». Empilées, chaque ligne a toute la carte. */
+  .movers { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   /* Avis IA : une seule colonne, scores resserrés. */
   .pf-ai-cols { grid-template-columns: minmax(0, 1fr); }
   .pf-ai-scores { gap: 18px; }
