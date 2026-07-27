@@ -5,7 +5,8 @@ import Onboarding from './components/Onboarding.jsx';
 import WelcomeTour from './components/WelcomeTour.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import { useHashRoute } from './lib/useHashRoute.js';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews, IconHelp } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews, IconHelp, IconTheme } from './components/icons.jsx';
+import { readTheme, resolveTheme, nextTheme, saveTheme, systemPrefersDark } from './lib/theme.js';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
 import History from './pages/History.jsx';
@@ -133,6 +134,12 @@ export default function App() {
   // null = à déterminer ; true = compte sans données → parcours de bienvenue.
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
   const [showTour, setShowTour] = useState(false);
+  // Thème : 'auto' | 'light' | 'dark'. L'état vit ici, et non dans les Réglages,
+  // pour que la bascule de la barre et la carte « Apparence » ne divergent pas.
+  // `systemDark` ne sert qu'à afficher la bonne icône quand le choix est
+  // « Système » : la CSS, elle, suit l'OS toute seule.
+  const [theme, setTheme] = useState(() => readTheme(localStorage));
+  const [systemDark, setSystemDark] = useState(systemPrefersDark);
   // Empêche la présentation de resurgir à chaque changement de `user`
   // (renommage du pseudo, par exemple) quand elle a déjà été écartée.
   const tourSeenThisSession = useRef(false);
@@ -205,6 +212,21 @@ export default function App() {
   }, [user]);
 
   const replayTour = useCallback(() => setShowTour(true), []);
+
+  // L'OS peut basculer en cours de session (macOS/Windows le font à heure fixe).
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const shownTheme = resolveTheme(theme, systemDark);
+  const changeTheme = useCallback((t) => setTheme(saveTheme(t)), []);
+  const toggleTheme = useCallback(
+    () => changeTheme(nextTheme(theme, systemDark)),
+    [changeTheme, theme, systemDark],
+  );
 
   const go = useCallback((id) => { navigate(id); setNavOpen(false); }, [navigate]);
 
@@ -291,11 +313,7 @@ export default function App() {
     { id: 'act-import', label: 'Importer un fichier DEGIRO', group: 'Action', run: () => go('settings') },
     { id: 'act-tour', label: 'Revoir la présentation', group: 'Action', run: replayTour },
     { id: 'act-refresh', label: 'Rafraîchir les données', group: 'Action', run: () => setReloadKey((k) => k + 1) },
-    { id: 'act-theme', label: "Basculer le thème clair / sombre", group: 'Action', run: () => {
-      const now = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', now);
-      localStorage.setItem('degiro_theme', now);
-    } },
+    { id: 'act-theme', label: 'Basculer le thème clair / sombre', group: 'Action', run: toggleTheme },
     { id: 'act-logout', label: 'Se déconnecter', group: 'Compte', run: handleLogout },
   ];
 
@@ -335,6 +353,17 @@ export default function App() {
         <div className="topbar-right">
           <button className="cmd-trigger" onClick={() => setPaletteOpen(true)} aria-label="Ouvrir la palette de commandes">
             <span className="cmd-hint">Aller à…</span><kbd>⌘K</kbd>
+          </button>
+          {/* Réutilise .help-trigger : même pastille 32×32 que l'aide, la barre
+              ne s'alourdit pas et le bouton reste lisible sur mobile, où les
+              onglets et le raccourci ⌘K disparaissent. */}
+          <button
+            className="help-trigger"
+            onClick={toggleTheme}
+            aria-label={`Thème ${shownTheme === 'dark' ? 'sombre' : 'clair'} — basculer en ${shownTheme === 'dark' ? 'clair' : 'sombre'}`}
+            title="Basculer le thème clair / sombre"
+          >
+            <IconTheme dark={shownTheme === 'dark'} />
           </button>
           <button
             className={`help-trigger ${route === 'help' ? 'active' : ''}`}
@@ -383,6 +412,8 @@ export default function App() {
           onGoImport={() => go('settings')}
           onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
           onReplayTour={replayTour}
+          theme={theme}
+          onThemeChange={changeTheme}
         />
       </main>
 

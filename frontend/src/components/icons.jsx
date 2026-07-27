@@ -27,3 +27,10 @@ export const IconHelp = () => (
 export const IconNews = () => (
   <svg {...base}><path d="M4 4h13v16H5a1 1 0 0 1-1-1z" /><path d="M17 8h3v9a3 3 0 0 1-3 3" /><line x1="7" y1="8" x2="13" y2="8" /><line x1="7" y1="12" x2="13" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>
 );
+// Bascule de thème : l'icône montre la DESTINATION (soleil quand l'écran est
+// sombre), convention la plus répandue et la moins ambiguë au survol.
+export const IconTheme = ({ dark }) => (dark ? (
+  <svg {...base}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+) : (
+  <svg {...base}><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" /></svg>
+));

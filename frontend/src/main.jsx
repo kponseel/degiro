@@ -3,12 +3,13 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import './styles.css';
+import { applyTheme, readTheme } from './lib/theme.js';
 
-// Thème : clair par défaut, choix mémorisé. 'auto' = suit le système.
-const savedTheme = localStorage.getItem('degiro_theme') || 'light';
-if (savedTheme === 'light' || savedTheme === 'dark') {
-  document.documentElement.setAttribute('data-theme', savedTheme);
-}
+// Thème : le choix explicite prime, sinon 'auto' — donc aucun `data-theme`, et
+// la feuille de styles suit `prefers-color-scheme`. Forcer le clair ici servait
+// un écran blanc éclatant aux utilisateurs dont le système est en sombre, alors
+// que le thème sombre complet existe déjà dans styles.css.
+applyTheme(readTheme(localStorage));
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

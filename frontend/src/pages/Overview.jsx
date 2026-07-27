@@ -6,6 +6,7 @@ import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
 import { InsightBadge } from '../components/InsightPasteModal.jsx';
+import PortfolioInsightCard from '../components/PortfolioInsightCard.jsx';
 import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
@@ -31,6 +32,7 @@ export default function Overview({ onGoImport }) {
   const [perf, setPerf] = useState(null);
   const [lookthrough, setLookthrough] = useState(null);
   const [insights, setInsights] = useState({});
+  const [pfInsight, setPfInsight] = useState(null);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = usePersistentState('degiro_filter_overview', EMPTY_FILTER);
@@ -40,8 +42,16 @@ export default function Overview({ onGoImport }) {
     getSnapshots().then((d) => setSeries(d.snapshots || [])).catch(() => setSeries([]));
     getPerformance().then(setPerf).catch(() => setPerf(null));
     getLookthrough().then(setLookthrough).catch(() => setLookthrough(null));
-    listAiInsights().then((d) => setInsights(d.byIsin || {})).catch(() => setInsights({}));
+    loadInsights();
   }, []);
+
+  // `listInsights` renvoie AUSSI l'avis portefeuille : ne lire que `byIsin`
+  // revenait à jeter le résumé, les scores et les actions suggérées.
+  function loadInsights() {
+    return listAiInsights()
+      .then((d) => { setInsights(d.byIsin || {}); setPfInsight(d.portfolio || null); })
+      .catch(() => { setInsights({}); setPfInsight(null); });
+  }
 
   // Ouvre le générateur de prompts pré-rempli pour un titre (raccourci contextuel).
   const analyze = (p) => { window.location.hash = `#/ai?isin=${encodeURIComponent(p.isin)}`; };
@@ -213,6 +223,13 @@ export default function Overview({ onGoImport }) {
         </Card>
       </div>
 
+      <PortfolioInsightCard
+        insight={pfInsight}
+        positions={weighted}
+        onSelect={setSelected}
+        onDeleted={loadInsights}
+      />
+
       <Card title="Positions">
         <FilterBar
           q={filter.q}
@@ -228,11 +245,11 @@ export default function Overview({ onGoImport }) {
             <thead>
               <tr>
                 <SortHeader label="Titre" colKey="name" sort={sort} onToggle={toggle} align="left" />
-                <SortHeader label="Type" colKey="type" sort={sort} onToggle={toggle} align="left" />
-                <SortHeader label="Qté" colKey="qty" sort={sort} onToggle={toggle} />
-                <SortHeader label="Cours" colKey="price" sort={sort} onToggle={toggle} />
+                <SortHeader label="Type" colKey="type" sort={sort} onToggle={toggle} align="left" cls="col-opt" />
+                <SortHeader label="Qté" colKey="qty" sort={sort} onToggle={toggle} cls="col-opt" />
+                <SortHeader label="Cours" colKey="price" sort={sort} onToggle={toggle} cls="col-opt" />
                 <SortHeader label="Valeur" colKey="value_eur" sort={sort} onToggle={toggle} />
-                <SortHeader label="Poids" colKey="w" sort={sort} onToggle={toggle} />
+                <SortHeader label="Poids" colKey="w" sort={sort} onToggle={toggle} cls="col-opt" />
                 <SortHeader label="P/L" colKey="pl_eur" sort={sort} onToggle={toggle} />
               </tr>
             </thead>
@@ -251,11 +268,11 @@ export default function Overview({ onGoImport }) {
                       <span className="muted">{p.name || p.isin}</span>
                       {insights[p.isin] && <InsightBadge insight={insights[p.isin]} compact />}
                     </td>
-                    <td>{ac ? <span className={`chip ${isFund ? 'etf' : 'stock'}`}>{ac}</span> : <span className="muted">—</span>}</td>
-                    <td>{fmtNum(p.qty, 0)}</td>
-                    <td>{fmtNum(p.price)} <span className="muted sm">{p.currency}</span></td>
+                    <td className="col-opt">{ac ? <span className={`chip ${isFund ? 'etf' : 'stock'}`}>{ac}</span> : <span className="muted">—</span>}</td>
+                    <td className="col-opt">{fmtNum(p.qty, 0)}</td>
+                    <td className="col-opt">{fmtNum(p.price)} <span className="muted sm">{p.currency}</span></td>
                     <td className="sym">{fmtEur(p.value_eur)}</td>
-                    <td>{fmtPct(p.w)}</td>
+                    <td className="col-opt">{fmtPct(p.w)}</td>
                     <td className={p.pl_eur == null ? 'muted' : Number(p.pl_eur) >= 0 ? 'pos' : 'neg'}>
                       {p.pl_eur == null ? '—' : `${Number(p.pl_eur) >= 0 ? '+' : ''}${fmtEur(p.pl_eur)}`}
                     </td>

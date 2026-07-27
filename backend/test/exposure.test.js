@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { closePool } from '../src/db/pool.js';
 import { countryFromIsin, assetClassFromType } from '../src/services/enrich.js';
-import { group } from '../src/services/exposure.js';
+import { group, UNCLASSIFIED } from '../src/services/exposure.js';
 import { AUTH, resetDb, snapshotPayload } from './helpers.js';
 
 const app = createApp();
@@ -39,10 +39,19 @@ describe('group()', () => {
     expect(g[0].key).toBe('B');
     expect(g[0].weight).toBeCloseTo(0.7, 5);
   });
-  it('ignore les clés nulles avec skipNull', () => {
-    const g = group([{ value_eur: 10, k: null }, { value_eur: 10, k: 'X' }], (p) => p.k, { skipNull: true });
-    expect(g).toHaveLength(1);
-    expect(g[0].key).toBe('X');
+  it('regroupe les clés nulles sous le libellé de repli sans fausser le dénominateur', () => {
+    const g = group([{ value_eur: 10, k: null }, { value_eur: 10, k: 'X' }], (p) => p.k, { fallback: UNCLASSIFIED });
+    expect(g).toHaveLength(2);
+    // Le poids doit rester une part du TOTAL (20), pas du sous-ensemble classé.
+    expect(g.find((x) => x.key === 'X').weight).toBeCloseTo(0.5, 5);
+    expect(g.find((x) => x.key === UNCLASSIFIED).weight).toBeCloseTo(0.5, 5);
+    expect(g.reduce((sum, x) => sum + x.weight, 0)).toBeCloseTo(1, 5);
+  });
+
+  it('sans option, les clés nulles tombent dans « Inconnu »', () => {
+    const g = group([{ value_eur: 10, k: null }, { value_eur: 30, k: 'X' }], (p) => p.k);
+    expect(g.map((x) => x.key)).toEqual(['X', 'Inconnu']);
+    expect(g[1].weight).toBeCloseTo(0.25, 5);
   });
 });
 
@@ -83,6 +92,12 @@ describe('enrichissement + exposition (endpoints)', () => {
 
     const exp = await request(app).get('/api/exposure').set(AUTH);
     expect(exp.body.sector.map((s) => s.key)).toContain('Technologie');
+    // Le camembert Secteur doit couvrir tout le portefeuille : la part non enrichie
+    // apparaît explicitement au lieu de disparaître du dénominateur.
+    expect(exp.body.sector.map((s) => s.key)).toContain(UNCLASSIFIED);
+    const totalSector = exp.body.sector.reduce((sum, s) => sum + s.value, 0);
+    const totalCurrency = exp.body.currency.reduce((sum, c) => sum + c.value, 0);
+    expect(totalSector).toBeCloseTo(totalCurrency, 2);
   });
 
   it('refuse un ISIN invalide en correction manuelle', async () => {
