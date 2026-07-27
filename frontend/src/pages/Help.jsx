@@ -74,6 +74,10 @@ const FAQ = [
     a: "Presque toujours la plage de dates de l'export DEGIRO : elle est courte par défaut et ne couvre pas tout l'historique. Réexporte Transactions et Relevé de compte depuis l'ouverture du compte (au besoin année par année — réimporter ne crée aucun doublon). Pour le portefeuille, pense à cocher « toutes les positions », sinon les lignes soldées n'apparaissent pas.",
   },
   {
+    q: "L'extension me demande « l'adresse de mon Analyzer » — je mets quoi ?",
+    a: "L'adresse à laquelle tu consultes cette page, sans rien après le nom de domaine (par exemple https://degiro.estim.pro). Pas besoin de la retenir : Réglages → Extension Chrome l'affiche prête à copier, à l'étape 3, juste sous le jeton.",
+  },
+  {
     q: "L'extension Chrome ne capture rien",
     a: "Ouvre son panneau Diagnostic : chaque étape y est marquée ✓ ou ✗ avec son détail. Le plus fréquent : l'onglet DEGIRO a été ouvert avant l'installation de l'extension (recharge-le avec F5), ou la session a expiré (reconnecte-toi).",
   },
