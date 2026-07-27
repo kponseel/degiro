@@ -29,6 +29,10 @@ export async function adminUpdateUser(userId, { email, pseudo }) {
     const [dup] = await pool.query('SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1', [mail, userId]);
     if (dup.length) return { error: 'email_taken' };
     await pool.query('UPDATE users SET email = ? WHERE id = ?', [mail, userId]);
+    // Changer l'adresse, c'est changer le propriétaire du compte : les sessions
+    // et jetons ouverts sous l'ancienne adresse ne doivent pas y survivre.
+    await pool.query('DELETE FROM sessions WHERE user_id = ?', [userId]);
+    await pool.query('DELETE FROM extension_tokens WHERE user_id = ?', [userId]);
   }
   if (pseudo !== undefined) {
     const clean = cleanPseudo(pseudo);

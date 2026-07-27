@@ -25,8 +25,18 @@ export function Stat({ label, value, sub, tone }) {
   );
 }
 
+/**
+ * Message d'information/alerte. Le contenu est enveloppé : `.banner` est en
+ * `display: flex`, et sans cette enveloppe chaque <strong> du message devenait
+ * un élément flex distinct — le texte se cassait alors en colonnes au lieu de
+ * couler normalement.
+ */
 export function Banner({ kind = 'info', children }) {
-  return <div className={`banner ${kind}`}>{children}</div>;
+  return (
+    <div className={`banner ${kind}`}>
+      <div className="banner-body">{children}</div>
+    </div>
+  );
 }
 
 export function Empty({ title, children }) {

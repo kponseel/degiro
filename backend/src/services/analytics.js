@@ -42,7 +42,12 @@ export function attribution(positions, dividends = new Map()) {
       pl_pct: pl == null || !cost ? null : round(pl / cost, 4),
       // Contribution : part de cette ligne dans le P/L total (peut dépasser 100 %
       // si d'autres lignes sont en perte — c'est voulu et informatif).
-      contribution: pl == null || !totalPl ? null : round(pl / totalPl, 4),
+      //
+      // Normalisée par la VALEUR ABSOLUE du total : sinon, dès que le
+      // portefeuille est globalement en perte, le rapport s'inverse et une ligne
+      // gagnante s'affiche en négatif et en rouge. Le signe de la contribution
+      // doit toujours être celui du gain de la ligne.
+      contribution: pl == null || !totalPl ? null : round(pl / Math.abs(totalPl), 4),
       dividends_eur: dividends.has(p.isin) ? round(dividends.get(p.isin)) : null,
     };
   }).sort((a, b) => (b.pl_eur ?? -Infinity) - (a.pl_eur ?? -Infinity));

@@ -75,9 +75,31 @@ Un seul process. Renseigner dans l'interface Hostinger :
 
 - **Build** : `npm install && npm run build`
 - **Démarrage** : `npm start`
-- **Variables d'environnement** : voir [`.env.example`](.env.example) — `DB_*`,
-  `API_TOKEN`, `OPENFIGI_API_KEY`. Le mot de passe MySQL se saisit uniquement ici,
-  jamais dans le code.
+
+### Variables d'environnement indispensables
+
+L'application **refuse de démarrer** si une variable critique manque, avec un
+message explicite dans les journaux — plutôt que de tourner en configuration
+dangereuse sans le signaler.
+
+| Variable | Rôle | Conséquence si absente |
+|---|---|---|
+| `APP_URL` | Origine publique, base des liens de connexion (ex. `https://degiro.estim.pro`) | **Démarrage refusé.** Sans elle, la base du lien se déduirait de l'en-tête `Host` fourni par le client : un attaquant ferait envoyer à sa victime un lien valide pointant vers son propre domaine. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Base MySQL | Application debout, `db: down` sur `/api/health`. |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` | Envoi des liens de connexion | Avertissement au démarrage ; **personne ne peut se connecter** (le lien n'est jamais renvoyé dans la réponse HTTP hors développement). |
+| `OWNER_EMAIL` | Compte propriétaire (utilisateur #1, hérite des données existantes) | Avertissement ; aucun compte propriétaire créé. |
+| `ADMIN_EMAIL` | Accès à la page Administration | À défaut, l'administrateur est `OWNER_EMAIL`. |
+| `ALLOWED_EMAILS` | Liste blanche d'inscription, adresses séparées par des virgules | Vide = **inscription ouverte à tout internet**. À renseigner si l'instance n'est pas destinée au public. |
+| `API_TOKEN` | Jeton de service (propriétaire) pour scripts et diagnostic | Voie de service indisponible. |
+| `OPENFIGI_API_KEY` | Enrichissement ISIN | Enrichissement dégradé. |
+
+`NODE_ENV` n'a pas besoin d'être défini : les protections sont actives **par
+défaut** et ne s'assouplissent que si `NODE_ENV` vaut explicitement
+`development` ou `test`. Une variable oubliée laisse donc l'application dans son
+mode le plus strict.
+
+Le mot de passe MySQL se saisit uniquement dans l'interface Hostinger, jamais
+dans le code.
 
 Les migrations s'appliquent via `npm run migrate` (ou phpMyAdmin pour inspecter).
 

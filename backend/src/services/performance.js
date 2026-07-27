@@ -62,8 +62,22 @@ export async function computePerformance(accountId = 1) {
     const cf = periodFlows.reduce((s, f) => s + f.amount, 0);
     const weighted = periodFlows.reduce((s, f) => s + f.amount * (daysBetween(f.date, dEnd) / span), 0);
     const denom = vBeg + weighted;
-    const r = denom !== 0 ? (vEnd - vBeg - cf) / denom : 0;
-    chain *= 1 + r;
+    // Le chaînage `chain *= 1 + r` est irréversible : une seule sous-période
+    // aberrante contamine définitivement toute la courbe. Deux cas produisent
+    // des rendements absurdes sur des données pourtant plausibles :
+    //  - un capital de départ négligeable (premier jour à 1 €, versement le
+    //    lendemain) → dénominateur minuscule, rendement de plusieurs millions
+    //    de pour cent ;
+    //  - un passage par zéro (portefeuille soldé puis réalimenté) → -100 %
+    //    définitif, la courbe ne remonte plus jamais.
+    // Ces sous-périodes ne mesurent aucune performance de gestion : on les
+    // neutralise (r = 0) plutôt que de propager un chiffre faux.
+    const negligible = denom <= 0 || denom < 100;
+    const r = negligible ? 0 : (vEnd - vBeg - cf) / denom;
+    // Garde-fou de dernier recours : ±1 000 % sur une sous-période relève de la
+    // donnée corrompue, pas du marché.
+    const bounded = Math.max(-10, Math.min(10, r));
+    chain *= 1 + bounded;
     series.push({ date: dEnd, value: vEnd, twr: chain - 1 });
   }
 

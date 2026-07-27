@@ -14,26 +14,42 @@ import { LIMITS } from '../../../shared/aiInsightContract.js';
 
 // ── Extraction ───────────────────────────────────────────────────────
 
-/** Candidats { … } équilibrés d'un texte, accolades comptées hors chaînes. */
+/** Au-delà, on cesse de chercher : un avis d'IA n'a pas mille objets imbriqués. */
+const MAX_CANDIDATES = 200;
+
+/**
+ * Candidats { … } équilibrés d'un texte, accolades comptées hors chaînes.
+ *
+ * Une seule passe, avec une pile des accolades ouvrantes : la version précédente
+ * repartait de CHAQUE `{` et rebalayait jusqu'à la fin du texte, soit un coût
+ * quadratique. Sur un collage de 200 000 caractères riche en accolades, cela
+ * figeait le processus — qui sert aussi le site — pendant des dizaines de
+ * secondes. Ici chaque caractère est lu une fois.
+ */
 function balancedObjects(text) {
   const out = [];
-  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
-    let depth = 0;
-    let inString = false;
-    for (let i = start; i < text.length; i += 1) {
-      const c = text[i];
-      if (inString) {
-        if (c === '\\') i += 1;
-        else if (c === '"') inString = false;
-      } else if (c === '"') inString = true;
-      else if (c === '{') depth += 1;
-      else if (c === '}') {
-        depth -= 1;
-        if (depth === 0) { out.push(text.slice(start, i + 1)); break; }
-      }
+  const stack = [];
+  let inString = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (inString) {
+      if (c === '\\') i += 1;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === '{') stack.push(i);
+    else if (c === '}' && stack.length) {
+      const start = stack.pop();
+      out.push(text.slice(start, i + 1));
+      if (out.length >= MAX_CANDIDATES) break;
     }
   }
-  return out;
+  // Les objets les plus englobants d'abord : `extractDataBlock` retient le
+  // premier candidat exploitable, et l'ancienne version les produisait dans cet
+  // ordre (extérieur avant intérieur).
+  return out.sort((a, b) => b.length - a.length);
 }
 
 /**

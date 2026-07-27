@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { parseHoldingsCsv, saveHoldings, heldEtfsWithCoverage } from '../services/etfHoldings.js';
+import { userHoldsIsin } from '../services/ownership.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -31,6 +32,12 @@ router.post('/', upload.single('file'), async (req, res, next) => {
     }
     if (!holdings.length) {
       return res.status(422).json({ error: 'Aucune composition détectée dans le fichier', delimiter });
+    }
+    // `etf_holdings` est partagée : n'accepter une composition que pour un ETF
+    // réellement détenu, sinon un inscrit fausserait la Transparence des autres.
+    // Contrôle placé après la prévisualisation, qui n'écrit rien.
+    if (!(await userHoldsIsin(req.user.id, etfIsin))) {
+      return res.status(403).json({ error: "Tu ne peux importer la composition que d'un ETF présent dans ton portefeuille." });
     }
     const result = await saveHoldings(etfIsin, holdings);
     return res.json({ etf_isin: etfIsin, ...result });
