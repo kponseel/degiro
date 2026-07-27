@@ -53,8 +53,23 @@ async function capture() {
   try {
     creds = (await ask(tab.id, { type: 'GET_CREDS' }))?.creds || {};
   } catch (e) {
-    step(report, 'Script de contenu', false, String(e.message || e));
-    return { ok: false, report, error: "L'extension n'a pas pu parler à l'onglet DEGIRO. Recharge la page (F5) puis réessaie." };
+    // Chrome renvoie ici « Could not establish connection. Receiving end does
+    // not exist. » — exact, mais opaque. Il signifie une seule chose en
+    // pratique : l'onglet n'a pas de script de contenu, parce qu'il était déjà
+    // ouvert quand l'extension a été installée ou rechargée. Chrome n'injecte
+    // que dans les onglets ouverts ensuite. On explique plutôt que de recopier.
+    const brut = String(e.message || e);
+    const pasDeScript = /Receiving end does not exist|Could not establish connection/i.test(brut);
+    step(report, 'Script de contenu', false, pasDeScript
+      ? "l'onglet DEGIRO n'a pas encore le script de l'extension — il était ouvert avant son installation"
+      : brut);
+    return {
+      ok: false,
+      report,
+      error: pasDeScript
+        ? "Recharge l'onglet DEGIRO (F5), puis relance la capture. Chrome n'active l'extension que sur les onglets ouverts après son installation — et un onglet déjà ouvert perd le lien à chaque rechargement de l'extension."
+        : "L'extension n'a pas pu parler à l'onglet DEGIRO. Recharge la page (F5) puis réessaie.",
+    };
   }
 
   // Secours : si l'application n'a encore rien appelé, on interroge /pa/secure/client,

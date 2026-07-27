@@ -13,11 +13,15 @@
 
     <section class="settings">
       <label for="apiUrl">Adresse de ton Analyzer</label>
-      <input id="apiUrl" type="url" placeholder="https://analyzer.exemple.fr" spellcheck="false" />
+      <input id="apiUrl" type="url" placeholder="https://degiro.exemple.fr" spellcheck="false" />
+      <p class="hint">
+        L'adresse à laquelle tu consultes ton Analyzer, sans rien après le nom de domaine.
+        Elle est affichée prête à copier dans <strong>Réglages → Extension Chrome</strong>, étape 3.
+      </p>
 
       <label for="token">Jeton d'extension</label>
       <input id="token" type="password" placeholder="dgx_…" spellcheck="false" />
-      <p class="hint">Réglages → Extension Chrome, dans l'Analyzer. Le jeton n'est affiché qu'une fois.</p>
+      <p class="hint">Au même endroit, étape 2. Le jeton n'est affiché qu'une seule fois.</p>
 
       <button id="save" class="ghost">Enregistrer</button>
       <p id="saveMsg" class="msg" hidden></p>

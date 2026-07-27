@@ -13,9 +13,13 @@ export default function ExtensionTokens() {
   const [label, setLabel] = useState('');
   const [fresh, setFresh] = useState(null); // jeton en clair, montré une fois
   const [copied, setCopied] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+
+  // L'adresse que l'extension réclame : l'origine d'où cette page est servie.
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   function load() {
     listExtTokens().then((d) => setTokens(d.tokens || [])).catch((e) => setError(e.body?.error || e.message));
@@ -164,6 +168,41 @@ export default function ExtensionTokens() {
       {tokens && tokens.length === 0 && (
         <div className="muted" style={{ marginTop: 12, fontSize: 13 }}>Aucun jeton pour l'instant.</div>
       )}
+
+      {/* Étape 3 : l'extension réclame l'adresse de l'instance, que l'application
+          connaît. La faire deviner ne servait à rien — on la donne, prête à copier. */}
+      <div className="ext-step-head" style={{ marginTop: 22 }}>
+        <span className="ext-step-num">3</span>
+        <strong>Coller dans l'extension</strong>
+      </div>
+      <p className="muted" style={{ marginTop: 2 }}>
+        Clique sur l'icône de l'extension dans Chrome, puis renseigne ces deux champs
+        et valide par <strong>Enregistrer</strong>. Chrome demandera l'autorisation
+        d'appeler ce serveur&nbsp;: accepte, sinon l'envoi ne peut pas fonctionner.
+      </p>
+
+      <div className="field" style={{ maxWidth: 420, marginTop: 10 }}>
+        <label htmlFor="ext-origin">« Adresse de ton Analyzer » — à copier tel quel</label>
+        <div className="token-reveal">
+          <code id="ext-origin">{origin}</code>
+          <button
+            className="btn"
+            style={{ padding: '5px 12px', fontSize: 13 }}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(origin);
+                setCopiedUrl(true);
+                setTimeout(() => setCopiedUrl(false), 1800);
+              } catch { /* presse-papiers refusé : l'adresse reste sélectionnable */ }
+            }}
+          >
+            {copiedUrl ? 'Copié ✓' : 'Copier'}
+          </button>
+        </div>
+      </div>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+        « Jeton d'extension »&nbsp;: celui généré à l'étape 2, qui commence par <code>dgx_</code>.
+      </p>
     </Card>
   );
 }
