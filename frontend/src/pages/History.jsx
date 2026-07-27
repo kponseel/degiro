@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { getSnapshots, getPerformance, getBenchmark, getAnalytics } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtDate, fmtNum } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtDate, fmtDateShort, fmtNum } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
@@ -103,7 +103,7 @@ export default function History({ onGoImport }) {
     );
   }
 
-  const data = rows.map((r) => ({ date: fmtDate(r.snapshot_date), value: Number(r.total_value_eur) || 0 }));
+  const data = rows.map((r) => ({ date: fmtDateShort(r.snapshot_date), value: Number(r.total_value_eur) || 0 }));
   const last = data[data.length - 1].value;
   const first = data[0].value;
   const change = last - first;
@@ -117,8 +117,8 @@ export default function History({ onGoImport }) {
   const benchName = bench?.name || 'Benchmark';
   const alpha = benchAvailable ? bench.alpha : null;
   const compareSeries = benchAvailable
-    ? bench.series.map((s) => ({ date: fmtDate(s.date), twr: s.twr * 100, benchmark: s.benchmark != null ? s.benchmark * 100 : null }))
-    : (perf && perf.series ? perf.series.map((s) => ({ date: fmtDate(s.date), twr: s.twr * 100, benchmark: null })) : []);
+    ? bench.series.map((s) => ({ date: fmtDateShort(s.date), twr: s.twr * 100, benchmark: s.benchmark != null ? s.benchmark * 100 : null }))
+    : (perf && perf.series ? perf.series.map((s) => ({ date: fmtDateShort(s.date), twr: s.twr * 100, benchmark: null })) : []);
 
   const totalPl = attr?.totals?.pl_eur ?? null;
   const totalPlPct = attr?.totals?.pl_pct ?? null;
