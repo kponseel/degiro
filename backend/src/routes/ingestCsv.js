@@ -26,15 +26,49 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
  */
 const MAX_ROWS = 50_000;
 
+/**
+ * Réception du fichier, avec traduction des erreurs de multer.
+ *
+ * Laissées au gestionnaire central, elles ressortaient en 500 « Erreur interne
+ * du serveur » : un fichier trop gros ou un mauvais champ de formulaire est
+ * pourtant une erreur de l'utilisateur, qui mérite d'être expliquée.
+ */
+function receiveFile(req, res) {
+  return new Promise((resolve, reject) => {
+    upload.single('file')(req, res, (err) => {
+      if (!err) return resolve();
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return reject(Object.assign(new Error("Fichier trop volumineux (5 Mo maximum). Découpe ton export par année et importe-les l'un après l'autre — les doublons sont ignorés."), { status: 413 }));
+      }
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return reject(Object.assign(new Error(`Champ de fichier inattendu (« ${err.field} ») : le fichier doit être envoyé dans le champ « file ».`), { status: 400 }));
+      }
+      return reject(Object.assign(new Error("Le fichier n'a pas pu être reçu."), { status: 400 }));
+    });
+  });
+}
+
 // POST /api/ingest/csv — champ multipart `file` ; `kind` (portfolio|account|transactions|auto)
 // et `mode` (preview|commit) dans le corps.
-router.post('/', upload.single('file'), async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
+    await receiveFile(req, res);
     if (!req.file) {
       return res.status(400).json({ error: 'Fichier manquant (champ multipart "file")' });
     }
     const text = decodeCsv(req.file.buffer);
-    const { delimiter, rows } = parseCsv(text);
+    let delimiter;
+    let rows;
+    try {
+      ({ delimiter, rows } = parseCsv(text));
+    } catch (err) {
+      // csv-parse échoue sur un binaire ou un fichier mal formé : c'est un
+      // problème de fichier, pas une panne du serveur.
+      return res.status(422).json({
+        error: "Ce fichier n'est pas un CSV lisible. Vérifie qu'il vient bien de DEGIRO et qu'il est au format CSV (pas Excel).",
+        detail: String(err.message || '').slice(0, 200),
+      });
+    }
     if (!rows.length) {
       return res.status(422).json({ error: 'CSV vide ou illisible' });
     }

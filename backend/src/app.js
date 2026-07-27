@@ -73,9 +73,16 @@ export function createApp() {
     '/api',
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      max: 300,
+      // 300 était atteint par un simple usage soutenu (chaque page appelle
+      // plusieurs routes) : le plafond sert à écarter les abus, pas les visiteurs.
+      max: 1000,
       standardHeaders: true,
       legacyHeaders: false,
+      // Le gestionnaire par défaut répond en HTML anglais, alors que toute l'API
+      // parle JSON français — l'interface affichait donc « Too many requests ».
+      handler: (_req, res) => res.status(429).json({
+        error: 'Trop de requêtes d’affilée. Patiente quelques minutes, puis réessaie.',
+      }),
     }),
   );
 

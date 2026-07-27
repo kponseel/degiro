@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getPortfolio, getSnapshots, getLookthrough, getPerformance, listAiInsights } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtNum, fmtDate } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtNum, fmtDate, fmtSignedEur, toneOf } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
@@ -95,7 +95,10 @@ export default function Overview({ onGoImport }) {
 
   const movers = [...weighted].filter((p) => p.pl_eur != null).sort((a, b) => Number(b.pl_eur) - Number(a.pl_eur));
   const best = movers.slice(0, 3);
-  const worst = movers.slice(-3).reverse();
+  // Découpage sans recouvrement : avec moins de 6 lignes, `slice(-3)` reprenait
+  // des titres déjà cités dans « meilleures », qui apparaissaient donc des deux
+  // côtés à la fois.
+  const worst = movers.slice(Math.max(3, movers.length - 3)).reverse();
 
   const facets = [
     { key: 'type', label: 'Type', value: filter.type, options: distinctValues(weighted, typeOf), onChange: (v) => setFilter((f) => ({ ...f, type: v })) },
@@ -109,9 +112,9 @@ export default function Overview({ onGoImport }) {
         <Kpi label="Valeur totale" value={fmtEur(totalValue)} sub={`au ${String(snapshot.snapshot_date).slice(0, 10)}`} />
         <Kpi
           label="P/L latent"
-          value={hasPl ? `${totalPl >= 0 ? '+' : ''}${fmtEur(totalPl)}` : '—'}
+          value={hasPl ? fmtSignedEur(totalPl) : '—'}
           sub={hasPl && totalValue ? fmtPct(totalPl / (totalValue - totalPl)) : 'non fourni'}
-          tone={hasPl ? (totalPl >= 0 ? 'pos' : 'neg') : ''}
+          tone={hasPl ? toneOf(totalPl) : ''}
         />
         <Kpi
           label="Performance (TWR)"
@@ -185,7 +188,7 @@ export default function Overview({ onGoImport }) {
                 {best.map((p) => (
                   <button key={p.isin} className="mover" onClick={() => setSelected(p)}>
                     <span className="mover-sym">{p.symbol || p.name}</span>
-                    <span className="pos">+{fmtEur(p.pl_eur)}</span>
+                    <span className={toneOf(p.pl_eur)}>{fmtSignedEur(p.pl_eur)}</span>
                   </button>
                 ))}
               </div>

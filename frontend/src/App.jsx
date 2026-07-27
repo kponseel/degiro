@@ -109,11 +109,12 @@ function Login({ initialError }) {
 }
 
 export default function App() {
-  const [status, setStatus] = useState('checking'); // checking | login | ready
+  const [status, setStatus] = useState('checking'); // checking | login | ready | unavailable
   const [user, setUser] = useState(null);
   const [route, navigate] = useHashRoute('overview');
   const [reloadKey, setReloadKey] = useState(0);
   const [loginError, setLoginError] = useState('');
+  const [bootError, setBootError] = useState('');
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // null = à déterminer ; true = compte sans données → parcours de bienvenue.
@@ -142,7 +143,15 @@ export default function App() {
     }
     getMe()
       .then((res) => { setUser(res.user); setStatus('ready'); })
-      .catch(() => setStatus('login'));
+      .catch((e) => {
+        // Seul un 401 signifie « session expirée ». Traiter aussi les 500, les
+        // 502 et les coupures réseau comme une déconnexion affichait l'écran de
+        // connexion à des utilisateurs parfaitement connectés — donnant à croire
+        // que leur compte avait sauté — à la moindre indisponibilité du serveur.
+        if (e?.status === 401) { setStatus('login'); return; }
+        setBootError(e?.message || 'Service momentanément indisponible.');
+        setStatus('unavailable');
+      });
   }, []);
 
   // Estampille la route par défaut dans l'URL (partage / rafraîchissement fiables).
@@ -237,6 +246,24 @@ export default function App() {
   }
 
   if (status === 'checking') return <Spinner />;
+  // Panne du serveur : surtout pas l'écran de connexion, qui laisserait croire à
+  // une session perdue. On dit ce qui se passe et on propose de réessayer.
+  if (status === 'unavailable') {
+    return (
+      <div className="center" style={{ padding: 24 }}>
+        <div className="card card-pad" style={{ maxWidth: 460, textAlign: 'center' }}>
+          <div className="card-title">Service momentanément indisponible</div>
+          <p className="muted" style={{ marginTop: 0 }}>{bootError}</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Tu es toujours connecté : rien n'est perdu, c'est le serveur qui ne répond pas.
+          </p>
+          <button className="btn" style={{ marginTop: 12 }} onClick={() => window.location.reload()}>
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (status === 'login') return <Login initialError={loginError} />;
   if (needsOnboarding === null) return <Spinner />;
   if (needsOnboarding) {

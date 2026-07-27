@@ -695,6 +695,10 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   .stat-row { grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; }
   .stat { padding: 13px 14px; }
   .stat .value { font-size: 22px; }
+  /* Une piste de grille a pour minimum la taille du contenu : un montant long
+     (« +14 131,55 € ») élargissait donc la colonne et faisait défiler la page
+     latéralement. `min-width: 0` autorise la tuile à se réduire. */
+  .stat { min-width: 0; }
 
   /* Dashboard : une colonne, KPI 2 par ligne. */
   .dash-grid { grid-template-columns: minmax(0, 1fr); }
@@ -710,7 +714,12 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 }
 
 @media (max-width: 420px) {
-  .stat-row { grid-template-columns: 1fr 1fr; }
+  /* `minmax(0, 1fr)` et non `1fr` : sans le minimum à zéro, la piste ne peut pas
+     devenir plus étroite que son contenu et la page déborde. */
+  .stat-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  /* Sur 375 px, deux colonnes laissent ~140 px de contenu par tuile : à 22 px un
+     montant à cinq chiffres n'y tient pas. */
+  .stat .value { font-size: 19px; }
   .main { padding: 14px 12px 64px; }
 }
 

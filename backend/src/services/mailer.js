@@ -20,6 +20,13 @@ async function getTransport() {
         port: config.mail.smtp.port,
         secure: config.mail.smtp.port === 465, // 465 = TLS implicite, 587 = STARTTLS
         auth: { user: config.mail.smtp.user, pass: config.mail.smtp.pass },
+        // Sans ces bornes, les valeurs par défaut de nodemailer sont de 2 min de
+        // connexion, 30 s d'accueil et 10 min de socket : un serveur SMTP qui
+        // accepte la connexion sans jamais répondre laisse la demande de
+        // connexion en suspens tout ce temps. Quelques secondes suffisent.
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 10000,
       }),
     );
   }

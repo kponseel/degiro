@@ -37,6 +37,9 @@ const linkLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === 'test' || process.env.VITEST === 'true',
+  handler: (_req, res) => res.status(429).json({
+    error: 'Trop de demandes de connexion. Patiente un quart d’heure, puis réessaie.',
+  }),
 });
 
 // POST /api/auth/request-link — { email, pseudo? } → envoie un lien magique.

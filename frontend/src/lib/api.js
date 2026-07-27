@@ -5,12 +5,39 @@ function qs(obj) {
   return parts.length ? `?${parts.join('&')}` : '';
 }
 
+/**
+ * Message lisible pour un échec. Sans cela, l'interface affichait tel quel ce
+ * que renvoyait le navigateur ou le proxy — « Failed to fetch », « Bad Gateway » —
+ * en anglais et sans indiquer quoi faire.
+ */
+function humanMessage(status, body) {
+  if (body && typeof body === 'object' && body.error) return body.error;
+  if (status === 0) return 'Connexion au serveur impossible. Vérifie ta connexion internet, puis réessaie.';
+  if (status === 401) return 'Ta session a expiré. Reconnecte-toi.';
+  if (status === 429) return 'Trop de requêtes d’affilée. Patiente un instant, puis réessaie.';
+  if (status === 502 || status === 503 || status === 504) return 'Le service est momentanément indisponible. Réessaie dans un instant.';
+  if (status >= 500) return 'Une erreur est survenue côté serveur. Réessaie dans un instant.';
+  return 'La requête a échoué.';
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, { credentials: 'include', ...opts });
+  let res;
+  try {
+    res = await fetch(path, { credentials: 'include', ...opts });
+  } catch (cause) {
+    // Réseau coupé, serveur injoignable, requête interrompue : `fetch` rejette
+    // sans réponse. `status = 0` distingue ce cas d'une réponse HTTP en erreur.
+    const err = new Error(humanMessage(0));
+    err.status = 0;
+    err.cause = cause;
+    throw err;
+  }
+
   const ct = res.headers.get('content-type') || '';
-  const body = ct.includes('application/json') ? await res.json() : await res.text();
+  // Une passerelle en panne répond en HTML : ne pas tenter de le lire en JSON.
+  const body = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text();
   if (!res.ok) {
-    const err = new Error((body && body.error) || res.statusText);
+    const err = new Error(humanMessage(res.status, body));
     err.status = res.status;
     err.body = body;
     throw err;
