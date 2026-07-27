@@ -75,6 +75,28 @@ describe('Attribution — contribution d’une ligne', () => {
   });
 });
 
+describe('Attribution — plus-value inconnue ≠ zéro', () => {
+  it('ne totalise pas 0 € quand AUCUNE position ne porte de plus-value', () => {
+    // Cas d'un compte alimenté par Portfolio.csv : DEGIRO n'y fournit aucun P/L.
+    // Afficher « 0,00 € » laisserait croire à un portefeuille à l'équilibre.
+    const { totals } = attribution([
+      { isin: 'A', name: 'A', value_eur: 1000, pl_eur: null },
+      { isin: 'B', name: 'B', value_eur: 500, pl_eur: null },
+    ]);
+    expect(totals.pl_eur).toBeNull();
+    expect(totals.pl_pct).toBeNull();
+    expect(totals.value_eur).toBe(1500);
+  });
+
+  it('totalise sur les seules positions renseignées', () => {
+    const { totals } = attribution([
+      { isin: 'A', name: 'A', value_eur: 1000, pl_eur: 100 },
+      { isin: 'B', name: 'B', value_eur: 500, pl_eur: null },
+    ]);
+    expect(totals.pl_eur).toBe(100);
+  });
+});
+
 // ── Réalisé : inchangé par les durcissements ─────────────────────────
 
 describe('Plus-values réalisées — non-régression', () => {

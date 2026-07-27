@@ -99,6 +99,16 @@ router.post('/', async (req, res, next) => {
     }
 
     if (kind === 'portfolio') {
+      // Garde-fou contre une confusion coûteuse : la détection conclut
+      // « portefeuille » dès qu'une ligne porte un ISIN, ce qui inclut un fichier
+      // de composition d'ETF — demandé sur la même page. Importé comme
+      // portefeuille, il remplaçait l'instantané du jour par des lignes sans
+      // quantité ni valeur, ramenant le patrimoine affiché à 0,00 €.
+      if (!normalized.some((p) => p.qty != null || p.value_eur != null)) {
+        return res.status(422).json({
+          error: "Ce fichier ne contient ni quantité ni valeur : ce n'est pas un export de portefeuille. S'il s'agit de la composition d'un ETF, importe-la depuis « Compositions d'ETF ».",
+        });
+      }
       const posTotal = normalized.reduce((s, p) => s + (p.value_eur || 0), 0);
       const cashEur = extractCashEur(rows);
       const totalValueEur = posTotal + (cashEur || 0);

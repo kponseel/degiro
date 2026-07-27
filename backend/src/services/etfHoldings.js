@@ -104,7 +104,9 @@ export async function heldEtfsWithCoverage(accountId = 1) {
      WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
        AND (p.qty IS NULL OR p.qty <> 0)
        AND (r.asset_class = 'ETF' OR p.product_type = 'ETF'
-            OR p.name REGEXP 'ETF|UCITS|ETC|ISHARES|XTRACKERS|LYXOR|AMUNDI|VANGUARD|SPDR|INVESCO|WISDOMTREE|VANECK')
+            -- Limites de mot indispensables : sans elles « NETFLIX » contient
+            -- « ETF » et se retrouvait proposé à l'import d'une composition.
+            OR p.name REGEXP '\\b(ETF|UCITS|ETC|ISHARES|XTRACKERS|LYXOR|AMUNDI|VANGUARD|SPDR|INVESCO|WISDOMTREE|VANECK)\\b')
      GROUP BY p.isin
      ORDER BY name`,
     [accountId],
