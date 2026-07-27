@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Card, Stat, Banner } from './ui.jsx';
-import { fmtEur, fmtDate, fmtNum } from '../lib/format.js';
+import { fmtEur, fmtDate, fmtNum, plural } from '../lib/format.js';
 import {
   filterByPeriod, periodSummary, byYear, monthsIn, totalReturn,
 } from '../lib/realized.js';
@@ -108,7 +108,7 @@ export default function RealizedPanel({ realized, latentPl = null }) {
             <div className="grid stat-row" style={{ marginTop: 14 }}>
               <Stat label="Plus-values" value={signEur(summary.gains)} sub={`${periodLabel}`} tone={summary.gains ? 'pos' : ''} />
               <Stat label="Moins-values" value={signEur(summary.losses)} sub="pertes réalisées" tone={summary.losses ? 'neg' : ''} />
-              <Stat label="Net réalisé" value={signEur(summary.net)} sub={`${summary.sales} vente(s)`} tone={tone(summary.net)} />
+              <Stat label="Net réalisé" value={signEur(summary.net)} sub={plural(summary.sales, 'vente')} tone={tone(summary.net)} />
               <Stat label="Dividendes" value={fmtEur(summary.dividends)} sub="sur la période" tone={summary.dividends ? 'pos' : ''} />
             </div>
 
@@ -186,7 +186,7 @@ export default function RealizedPanel({ realized, latentPl = null }) {
             {summary.unknown > 0 && (
               <div style={{ marginTop: 12 }}>
                 <Banner kind="info">
-                  {summary.unknown} vente(s) sans coût d'achat connu (titre acheté avant la période couverte par ton
+                  {plural(summary.unknown, 'vente')} sans coût d'achat connu (titre acheté avant la période couverte par ton
                   <strong> Transactions.csv</strong>) : leur plus-value n'est pas calculée. Importe un historique plus
                   ancien pour les compléter.
                 </Banner>

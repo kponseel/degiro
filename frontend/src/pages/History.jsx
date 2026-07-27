@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { getSnapshots, getPerformance, getBenchmark, getAnalytics } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtDate, fmtDateShort, fmtNum } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtDate, fmtDateShort, fmtNum, plural } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
@@ -252,7 +252,7 @@ export default function History({ onGoImport }) {
         <Banner kind="info">
           Le <strong>TWR</strong> mesure ta performance réelle en neutralisant tes dépôts/retraits.
           Pour qu'il soit exact, importe ton <strong>Account.csv</strong>.{' '}
-          {perf && perf.flows ? `${perf.flows} flux externe(s) pris en compte.` : 'Aucun flux externe détecté — le TWR égale la variation de valeur.'}
+          {perf && perf.flows ? `${plural(perf.flows, 'flux externe', 'flux externes')} pris en compte.` : 'Aucun flux externe détecté — le TWR égale la variation de valeur.'}
         </Banner>
       </div>
 

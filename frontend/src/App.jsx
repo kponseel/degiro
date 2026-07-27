@@ -23,7 +23,10 @@ import Admin from './pages/Admin.jsx';
 const PAGES = [
   { id: 'overview', label: "Vue d'ensemble", short: 'Portefeuille', key: 'p', icon: IconOverview, Comp: Overview },
   { id: 'exposure', label: 'Exposition', short: 'Exposition', key: 'e', icon: IconExposure, Comp: Exposure },
-  { id: 'history', label: 'Historique', short: 'Performance', key: 'h', icon: IconHistory, Comp: History },
+  // Cette page s'est longtemps appelée « Historique » dans le menu, « Performance »
+  // sur l'onglet compact et dans son propre titre. Trois noms pour un écran : on ne
+  // pouvait ni s'y référer à l'oral, ni la retrouver dans l'aide. Un seul nom.
+  { id: 'history', label: 'Performance', short: 'Performance', key: 'h', icon: IconHistory, Comp: History },
   { id: 'dividends', label: 'Dividendes', short: 'Dividendes', key: 'd', icon: IconDividends, Comp: Dividends },
   { id: 'news', label: 'Actus', short: 'Actus', key: 'n', icon: IconNews, Comp: News },
   { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', key: 'i', icon: IconAI, Comp: AiPrompts },

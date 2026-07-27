@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { uploadCsv } from '../lib/api.js';
 import { Banner } from './ui.jsx';
-import { fmtDate, fmtEur, fmtNum, fmtMoney } from '../lib/format.js';
+import { fmtDate, fmtEur, fmtNum, fmtMoney, plural } from '../lib/format.js';
 
 const KIND_LABEL = { portfolio: 'Portefeuille', account: 'Relevé de compte', transactions: 'Transactions' };
 
@@ -176,7 +176,7 @@ export default function Uploader({ hint, title, description, onImported, onDone 
         <div className="card card-pad" style={{ background: 'var(--card-2)', minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              Détecté : <strong>{KIND_LABEL[preview.kind] || preview.kind}</strong> · {preview.count} ligne(s)
+              Détecté : <strong>{KIND_LABEL[preview.kind] || preview.kind}</strong> · {plural(preview.count, 'ligne')}
               <span className="muted"> · délimiteur « {preview.delimiter === '\t' ? 'tab' : preview.delimiter} »</span>
             </div>
             <button className="btn" onClick={confirm} disabled={busy}>Confirmer l'import</button>
@@ -194,8 +194,8 @@ export default function Uploader({ hint, title, description, onImported, onDone 
       {result && !result.deduplicated && (
         <Banner kind="info">
           {result.kind === 'portfolio'
-            ? `Portefeuille importé : ${result.positions} position(s)${result.replaced ? ', snapshot du jour remplacé' : ''}.`
-            : `${KIND_LABEL[result.kind] || result.kind} : ${result.inserted} nouveau(x) mouvement(s) sur ${result.received}.`}
+            ? `Portefeuille importé : ${plural(result.positions, 'position')}${result.replaced ? ', snapshot du jour remplacé' : ''}.`
+            : `${KIND_LABEL[result.kind] || result.kind} : ${plural(result.inserted, 'nouveau mouvement', 'nouveaux mouvements')} sur ${result.received}.`}
         </Banner>
       )}
     </div>

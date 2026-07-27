@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { getPortfolio, getExposure, getLookthrough } from '../lib/api.js';
-import { fmtEur, fmtPct } from '../lib/format.js';
+import { fmtEur, fmtPct, plural } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 
 const PALETTE = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)'];
@@ -95,8 +95,8 @@ function Lookthrough({ data }) {
       </p>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
-        <span className="chip">{coveredCount} ETF éclaté(s)</span>
-        {overlaps.length > 0 && <span className="chip warn">{overlaps.length} surexposition(s)</span>}
+        <span className="chip">{plural(coveredCount, 'ETF éclaté', 'ETF éclatés')}</span>
+        {overlaps.length > 0 && <span className="chip warn">{plural(overlaps.length, 'surexposition')}</span>}
         {missing.length > 0 && <span className="chip">{missing.length} ETF sans composition</span>}
       </div>
 

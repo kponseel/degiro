@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getPortfolio, getSnapshots, getLookthrough, getPerformance, listAiInsights } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtNum, fmtDate, fmtDateShort, fmtSignedEur, toneOf } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtNum, fmtDate, fmtDateShort, fmtSignedEur, toneOf, plural } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
@@ -23,6 +23,27 @@ function Kpi({ label, value, sub, tone }) {
       <span className={`kpi-value ${tone || ''}`}>{value}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
     </div>
+  );
+}
+
+/**
+ * Une ligne de « meilleures / moins bonnes ».
+ *
+ * Les deux colonnes étaient écrites en double, et avaient divergé : la colonne des
+ * pertes affichait le montant sans signe et calculait son ton à part, si bien qu'un
+ * gain y apparaissait « 12,00 € » quand la colonne d'en face affichait « +12,00 € ».
+ *
+ * Le libellé est tronqué quand la place manque — c'est voulu, la carte est étroite —
+ * mais il l'était sans recours : un titre sans symbole n'affichait qu'un début de
+ * nom coupé. `title` rend le nom complet au survol, et le donne au lecteur d'écran.
+ */
+function Mover({ p, onSelect }) {
+  const nom = p.name || p.symbol || p.isin;
+  return (
+    <button className="mover" onClick={() => onSelect(p)} title={nom}>
+      <span className="mover-sym">{p.symbol || p.name}</span>
+      <span className={`mover-val ${toneOf(p.pl_eur)}`}>{fmtSignedEur(p.pl_eur)}</span>
+    </button>
   );
 }
 
@@ -115,7 +136,7 @@ export default function Overview({ onGoImport }) {
   // serait un chiffre qui ment sur l'écran le plus regardé.
   const twrSub = !perf || perf.insufficient
     ? '≥ 2 jours requis'
-    : (perf.flows > 0 ? `${perf.flows} apport(s) neutralisé(s)` : 'importe ton relevé pour neutraliser les apports');
+    : (perf.flows > 0 ? plural(perf.flows, 'apport neutralisé', 'apports neutralisés') : 'importe ton relevé pour neutraliser les apports');
 
   const facets = [
     { key: 'type', label: 'Type', value: filter.type, options: distinctValues(weighted, typeOf), onChange: (v) => setFilter((f) => ({ ...f, type: v })) },
@@ -202,21 +223,11 @@ export default function Overview({ onGoImport }) {
             <div className="movers">
               <div className="movers-col">
                 <span className="movers-title">Meilleures lignes</span>
-                {best.map((p) => (
-                  <button key={p.isin} className="mover" onClick={() => setSelected(p)}>
-                    <span className="mover-sym">{p.symbol || p.name}</span>
-                    <span className={toneOf(p.pl_eur)}>{fmtSignedEur(p.pl_eur)}</span>
-                  </button>
-                ))}
+                {best.map((p) => <Mover key={p.isin} p={p} onSelect={setSelected} />)}
               </div>
               <div className="movers-col">
                 <span className="movers-title">Moins bonnes</span>
-                {worst.map((p) => (
-                  <button key={p.isin} className="mover" onClick={() => setSelected(p)}>
-                    <span className="mover-sym">{p.symbol || p.name}</span>
-                    <span className={Number(p.pl_eur) >= 0 ? 'pos' : 'neg'}>{fmtEur(p.pl_eur)}</span>
-                  </button>
-                ))}
+                {worst.map((p) => <Mover key={p.isin} p={p} onSelect={setSelected} />)}
               </div>
             </div>
           )}
@@ -273,9 +284,7 @@ export default function Overview({ onGoImport }) {
                     <td className="col-opt">{fmtNum(p.price)} <span className="muted sm">{p.currency}</span></td>
                     <td className="sym">{fmtEur(p.value_eur)}</td>
                     <td className="col-opt">{fmtPct(p.w)}</td>
-                    <td className={p.pl_eur == null ? 'muted' : Number(p.pl_eur) >= 0 ? 'pos' : 'neg'}>
-                      {p.pl_eur == null ? '—' : `${Number(p.pl_eur) >= 0 ? '+' : ''}${fmtEur(p.pl_eur)}`}
-                    </td>
+                    <td className={p.pl_eur == null ? 'muted' : toneOf(p.pl_eur)}>{fmtSignedEur(p.pl_eur)}</td>
                   </tr>
                 );
               })}

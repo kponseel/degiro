@@ -41,6 +41,24 @@ export const fmtSignedEur = (n) => (unusable(n) ? '—' : `${Number(n) > 0 ? '+'
 /** Classe de ton (positif/négatif) associée à une valeur, ou '' si indéterminée. */
 export const toneOf = (n) => (unusable(n) || Number(n) === 0 ? '' : (Number(n) > 0 ? 'pos' : 'neg'));
 
+/**
+ * Accord au pluriel : `plural(1, 'vente')` → « 1 vente », `plural(3, 'vente')` →
+ * « 3 ventes ». La forme plurielle se donne en second quand le simple ajout d'un
+ * « s » ne suffit pas (« nouveau mouvement » → « nouveaux mouvements »).
+ *
+ * L'interface écrivait « 3 vente(s) », « 12 nouveau(x) mouvement(s) ». C'est lisible
+ * à l'œil et illisible à voix haute : un lecteur d'écran énonce les parenthèses.
+ * Le compte est toujours connu au moment de l'affichage — il n'y a aucune raison de
+ * reporter l'accord sur le lecteur.
+ *
+ * En français la marque du pluriel n'apparaît qu'à partir de deux : « 0 vente ».
+ */
+export const plural = (n, mot, pluriel) => {
+  const v = Number(n);
+  const forme = Number.isFinite(v) && Math.abs(v) >= 2 ? (pluriel ?? `${mot}s`) : mot;
+  return `${fmtNum(n, 0)} ${forme}`;
+};
+
 /** Montant dans sa devise native (EUR, USD…). Repli si la devise est inconnue. */
 export function fmtMoney(n, cur) {
   if (unusable(n)) return '—';
