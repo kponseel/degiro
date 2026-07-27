@@ -8,11 +8,17 @@
  * Chaque étape est journalisée dans un rapport de diagnostic renvoyé au popup :
  * si DEGIRO change son format, on voit immédiatement quelle étape a lâché.
  */
-import { buildPayload, parsePortfolio, productIds, chunk } from './degiro.js';
+import {
+  buildPayload, parsePortfolio, parseTransactions, productIds, transactionProductIds, chunk,
+} from './degiro.js';
 import { isComplete, intAccountFromClient, urls } from './session.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
 const isDegiro = (tab) => String(tab?.url || '').startsWith('https://trader.degiro.nl/');
+
+/** Date au format JJ/MM/AAAA attendu par l'endpoint transactions de DEGIRO. */
+const pad2 = (n) => String(n).padStart(2, '0');
+const ddmmyyyy = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 
 /**
  * Retrouve l'onglet DEGIRO. L'extension ne demande pas la permission `tabs` :
@@ -76,9 +82,23 @@ async function capture() {
     return { ok: false, report, error: update?.status === 401 ? 'Session DEGIRO expirée : reconnecte-toi puis réessaie.' : 'DEGIRO a refusé la lecture du portefeuille.' };
   }
 
-  // Résolution des identifiants produit en ISIN, par lots de 100.
-  const { products } = parsePortfolio(update.json);
-  const ids = productIds(products);
+  // Historique complet des ordres — positions fermées et plus-values réalisées.
+  // Best-effort : un échec ici n'empêche pas la capture du portefeuille.
+  const txUrl = urls.transactions(creds.intAccount, creds.sessionId, '01/01/2000', ddmmyyyy(new Date()));
+  const txRes = await ask(tab.id, { type: 'FETCH', url: txUrl });
+  const txJson = txRes?.ok && txRes.json ? txRes.json : null;
+  step(report, 'Historique des transactions', Boolean(txJson),
+    txJson ? `${parseTransactions(txJson).length} ordre(s)` : `HTTP ${txRes?.status ?? '?'} — capturé sans historique`);
+
+  // Résolution des identifiants produit en ISIN, par lots de 100. On résout à la
+  // fois les positions (détenues + soldées) et les produits cités par les ordres :
+  // une position fermée n'apparaît plus dans le portefeuille courant.
+  const { products, closed } = parsePortfolio(update.json);
+  const ids = [...new Set([
+    ...productIds(products),
+    ...productIds(closed),
+    ...transactionProductIds(parseTransactions(txJson)),
+  ])];
   const lots = [];
   for (const batch of chunk(ids, 100)) {
     const res = await ask(tab.id, {
@@ -95,13 +115,20 @@ async function capture() {
   const { payload, diagnostics } = buildPayload({
     update: update.json,
     products: lots,
+    transactions: txJson,
     captureId: crypto.randomUUID(),
     capturedAt: new Date().toISOString(),
   });
 
   step(report, 'Positions retenues', payload.positions.length > 0,
-    `${diagnostics.sent} envoyée(s) sur ${diagnostics.held} détenue(s)`
+    `${diagnostics.sent - diagnostics.closed} envoyée(s) sur ${diagnostics.held} détenue(s)`
+    + (diagnostics.closed ? ` + ${diagnostics.closed} fermée(s)` : '')
     + (diagnostics.skipped.length ? ` — ignorées faute d'ISIN : ${diagnostics.skipped.map((s) => s.name || s.productId).join(', ')}` : ''));
+
+  if (diagnostics.transactionsRead > 0) {
+    step(report, 'Transactions retenues', diagnostics.transactions > 0,
+      `${diagnostics.transactions} envoyée(s) sur ${diagnostics.transactionsRead} lue(s)`);
+  }
 
   // Contrôle de cohérence : notre somme doit coller au total affiché par DEGIRO.
   if (diagnostics.totalGap !== null) {
@@ -123,6 +150,7 @@ async function capture() {
   const summary = {
     at: report.at,
     positions: payload.positions.length,
+    transactions: payload.transactions.length,
     total: payload.total_value_eur,
     deduplicated: Boolean(sent.body?.deduplicated),
   };

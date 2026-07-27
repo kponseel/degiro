@@ -13,7 +13,7 @@ export async function computeLookthrough(accountId = 1) {
   const [positions] = await pool.query(
     `SELECT p.isin, p.name, p.product_type, p.value_eur, r.sector, r.country, r.asset_class
      FROM positions p LEFT JOIN isin_ref r ON r.isin = p.isin
-     WHERE p.snapshot_id = ?`,
+     WHERE p.snapshot_id = ? AND (p.qty IS NULL OR p.qty <> 0)`,
     [snaps[0].id],
   );
   const [holdingRows] = await pool.query(

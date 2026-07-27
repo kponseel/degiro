@@ -77,6 +77,7 @@ export async function enrichPortfolio(accountId = 1) {
     `SELECT p.isin, MAX(p.product_type) AS product_type, MAX(p.name) AS name
      FROM positions p
      WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
+       AND (p.qty IS NULL OR p.qty <> 0)
      GROUP BY p.isin`,
     [accountId],
   );

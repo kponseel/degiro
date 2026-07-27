@@ -97,6 +97,7 @@ async function heldStocks(accountId) {
             r.ticker, r.asset_class, r.sector
      FROM positions p LEFT JOIN isin_ref r ON r.isin = p.isin
      WHERE p.snapshot_id = (SELECT id FROM snapshots WHERE account_id = ? ORDER BY captured_at DESC LIMIT 1)
+       AND (p.qty IS NULL OR p.qty <> 0)
      GROUP BY p.isin, r.ticker, r.asset_class, r.sector
      ORDER BY value_eur DESC`,
     [accountId],

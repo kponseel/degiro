@@ -17,13 +17,16 @@ router.get('/', async (req, res, next) => {
       return res.json({ snapshot: null, positions: [] });
     }
     const snapshot = snaps[0];
+    // Les positions soldées (quantité nulle) sont conservées dans le snapshot
+    // mais exclues de la vue des positions courantes ; leur détail (dates, prix,
+    // plus-values) se lit dans la vue réalisé/fiscal, alimentée par les transactions.
     const [positions] = await pool.query(
       `SELECT p.isin, p.symbol, p.name, p.product_type, p.qty, p.price, p.currency,
               p.fx_rate, p.break_even_price, p.value_eur, p.pl_eur, p.pl_day_eur,
               r.sector, r.country, r.asset_class, r.ticker
        FROM positions p
        LEFT JOIN isin_ref r ON r.isin = p.isin
-       WHERE p.snapshot_id = ?
+       WHERE p.snapshot_id = ? AND (p.qty IS NULL OR p.qty <> 0)
        ORDER BY p.value_eur DESC`,
       [snapshot.id],
     );

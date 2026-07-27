@@ -29,6 +29,20 @@ depuis la session DEGIRO que tu as **déjà ouverte** dans ton navigateur.
 Une capture par jour suffit : l'API ne garde qu'un instantané par jour et par
 source, et rejouer la même capture ne crée pas de doublon.
 
+Chaque capture envoie **deux choses** :
+
+- **l'instantané du portefeuille** — positions détenues, positions **soldées**
+  (quantité nulle) et liquidités ;
+- **l'historique complet des ordres** (achats/ventes) depuis l'ouverture du
+  compte, qui alimente la vue *Gains, pertes & fiscalité* : plus-values réalisées
+  des positions fermées. Les ordres sont dédoublonnés par leur identifiant DEGIRO
+  et se confondent avec ceux d'un import `Transactions.csv` — importer les deux ne
+  double rien.
+
+> Les **dividendes** (et retenues à la source) ne figurent pas dans l'historique
+> des ordres : pour les intégrer à la vue fiscale, importe le `Account.csv` (relevé
+> de compte) depuis l'Analyzer.
+
 ## Ce qui circule, et ce qui ne circule pas
 
 - **Aucun identifiant DEGIRO n'est demandé, lu ou stocké.** Ni mot de passe, ni code.
@@ -39,7 +53,8 @@ source, et rejouer la même capture ne crée pas de doublon.
 - Le jeton de l'Analyzer vit dans le stockage local de l'extension et ne s'approche
   jamais du contexte de la page DEGIRO.
 - Seules les données de portefeuille partent vers **ton** Analyzer : ISIN, quantités,
-  prix, valeurs, plus/moins-values, liquidités.
+  prix, valeurs, plus/moins-values, liquidités, et l'historique des ordres (dates,
+  quantités, montants).
 - Permissions demandées : `storage`, l'accès à `trader.degiro.nl`, et l'accès au seul
   serveur que tu as toi-même saisi. Pas d'accès aux autres onglets.
 
@@ -52,7 +67,9 @@ inject.js    (contexte de la page)  lit sessionId + intAccount dans les URLs
 content.js   (monde isolé)          exécute les requêtes DEGIRO dans l'onglet,
                                     donc avec les cookies de la session
       │ chrome.runtime
-background.js (service worker)      traduit vers le schéma de l'API, POST /api/ingest
+background.js (service worker)      lit le portefeuille (/v5/update) ET l'historique
+                                    des ordres (/reporting/.../transactions),
+                                    traduit vers le schéma de l'API, POST /api/ingest
                                     avec le jeton « dgx_ »
 ```
 
@@ -72,6 +89,7 @@ Le bouton *Copier le diagnostic* met le tout dans le presse-papiers.
 | **Script de contenu** | L'onglet a été ouvert avant l'installation : recharge-le avec F5. |
 | **Session DEGIRO** | Les identifiants n'ont pas encore été vus. Reste sur l'onglet quelques secondes, laisse l'application se rafraîchir, puis relance. |
 | **Lecture du portefeuille** | Session expirée (reconnecte-toi), ou DEGIRO a changé son endpoint. |
+| **Historique des transactions** | L'endpoint `reporting/.../transactions` a changé ou a refusé la lecture. Non bloquant : le portefeuille est quand même capturé, mais sans les plus-values réalisées. |
 | **Résolution des ISIN** | L'endpoint `products/info` a changé de forme : les positions sont là, mais sans ISIN elles ne peuvent pas être rattachées. |
 | **Contrôle du total** | Notre somme s'écarte de plus d'un euro du total affiché par DEGIRO : un champ est mal lu. **Les chiffres importés sont alors à considérer comme faux** — signale l'écart plutôt que de t'y fier. |
 | **Envoi à Analyzer** | Jeton révoqué ou mal collé, ou serveur injoignable. |
