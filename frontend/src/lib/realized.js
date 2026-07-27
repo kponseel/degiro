@@ -19,6 +19,33 @@ export function filterByPeriod(items, { year = null, month = null } = {}) {
   });
 }
 
+/**
+ * Motifs pour lesquels une vente n'a pas de plus-value calculable, et ce que
+ * l'utilisateur peut y faire. Les confondre revenait à afficher un tableau de
+ * tirets muet, ou pire, à imputer systématiquement la cause à un historique
+ * trop court alors que le fichier importé était en cause.
+ */
+export const UNKNOWN_REASONS = {
+  no_history: {
+    court: 'achat hors historique',
+    long: "le titre a été acheté avant la période couverte par ton Transactions.csv — son prix de revient est inconnu",
+    remede: 'Réexporte un Transactions.csv qui remonte plus loin.',
+  },
+  incomplete_cost: {
+    court: 'achat sans montant en euros',
+    long: "un achat de cette ligne n'avait pas de montant en euros exploitable, ce qui rend le prix moyen indéterminé tant que la position reste ouverte",
+    remede: "Vérifie que ton export contient bien une colonne de valeur en EUR (« Valeur » ou « Total »).",
+  },
+  amount_missing: {
+    court: 'vente sans montant en euros',
+    long: "cette vente n'avait pas de montant en euros exploitable",
+    remede: "Vérifie que ton export contient bien une colonne de valeur en EUR (« Valeur » ou « Total »).",
+  },
+};
+
+/** Compte les occurrences de chaque valeur → { valeur: n }. */
+const countBy = (values) => values.reduce((acc, v) => (v ? { ...acc, [v]: (acc[v] || 0) + 1 } : acc), {});
+
 /** Totaux bruts d'un lot de ventes réalisées + un lot de dividendes. */
 export function periodSummary(events = [], dividends = []) {
   const known = events.filter((e) => e.gain_eur != null);
@@ -26,6 +53,7 @@ export function periodSummary(events = [], dividends = []) {
   const losses = round(known.filter((e) => e.gain_eur < 0).reduce((s, e) => s + e.gain_eur, 0));
   const net = round(gains + losses);
   const divs = round(dividends.reduce((s, d) => s + (Number(d.amount_eur) || 0), 0));
+  const inconnues = events.filter((e) => e.costUnknown);
   return {
     gains,
     losses,
@@ -33,8 +61,26 @@ export function periodSummary(events = [], dividends = []) {
     dividends: divs,
     total: round(net + divs), // encaissé « réalisé » = plus-values nettes + dividendes
     sales: events.length,
-    unknown: events.filter((e) => e.costUnknown).length,
+    computed: known.length,
+    unknown: inconnues.length,
+    unknownBy: countBy(inconnues.map((e) => e.unknownReason)),
   };
+}
+
+/**
+ * Phrase expliquant les ventes non calculées d'une période, motif par motif.
+ * Retourne null quand tout est calculé — il n'y a alors rien à dire.
+ */
+export function explainUnknown(unknownBy = {}) {
+  const parts = Object.entries(unknownBy)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  if (!parts.length) return null;
+  return parts.map(([motif, n]) => {
+    const r = UNKNOWN_REASONS[motif];
+    const libelle = r ? r.long : 'cause inconnue';
+    return { motif, n, texte: `${n} ${n > 1 ? 'ventes' : 'vente'} : ${libelle}`, remede: r?.remede || null };
+  });
 }
 
 /** Récapitulatif année par année (plus récente d'abord). */

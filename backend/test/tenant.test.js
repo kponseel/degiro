@@ -47,10 +47,12 @@ describe('Isolation multi-tenant', () => {
     const bPort = await bob.get('/api/portfolio');
 
     expect(aPort.body.positions.map((p) => p.isin)).toEqual(['US67066G1040']);
-    expect(aPort.body.snapshot.total_value_eur).toBe('1000.00');
+    // Nombres et non chaînes : le pilote rend désormais les DECIMAL en nombres
+    // (sans quoi `0 + "10.000000"` concaténait dans les calculs de plus-value).
+    expect(aPort.body.snapshot.total_value_eur).toBe(1000);
 
     expect(bPort.body.positions.map((p) => p.isin)).toEqual(['US0378331005']);
-    expect(bPort.body.snapshot.total_value_eur).toBe('2000.00');
+    expect(bPort.body.snapshot.total_value_eur).toBe(2000);
   });
 
   it('les séries et l’exposition sont cloisonnées', async () => {
@@ -119,7 +121,7 @@ describe('Réclamation des données historiques par le propriétaire', () => {
       const me = await owner.get('/api/auth/me');
       expect(me.body.user.id).toBe(1);
       const port = await owner.get('/api/portfolio');
-      expect(port.body.snapshot?.total_value_eur).toBe('12345.00');
+      expect(port.body.snapshot?.total_value_eur).toBe(12345);
     } finally {
       config.auth.ownerEmail = prev;
     }

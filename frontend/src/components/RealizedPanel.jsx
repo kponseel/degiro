@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card, Stat, Banner } from './ui.jsx';
 import { fmtEur, fmtDate, fmtNum, plural } from '../lib/format.js';
 import {
-  filterByPeriod, periodSummary, byYear, monthsIn, totalReturn,
+  filterByPeriod, periodSummary, byYear, monthsIn, totalReturn, explainUnknown,
 } from '../lib/realized.js';
 
 const signEur = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${fmtEur(v)}`);
@@ -65,7 +65,7 @@ export default function RealizedPanel({ realized, latentPl = null }) {
             sub="positions fermées (vendues)"
             tone={tone(ret.realized)}
           />
-          <Stat label="Dividendes encaissés" value={fmtEur(ret.dividends)} sub="nets de retenue" tone={ret.dividends ? 'pos' : ''} />
+          <Stat label="Dividendes encaissés" value={fmtEur(ret.dividends)} sub="détail dans l'onglet Dividendes" tone={ret.dividends ? 'pos' : ''} />
           <Stat
             label={ret.partial ? 'Total (hors latent)' : 'Gain total'}
             value={signEur(ret.total)}
@@ -104,12 +104,22 @@ export default function RealizedPanel({ realized, latentPl = null }) {
               )}
             </div>
 
-            {/* KPIs de la période sélectionnée */}
+            {/* KPIs de la période sélectionnée.
+                Les dividendes ne figurent plus ici : cette vue traite des
+                plus-values de cession, et leur détail vit dans l'onglet
+                Dividendes. Le quatrième cadran sert désormais à dire combien de
+                ventes ont pu être calculées — l'information qui manquait quand
+                le tableau n'affichait que des tirets. */}
             <div className="grid stat-row" style={{ marginTop: 14 }}>
               <Stat label="Plus-values" value={signEur(summary.gains)} sub={`${periodLabel}`} tone={summary.gains ? 'pos' : ''} />
               <Stat label="Moins-values" value={signEur(summary.losses)} sub="pertes réalisées" tone={summary.losses ? 'neg' : ''} />
               <Stat label="Net réalisé" value={signEur(summary.net)} sub={plural(summary.sales, 'vente')} tone={tone(summary.net)} />
-              <Stat label="Dividendes" value={fmtEur(summary.dividends)} sub="sur la période" tone={summary.dividends ? 'pos' : ''} />
+              <Stat
+                label="Ventes calculées"
+                value={`${summary.computed} / ${summary.sales}`}
+                sub={summary.unknown ? `${summary.unknown} sans prix de revient` : 'prix de revient connu'}
+                tone={summary.unknown ? 'warn' : 'pos'}
+              />
             </div>
 
             {/* Récap par année (chiffres bruts) */}
@@ -120,11 +130,10 @@ export default function RealizedPanel({ realized, latentPl = null }) {
                     <tr>
                       <th style={{ textAlign: 'left' }}>Année</th>
                       <th>Ventes</th>
+                      <th>Calculées</th>
                       <th>Plus-values</th>
                       <th>Moins-values</th>
                       <th>Net réalisé</th>
-                      <th>Dividendes</th>
-                      <th>Total</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -136,11 +145,16 @@ export default function RealizedPanel({ realized, latentPl = null }) {
                       >
                         <td style={{ textAlign: 'left', fontWeight: 650 }}>{r.year}</td>
                         <td>{r.sales}</td>
+                        {/* Sans cette colonne, une année entière à « — » ne
+                            distinguait pas un calcul impossible d'un gain nul. */}
+                        <td className={r.unknown ? 'warn' : 'muted'}>
+                          {r.computed} / {r.sales}
+                        </td>
                         <td className={r.gains ? 'pos' : 'muted'}>{r.gains ? signEur(r.gains) : '—'}</td>
                         <td className={r.losses ? 'neg' : 'muted'}>{r.losses ? signEur(r.losses) : '—'}</td>
-                        <td className={tone(r.net)}>{signEur(r.net)}</td>
-                        <td className={r.dividends ? 'pos' : 'muted'}>{r.dividends ? fmtEur(r.dividends) : '—'}</td>
-                        <td className={tone(r.total)} style={{ fontWeight: 650 }}>{signEur(r.total)}</td>
+                        <td className={tone(r.net)} style={{ fontWeight: 650 }}>
+                          {r.computed === 0 ? <span className="muted">—</span> : signEur(r.net)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -183,12 +197,22 @@ export default function RealizedPanel({ realized, latentPl = null }) {
               <p className="muted" style={{ marginTop: 16 }}>Aucune vente sur cette période.</p>
             )}
 
+            {/* Explication motif par motif. L'ancien message imputait toujours la
+                cause à un historique trop court — faux dès que le fichier importé
+                ne portait pas de montants en euros, et sans remède utile. */}
             {summary.unknown > 0 && (
               <div style={{ marginTop: 12 }}>
-                <Banner kind="info">
-                  {plural(summary.unknown, 'vente')} sans coût d'achat connu (titre acheté avant la période couverte par ton
-                  <strong> Transactions.csv</strong>) : leur plus-value n'est pas calculée. Importe un historique plus
-                  ancien pour les compléter.
+                <Banner kind="warn">
+                  <strong>{plural(summary.unknown, 'vente')} sans plus-value calculable</strong>
+                  {` sur ${plural(summary.sales, 'vente')} — ${periodLabel}.`}
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                    {(explainUnknown(summary.unknownBy) || []).map((d) => (
+                      <li key={d.motif} style={{ marginBottom: 4 }}>
+                        {d.texte}
+                        {d.remede && <span className="muted"> — {d.remede}</span>}
+                      </li>
+                    ))}
+                  </ul>
                 </Banner>
               </div>
             )}

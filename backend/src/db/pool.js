@@ -20,6 +20,15 @@ export function getPool() {
       // DATE/DATETIME renvoyés en chaînes ('YYYY-MM-DD' / 'YYYY-MM-DD HH:MM:SS'),
       // pas en objets Date — évite tout décalage de fuseau au retour.
       dateStrings: true,
+      // DECIMAL renvoyés en NOMBRES. Par défaut mysql2 les rend en chaînes pour
+      // préserver la précision, ce qui transforme silencieusement les additions
+      // en concaténations : `0 + "10.000000"` vaut "010.000000". Dans le calcul
+      // des plus-values, la quantité cumulée devenait ainsi NaN dès le deuxième
+      // achat d'une même ligne, le prix de revient tombait à 0, et la vente
+      // était comptée comme un gain égal à la totalité du produit — sans que
+      // rien ne le signale. Les montants manipulés ici (quantités, euros) sont
+      // très loin de la limite de précision d'un nombre JavaScript.
+      decimalNumbers: true,
     });
   }
   return pool;
