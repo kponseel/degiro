@@ -52,7 +52,8 @@ const jsonPost = (path, data, method = 'POST') =>
   api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data || {}) });
 
 // ── Authentification (lien magique + session cookie) ──────────────
-export const requestMagicLink = (email, pseudo) => jsonPost('/api/auth/request-link', { email, pseudo });
+export const requestMagicLink = (email, pseudo, inviteCode) =>
+  jsonPost('/api/auth/request-link', { email, pseudo, invite_code: inviteCode });
 export const verifyMagicLink = (token) => jsonPost('/api/auth/verify', { token });
 export const getMe = () => api('/api/auth/me');
 export const logout = () => jsonPost('/api/auth/logout', {});
@@ -77,6 +78,8 @@ export const deleteAiInsight = (id) => api(`/api/ai/insights/${id}`, { method: '
 export const adminListUsers = () => api('/api/admin/users');
 export const adminUpdateUser = (id, patch) => jsonPost(`/api/admin/users/${id}`, patch, 'PATCH');
 export const adminDeleteUser = (id) => api(`/api/admin/users/${id}`, { method: 'DELETE' });
+export const adminGetInviteCode = () => api('/api/admin/invite-code');
+export const adminSetInviteCode = (code) => jsonPost('/api/admin/invite-code', { code }, 'PUT');
 
 // ── Données ───────────────────────────────────────────────────────
 export const getPortfolio = () => api('/api/portfolio');

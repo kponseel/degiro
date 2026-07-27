@@ -45,11 +45,17 @@ const linkLimiter = rateLimit({
 // POST /api/auth/request-link — { email, pseudo? } → envoie un lien magique.
 router.post('/request-link', linkLimiter, async (req, res, next) => {
   try {
-    const { email, pseudo } = req.body || {};
-    const result = await requestMagicLink({ email, pseudo, appUrl: requestBaseUrl(req) });
+    const { email, pseudo, invite_code: inviteCode } = req.body || {};
+    const result = await requestMagicLink({ email, pseudo, inviteCode, appUrl: requestBaseUrl(req) });
     if (result.error === 'invalid_email') return res.status(400).json({ error: 'Email invalide' });
     if (result.error === 'pseudo_taken') return res.status(409).json({ error: 'Ce pseudo est déjà pris — choisis-en un autre (ou laisse vide).' });
     if (result.error === 'not_allowed') return res.status(403).json({ error: "Les inscriptions sont réservées : demande au propriétaire d'ajouter ton adresse." });
+    if (result.error === 'invite_required') {
+      return res.status(403).json({
+        error: "Code d'invitation requis ou invalide. Il n'est demandé que pour créer un compte — demande-le à la personne qui t'a partagé ce lien.",
+        needsInvite: true,
+      });
+    }
     if (result.error === 'too_many_requests') return res.status(429).json({ error: 'Trop de demandes pour cette adresse. Réessaie dans un quart d\'heure.' });
     if (result.error === 'mail_not_configured') {
       return res.status(503).json({ error: "Connexion indisponible : l'envoi d'email n'est pas configuré sur le serveur (variables SMTP_*)." });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminListUsers, adminUpdateUser, adminDeleteUser } from '../lib/api.js';
+import { adminListUsers, adminUpdateUser, adminDeleteUser, adminGetInviteCode, adminSetInviteCode } from '../lib/api.js';
 import { fmtDate, fmtNum } from '../lib/format.js';
 import { Spinner, Card, Banner, Stat } from '../components/ui.jsx';
 
@@ -71,6 +71,90 @@ function UserRow({ u, isSelf, onSaved, onDeleted, onError }) {
   );
 }
 
+
+/**
+ * Code d'invitation exigé pour créer un compte.
+ *
+ * Modifiable ici plutôt que par variable d'environnement : le changer ne doit
+ * demander ni redéploiement ni passage par l'hébergeur. Le code est affiché en
+ * clair — c'est un code de partage, destiné à être communiqué, pas un secret
+ * personnel.
+ */
+function InviteCodeCard() {
+  const [code, setCode] = useState('');
+  const [saved, setSaved] = useState(null);
+  const [state, setState] = useState('loading'); // loading | ready | saving
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    adminGetInviteCode()
+      .then((d) => { setCode(d.code || ''); setSaved(d.code); setState('ready'); })
+      .catch((e) => { setMsg({ kind: 'err', text: e.message }); setState('ready'); });
+  }, []);
+
+  async function save() {
+    setState('saving');
+    setMsg(null);
+    try {
+      const d = await adminSetInviteCode(code.trim());
+      setSaved(d.code);
+      setCode(d.code || '');
+      setMsg(d.open
+        ? { kind: 'warn', text: 'Code retiré : n’importe qui peut désormais créer un compte.' }
+        : { kind: 'ok', text: 'Code enregistré. Il s’applique immédiatement.' });
+    } catch (e) {
+      setMsg({ kind: 'err', text: e.message });
+    } finally {
+      setState('ready');
+    }
+  }
+
+  const dirty = code.trim() !== (saved || '');
+
+  return (
+    <Card title="Code d'invitation">
+      <p className="muted" style={{ marginTop: 0 }}>
+        Exigé pour <strong>créer</strong> un compte. Les personnes déjà inscrites se connectent
+        sans lui — changer le code ne coupe donc l’accès à personne.
+      </p>
+
+      {state === 'loading' ? <Spinner /> : (
+        <>
+          <div className="field" style={{ maxWidth: 360 }}>
+            <label htmlFor="invite-code">Code actuel</label>
+            <input
+              id="invite-code"
+              className="input"
+              value={code}
+              maxLength={255}
+              autoComplete="off"
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="Vide = inscription ouverte à tous"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={save} disabled={!dirty || state === 'saving'}>
+              {state === 'saving' ? 'Enregistrement…' : 'Enregistrer le code'}
+            </button>
+            {saved === null && (
+              <span className="muted" style={{ fontSize: 13 }}>
+                Aucun code : l’inscription est ouverte à tout internet.
+              </span>
+            )}
+          </div>
+
+          {msg && (
+            <div style={{ marginTop: 14 }}>
+              <Banner kind={msg.kind === 'ok' ? 'info' : msg.kind}>{msg.text}</Banner>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function Admin({ user }) {
   const [users, setUsers] = useState(null);
   const [error, setError] = useState(null);
@@ -96,6 +180,8 @@ export default function Admin({ user }) {
       </div>
 
       {notice && <div style={{ marginBottom: 14 }}><Banner kind="err">{notice}</Banner></div>}
+
+      <InviteCodeCard />
 
       <Card title="Utilisateurs">
         <p className="muted" style={{ marginTop: 0 }}>

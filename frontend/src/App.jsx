@@ -35,6 +35,7 @@ const PAGES = [
 function Login({ initialError }) {
   const [email, setEmail] = useState('');
   const [pseudo, setPseudo] = useState('');
+  const [invite, setInvite] = useState('');
   const [sent, setSent] = useState(false);
   const [devLink, setDevLink] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +47,7 @@ function Login({ initialError }) {
     if (!mail) return;
     setBusy(true); setError('');
     try {
-      const res = await requestMagicLink(mail, pseudo.trim() || undefined);
+      const res = await requestMagicLink(mail, pseudo.trim() || undefined, invite.trim() || undefined);
       setSent(true);
       setDevLink(res.devLink || null);
     } catch (e2) {
@@ -98,6 +99,18 @@ function Login({ initialError }) {
           <label htmlFor="pseudo">Pseudo <span className="muted">(optionnel — sinon la partie avant le @)</span></label>
           <input id="pseudo" className="input" maxLength={60}
             value={pseudo} onChange={(e) => setPseudo(e.target.value)} placeholder="Ton pseudo" />
+        </div>
+        <div className="field">
+          <label htmlFor="invite">
+            Code d'invitation <span className="muted">(uniquement pour une première inscription)</span>
+          </label>
+          <input id="invite" className="input" maxLength={255} autoComplete="off"
+            value={invite} onChange={(e) => setInvite(e.target.value)}
+            placeholder="Laisse vide si tu as déjà un compte"
+            aria-describedby="invite-help" />
+          <span id="invite-help" className="muted" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+            Demande-le à la personne qui t'a partagé ce lien.
+          </span>
         </div>
         {error && <div className="banner err" style={{ marginTop: 12 }}>{error}</div>}
         <button className="btn" type="submit" disabled={busy} style={{ marginTop: 16, width: '100%', justifyContent: 'center' }}>
