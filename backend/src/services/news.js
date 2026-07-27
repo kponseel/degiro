@@ -6,7 +6,11 @@ const UA =
 
 // Cache mémoire par utilisateur (2-3 utilisateurs → largement suffisant).
 const CACHE_TTL_MS = 20 * 60 * 1000;
-const cache = new Map(); // accountId -> { at, items, stocks }
+// Quand la source refuse, on ne la martèle pas à chaque affichage de la page —
+// mais on retente bien plus tôt qu'un succès, sinon une coupure de dix secondes
+// coûterait vingt minutes d'actualités vides.
+const FAIL_TTL_MS = 2 * 60 * 1000;
+const cache = new Map(); // accountId -> { at, expiresAt, items, stocks, degraded }
 
 const decodeEntities = (s) =>
   String(s || '')
@@ -63,6 +67,13 @@ const ts = (d) => {
   return Number.isFinite(t) ? t : 0;
 };
 
+/**
+ * Interroge Google News. Distingue « aucun article » d'« appel en échec » : les
+ * confondre revenait à effacer les actualités connues dès que la source refusait
+ * de répondre, sans que rien ne le signale ni dans l'interface ni dans les
+ * journaux.
+ * @returns {Promise<{ ok: boolean, items: Array, reason: string|null }>}
+ */
 async function fetchGoogleNews(query) {
   const url =
     `https://news.google.com/rss/search?q=${encodeURIComponent(query)}` +
@@ -72,11 +83,12 @@ async function fetchGoogleNews(query) {
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': UA } });
     clearTimeout(timer);
-    if (!res.ok) return [];
-    return parseRssItems(await res.text());
-  } catch {
+    if (!res.ok) return { ok: false, items: [], reason: `HTTP ${res.status}` };
+    return { ok: true, items: parseRssItems(await res.text()), reason: null };
+  } catch (err) {
     clearTimeout(timer);
-    return [];
+    const reason = err?.name === 'AbortError' ? 'délai dépassé (6 s)' : String(err?.message || err);
+    return { ok: false, items: [], reason };
   }
 }
 
@@ -108,16 +120,23 @@ async function heldStocks(accountId) {
 /**
  * Actualités agrégées des titres du portefeuille (Google News RSS, FR).
  * Best-effort + cache 20 min. Chaque article est tagué par titre (filtrable).
- * @returns {Promise<{ available:boolean, items:Array, stocks:Array, cachedAt:string }>}
+ *
+ * `degraded` distingue « rien à afficher » de « la source n'a pas répondu » :
+ * sans lui, une source indisponible et un portefeuille sans actualité donnaient
+ * exactement le même écran vide.
+ *
+ * @returns {Promise<{ available:boolean, degraded:boolean, items:Array, stocks:Array, fetchedAt:string, cachedAt:string }>}
  */
 export async function computeNews(accountId, { symbol, force = false } = {}) {
   const stocksAll = await heldStocks(accountId);
   const stocks = stocksAll.map((s) => ({ isin: s.isin, name: s.name, ticker: s.ticker || null, sector: s.sector || null }));
 
   const cached = cache.get(accountId);
-  let all;
-  if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    all = cached.items;
+  const usable = cached && Date.now() < cached.expiresAt;
+
+  let entry;
+  if (!force && usable) {
+    entry = cached;
   } else {
     // Top positions pour rester rapide ; on évite les ETF (news moins pertinente par titre).
     const targets = stocksAll
@@ -125,24 +144,70 @@ export async function computeNews(accountId, { symbol, force = false } = {}) {
       .slice(0, 12);
     const results = await withPool(targets, 4, async (s) => {
       const term = searchTerm(s.name) || s.name;
-      const items = await fetchGoogleNews(`${term} action bourse`);
-      return items.slice(0, 6).map((it) => ({ ...it, isin: s.isin, stock: s.name, sector: s.sector || null }));
+      const res = await fetchGoogleNews(`${term} action bourse`);
+      return {
+        ok: res.ok,
+        reason: res.reason,
+        items: res.items.slice(0, 6).map((it) => ({ ...it, isin: s.isin, stock: s.name, sector: s.sector || null })),
+      };
     });
+
+    const failures = results.filter((r) => !r.ok);
+    if (failures.length) {
+      logger.warn(
+        { source: 'news.google.com', echecs: failures.length, cibles: targets.length, motif: failures[0].reason },
+        'Actualités : la source publique a refusé une partie des appels',
+      );
+    }
+
     const seen = new Set();
-    all = results
-      .flat()
+    const fresh = results
+      .flatMap((r) => r.items)
       .filter((it) => { const k = it.link; if (seen.has(k)) return false; seen.add(k); return true; })
       .sort((a, b) => ts(b.pubDate) - ts(a.pubDate))
       .slice(0, 60);
-    cache.set(accountId, { at: Date.now(), items: all, stocks });
+
+    const totalFailure = targets.length > 0 && failures.length === targets.length;
+    const now = Date.now();
+
+    if (totalFailure && cached) {
+      // Aucun appel n'a abouti : on garde ce que l'utilisateur voyait déjà.
+      // Écraser par une liste vide faisait disparaître les actualités d'un clic
+      // sur « Rafraîchir », et pour vingt minutes.
+      //
+      // On repousse aussi l'échéance : sans cela, un cache déjà périmé relancerait
+      // la série d'appels à chaque affichage de la page tant que la source est à
+      // terre. Le bouton « Rafraîchir » (force) reste prioritaire.
+      entry = {
+        ...cached,
+        stocks,
+        degraded: true,
+        expiresAt: Math.max(cached.expiresAt, now + FAIL_TTL_MS),
+      };
+      cache.set(accountId, entry);
+    } else {
+      entry = {
+        at: totalFailure ? cached?.at || now : now,
+        expiresAt: now + (totalFailure ? FAIL_TTL_MS : CACHE_TTL_MS),
+        items: fresh,
+        stocks,
+        degraded: failures.length > 0,
+      };
+      cache.set(accountId, entry);
+    }
   }
 
+  const all = entry.items;
   const items = symbol ? all.filter((it) => it.isin === symbol) : all;
+  const fetchedAt = new Date(entry.at).toISOString();
   return {
     available: all.length > 0,
+    degraded: Boolean(entry.degraded),
     items,
     stocks,
-    cachedAt: new Date((cache.get(accountId)?.at) || Date.now()).toISOString(),
+    fetchedAt,
+    // Conservé pour ne rien casser chez un client déjà déployé.
+    cachedAt: fetchedAt,
   };
 }
 
@@ -150,5 +215,3 @@ export async function computeNews(accountId, { symbol, force = false } = {}) {
 export function invalidateNews(accountId) {
   cache.delete(accountId);
 }
-
-logger.debug?.('news service chargé');

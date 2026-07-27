@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  sectorColorIndex, distinctSectors, filterNews, toggleInSet,
+  sectorColorIndex, distinctSectors, filterNews, toggleInSet, newsStatus, relTime,
 } from '../../frontend/src/lib/newsFilter.js';
 
 const items = [
@@ -78,5 +78,42 @@ describe('bascule dans un Set (immutable)', () => {
     expect([...a]).toEqual(['x']); // inchangé
     const c = toggleInSet(b, 'x');
     expect([...c]).toEqual(['y']);
+  });
+});
+
+describe('état affiché au-dessus de la liste', () => {
+  it('rien à signaler quand la récupération a abouti', () => {
+    expect(newsStatus({ available: true, degraded: false })).toEqual({ kind: 'ok', message: null });
+  });
+
+  it('distingue « articles précédents » de « source à terre »', () => {
+    // Des articles à l'écran + un rafraîchissement en échec : on prévient sans
+    // laisser croire que la liste est à jour.
+    expect(newsStatus({ available: true, degraded: true }).kind).toBe('stale');
+    // Aucun article ET la source refuse : ce n'est pas un portefeuille sans actu.
+    expect(newsStatus({ available: false, degraded: true }).kind).toBe('down');
+  });
+
+  it('ne parle d’enrichissement que si la source a bien répondu', () => {
+    const empty = newsStatus({ available: false, degraded: false });
+    expect(empty.kind).toBe('empty');
+    expect(empty.message).toMatch(/enrichissement/i);
+    // Le cas « source indisponible » ne doit pas envoyer l'utilisateur enrichir
+    // son portefeuille pour rien.
+    expect(newsStatus({ available: false, degraded: true }).message).not.toMatch(/enrichissement/i);
+  });
+});
+
+describe('datage de la dernière récupération', () => {
+  const now = Date.parse('2026-07-27T12:00:00Z');
+  it('exprime l’écart en minutes puis en heures', () => {
+    expect(relTime('2026-07-27T11:59:40Z', now)).toBe("à l'instant");
+    expect(relTime('2026-07-27T11:45:00Z', now)).toBe('il y a 15 min');
+    expect(relTime('2026-07-27T09:00:00Z', now)).toBe('il y a 3 h');
+  });
+
+  it('rend null sur une date absente ou illisible', () => {
+    expect(relTime(undefined, now)).toBeNull();
+    expect(relTime('pas une date', now)).toBeNull();
   });
 });
