@@ -76,6 +76,13 @@ Un seul process. Renseigner dans l'interface Hostinger :
 - **Build** : `npm install && npm run build`
 - **Démarrage** : `npm start`
 
+> **Ne pas déplacer `vite` ni `@vitejs/plugin-react` en `devDependencies`.**
+> Le build est joué sur l'hébergeur, et Hostinger définit `NODE_ENV=production` :
+> `npm install` omet alors les devDependencies, `vite` est introuvable et le build
+> échoue sur `sh -c vite build`. Ces paquets sont des dépendances de production
+> *pour ce modèle de déploiement*. Si le build doit un jour se faire ailleurs (CI
+> qui publie un `dist/` prêt à l'emploi), ils pourront redevenir des devDependencies.
+
 ### Variables d'environnement indispensables
 
 L'application **refuse de démarrer** si une variable critique manque, avec un
