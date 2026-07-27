@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { attribution, realizedPnl } from '../src/services/analytics.js';
-import { fmtEur, fmtPct, fmtSignedEur, toneOf } from '../../frontend/src/lib/format.js';
+import { fmtEur, fmtPct, fmtSignedEur, toneOf, fmtDate, fmtDateShort } from '../../frontend/src/lib/format.js';
 import { ingestSchema } from '../src/schemas/ingest.js';
 
 // ── Affichage : jamais de « NaN » ni de « ∞ » à l'écran ───────────────
@@ -33,6 +33,20 @@ describe('Formatage — valeurs non affichables', () => {
     expect(toneOf(-5)).toBe('neg');
     expect(toneOf(0)).toBe('');
     expect(toneOf(Number.NaN)).toBe('');
+  });
+
+  it('écrit les dates en français, pas en ISO brut', () => {
+    // L'interface est en français : « au 2026-07-27 » n'y a pas sa place.
+    expect(fmtDate('2026-07-27')).toBe('27/07/2026');
+    expect(fmtDate('2026-07-27T15:30:00Z')).toBe('27/07/2026');
+    expect(fmtDate(null)).toBe('—');
+    // Format court des axes de graphiques, où la place manque.
+    expect(fmtDateShort('2026-07-27')).toBe('27/07');
+  });
+
+  it('ne casse pas sur une date d’un format inattendu', () => {
+    expect(fmtDate('pas-une-date')).toBe('pas-une-da');
+    expect(fmtDateShort('')).toBe('—');
   });
 });
 

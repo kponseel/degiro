@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getPortfolio, getSnapshots, getLookthrough, getPerformance, listAiInsights } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtNum, fmtDate, fmtSignedEur, toneOf } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtNum, fmtDate, fmtDateShort, fmtSignedEur, toneOf } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
@@ -82,7 +82,7 @@ export default function Overview({ onGoImport }) {
   const hasPl = positions.some((p) => p.pl_eur != null);
 
   // Évolution depuis le début de l'historique (contexte du chiffre principal).
-  const chart = series.map((r) => ({ date: fmtDate(r.snapshot_date), value: Number(r.total_value_eur) || 0 }));
+  const chart = series.map((r) => ({ date: fmtDateShort(r.snapshot_date), raw: r.snapshot_date, value: Number(r.total_value_eur) || 0 }));
   const first = chart[0]?.value;
   const drift = first && chart.length > 1 ? (totalValue - first) / first : null;
 
@@ -100,6 +100,13 @@ export default function Overview({ onGoImport }) {
   // côtés à la fois.
   const worst = movers.slice(Math.max(3, movers.length - 3)).reverse();
 
+  // Le TWR ne neutralise que les apports qu'il CONNAÎT : sans relevé de compte
+  // importé, il vaut la variation de valeur brute. L'annoncer « neutralisé »
+  // serait un chiffre qui ment sur l'écran le plus regardé.
+  const twrSub = !perf || perf.insufficient
+    ? '≥ 2 jours requis'
+    : (perf.flows > 0 ? `${perf.flows} apport(s) neutralisé(s)` : 'importe ton relevé pour neutraliser les apports');
+
   const facets = [
     { key: 'type', label: 'Type', value: filter.type, options: distinctValues(weighted, typeOf), onChange: (v) => setFilter((f) => ({ ...f, type: v })) },
     { key: 'sector', label: 'Secteur', value: filter.sector, options: distinctValues(weighted, (p) => p.sector), onChange: (v) => setFilter((f) => ({ ...f, sector: v })) },
@@ -109,7 +116,11 @@ export default function Overview({ onGoImport }) {
   return (
     <>
       <div className="kpi-strip">
-        <Kpi label="Valeur totale" value={fmtEur(totalValue)} sub={`au ${String(snapshot.snapshot_date).slice(0, 10)}`} />
+        <Kpi
+          label="Valeur totale"
+          value={fmtEur(totalValue)}
+          sub={drift != null ? `${drift >= 0 ? '+' : ''}${fmtPct(drift)} depuis le ${fmtDate(chart[0].raw)}` : `au ${fmtDate(snapshot.snapshot_date)}`}
+        />
         <Kpi
           label="P/L latent"
           value={hasPl ? fmtSignedEur(totalPl) : '—'}
@@ -119,15 +130,11 @@ export default function Overview({ onGoImport }) {
         <Kpi
           label="Performance (TWR)"
           value={perf && !perf.insufficient ? fmtPct(perf.twr) : '—'}
-          sub={perf && !perf.insufficient ? 'apports neutralisés' : '≥ 2 jours requis'}
+          sub={twrSub}
           tone={perf && !perf.insufficient ? (perf.twr >= 0 ? 'pos' : 'neg') : ''}
         />
         <Kpi label="Liquidités" value={fmtEur(snapshot.cash_eur)} />
-        <Kpi
-          label="Lignes"
-          value={fmtNum(positions.length, 0)}
-          sub={drift != null ? `${drift >= 0 ? '+' : ''}${fmtPct(drift)} depuis ${chart[0].date}` : undefined}
-        />
+        <Kpi label="Lignes" value={fmtNum(positions.length, 0)} sub="positions détenues" />
       </div>
 
       <div className="dash-grid">
