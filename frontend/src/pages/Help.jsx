@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Card } from '../components/ui.jsx';
+import { Card, Banner } from '../components/ui.jsx';
+import { buildBrowserAgentPrompt } from '../lib/browserAgentPrompt.js';
 
 /**
  * Aide et astuces. Volontairement statique : aucune donnée à charger, donc la
@@ -69,6 +70,10 @@ const FAQ = [
     a: "Les sources gratuites ne connaissent pas tout. Lance l'enrichissement, puis complète à la main dans Réglages → Références ISIN. Ta correction est définitive et prioritaire.",
   },
   {
+    q: 'Mon historique semble incomplet (ventes ou dividendes manquants)',
+    a: "Presque toujours la plage de dates de l'export DEGIRO : elle est courte par défaut et ne couvre pas tout l'historique. Réexporte Transactions et Relevé de compte depuis l'ouverture du compte (au besoin année par année — réimporter ne crée aucun doublon). Pour le portefeuille, pense à cocher « toutes les positions », sinon les lignes soldées n'apparaissent pas.",
+  },
+  {
     q: "L'extension Chrome ne capture rien",
     a: "Ouvre son panneau Diagnostic : chaque étape y est marquée ✓ ou ✗ avec son détail. Le plus fréquent : l'onglet DEGIRO a été ouvert avant l'installation de l'extension (recharge-le avec F5), ou la session a expiré (reconnecte-toi).",
   },
@@ -81,6 +86,80 @@ const FAQ = [
     a: "Réglages → Mon compte → « Effacer mes données » retire tes instantanés, positions et mouvements en gardant le compte. « Supprimer mon compte » efface tout, définitivement.",
   },
 ];
+
+/**
+ * Mise à jour pilotée par un agent navigateur (Claude for Chrome et équivalents).
+ * Troisième voie, à côté de l'extension de capture et de l'import manuel : l'agent
+ * va chercher les exports lui-même. Le prompt insiste sur les deux réglages que
+ * DEGIRO rate par défaut — plages de dates et « toutes les positions ».
+ */
+function BrowserAgentCard() {
+  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const prompt = buildBrowserAgentPrompt({ appUrl: window.location.origin });
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Presse-papiers refusé (permission, http) : on déplie, l'utilisateur copie à la main.
+      setOpen(true);
+    }
+  }
+
+  return (
+    <Card title="Mise à jour par un agent navigateur (Claude for Chrome)">
+      <p className="muted" style={{ marginTop: 0 }}>
+        Si tu utilises un agent qui pilote ton navigateur — <strong>Claude for Chrome</strong> avec
+        Sonnet&nbsp;5, ou équivalent — il peut aller chercher tes trois exports DEGIRO et les importer
+        ici à ta place. Le prompt ci-dessous lui donne les consignes exactes, y compris les deux
+        réglages que l'on rate presque toujours&nbsp;: les <strong>plages de dates complètes</strong>
+        {' '}et l'option <strong>« toutes les positions »</strong> du portefeuille.
+      </p>
+
+      <ol className="help-steps" style={{ marginTop: 14 }}>
+        <li>
+          <strong>Ouvre DEGIRO et connecte-toi</strong>
+          <div className="muted">
+            L'agent ne doit jamais saisir tes identifiants : la session doit déjà être ouverte.
+          </div>
+        </li>
+        <li>
+          <strong>Copie le prompt et donne-le à ton agent</strong>
+          <div className="muted">
+            Laisse cet onglet ouvert&nbsp;: l'agent y reviendra pour importer les fichiers.
+          </div>
+        </li>
+        <li>
+          <strong>Surveille et valide</strong>
+          <div className="muted">
+            Le prompt lui demande de vérifier l'étendue réelle des fichiers et de te faire un rapport.
+            Relis-le avant de considérer la mise à jour comme faite.
+          </div>
+        </li>
+      </ol>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="btn" onClick={copy}>{copied ? 'Copié ✓' : 'Copier le prompt'}</button>
+        <button className="link-btn" onClick={() => setOpen((o) => !o)}>
+          {open ? 'Masquer le prompt' : 'Voir le prompt'}
+        </button>
+      </div>
+
+      {open && <pre className="prompt-pre">{prompt}</pre>}
+
+      <div style={{ marginTop: 16 }}>
+        <Banner kind="warn">
+          Le prompt impose à l'agent de rester en <strong>lecture seule</strong>&nbsp;: aucun ordre passé,
+          modifié ou annulé, aucun mouvement d'argent, aucun identifiant saisi. Garde tout de même un œil
+          sur ce qu'il fait — c'est ton compte-titres réel.
+        </Banner>
+      </div>
+    </Card>
+  );
+}
 
 export default function Help({ onGoImport, onReplayTour }) {
   const [openFaq, setOpenFaq] = useState(null);
@@ -130,6 +209,8 @@ export default function Help({ onGoImport, onReplayTour }) {
           <button className="btn ghost" onClick={onReplayTour}>Revoir la présentation</button>
         </div>
       </Card>
+
+      <BrowserAgentCard />
 
       <Card title="Ce que montre chaque vue">
         <dl className="help-defs">
