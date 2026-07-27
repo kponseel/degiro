@@ -6,7 +6,7 @@ import pinoHttp from 'pino-http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
-import { requireAuth } from './middleware/auth.js';
+import { requireAuth, restrictExtensionScope } from './middleware/auth.js';
 import healthRouter from './routes/health.js';
 import authRouter from './routes/auth.js';
 import ingestRouter from './routes/ingest.js';
@@ -31,6 +31,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
 
 /**
+ * Masque les valeurs sensibles présentes dans une URL avant journalisation.
+ * Le jeton du lien magique vaut une session : il n'a rien à faire dans un log.
+ */
+export function maskSecrets(url) {
+  return String(url ?? '').replace(/([?&](?:token|sessionId)=)[^&#\s]+/gi, '$1***');
+}
+
+/**
  * Construit l'application Express (sans écouter de port) — testable via supertest.
  * En production, ce même process sert l'API sous /api ET le build React (single-process Hostinger).
  */
@@ -41,7 +49,20 @@ export function createApp() {
   app.set('trust proxy', 1);
 
   app.use(helmet());
-  app.use(pinoHttp({ logger }));
+  app.use(pinoHttp({
+    logger,
+    // Le lien de connexion transporte son jeton dans l'URL (/auth/verify?token=…).
+    // Journalisé tel quel, chaque ligne de log devient une session ouvrable par
+    // quiconque lit les journaux : on masque avant écriture.
+    serializers: {
+      req: (req) => ({
+        id: req.id,
+        method: req.method,
+        url: maskSecrets(req.url),
+        remoteAddress: req.remoteAddress,
+      }),
+    },
+  }));
   // L'ingestion par l'extension embarque l'historique complet des transactions :
   // une limite trop basse rejetterait les gros comptes (plusieurs années d'ordres).
   app.use(express.json({ limit: '5mb' }));
@@ -70,6 +91,8 @@ export function createApp() {
 
   // Toutes les autres routes /api exigent le jeton bearer (migration vers sessions en cours).
   app.use('/api', requireAuth);
+  // Le jeton d'extension ne vaut que pour l'ingestion (voir middleware/auth.js).
+  app.use('/api', restrictExtensionScope);
   app.use('/api/ingest/csv', ingestCsvRouter);
   app.use('/api/ingest', ingestRouter);
   app.use('/api/portfolio', portfolioRouter);
@@ -101,9 +124,16 @@ export function createApp() {
   });
 
   // Gestionnaire d'erreurs centralisé (JSON).
+  //
+  // Les messages d'erreur 4xx sont écrits pour l'utilisateur et lui sont rendus
+  // tels quels. Au-delà, le message vient des couches basses (MySQL, fetch, …) et
+  // décrit l'intérieur du système — noms de tables, hôtes, chemins : il reste dans
+  // les journaux, le client reçoit un message neutre.
   app.use((err, req, res, _next) => {
     req.log?.error(err);
-    res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
+    const status = err.status || err.statusCode || 500;
+    const exposed = status < 500 && err.message ? err.message : 'Erreur interne du serveur';
+    res.status(status).json({ error: exposed });
   });
 
   return app;

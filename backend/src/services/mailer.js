@@ -49,7 +49,10 @@ function renderEmail(link, pseudo) {
  */
 export async function sendMagicLink(email, link, pseudo) {
   if (!smtpReady()) {
-    logger.info(`[mailer:dev] lien magique pour ${email} → ${link}`);
+    // Le lien vaut une session : il n'est écrit dans les journaux qu'en
+    // développement, où il sert justement à dérouler le flux sans serveur mail.
+    if (config.auth.devLoginLinks) logger.info(`[mailer:dev] lien magique pour ${email} → ${link}`);
+    else logger.warn(`[mailer] SMTP non configuré : aucun lien envoyé à ${email}`);
     return { mode: 'dev' };
   }
   const { text, html } = renderEmail(link, pseudo);

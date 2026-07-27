@@ -17,8 +17,18 @@ import { requireSession, sessionToken, sessionCookieOptions } from '../middlewar
 
 const router = Router();
 
-// Base des liens dérivée de la requête si APP_URL n'est pas fixé (dev/local).
-const requestBaseUrl = (req) => config.auth.appUrl || `${req.protocol}://${req.get('host')}`;
+/**
+ * Base des liens de connexion.
+ *
+ * `req.get('host')` est fourni par le CLIENT : s'en servir hors développement
+ * permettrait à un attaquant de déclencher l'envoi, à l'adresse de sa victime,
+ * d'un lien valide pointant vers son propre domaine — et donc de récupérer le
+ * jeton. APP_URL fait donc autorité en production (son absence est fatale au
+ * démarrage, voir `checkConfig`), et la dérivation reste réservée au local.
+ */
+const requestBaseUrl = (req) => (
+  config.auth.appUrl || (config.isDevOrTest ? `${req.protocol}://${req.get('host')}` : '')
+);
 
 // Limiteur strict sur l'envoi de liens (anti-abus / anti-spam). Neutralisé en test.
 const linkLimiter = rateLimit({
@@ -36,8 +46,13 @@ router.post('/request-link', linkLimiter, async (req, res, next) => {
     const result = await requestMagicLink({ email, pseudo, appUrl: requestBaseUrl(req) });
     if (result.error === 'invalid_email') return res.status(400).json({ error: 'Email invalide' });
     if (result.error === 'pseudo_taken') return res.status(409).json({ error: 'Ce pseudo est déjà pris — choisis-en un autre (ou laisse vide).' });
+    if (result.error === 'not_allowed') return res.status(403).json({ error: "Les inscriptions sont réservées : demande au propriétaire d'ajouter ton adresse." });
+    if (result.error === 'too_many_requests') return res.status(429).json({ error: 'Trop de demandes pour cette adresse. Réessaie dans un quart d\'heure.' });
     if (result.error === 'mail_not_configured') {
       return res.status(503).json({ error: "Connexion indisponible : l'envoi d'email n'est pas configuré sur le serveur (variables SMTP_*)." });
+    }
+    if (result.error === 'mail_failed') {
+      return res.status(503).json({ error: "L'envoi du lien a échoué (serveur d'email injoignable). Réessaie dans quelques minutes." });
     }
     return res.json(result);
   } catch (err) {

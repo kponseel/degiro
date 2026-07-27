@@ -16,6 +16,16 @@ import { saveTransactions } from '../services/transactions.js';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
+/**
+ * Plafond de lignes traitées en une fois.
+ *
+ * L'analyse et l'insertion sont synchrones : sur un processus Node unique qui
+ * sert aussi le site, un fichier démesuré fige toutes les autres requêtes le
+ * temps du traitement. 50 000 lignes couvrent très largement un historique
+ * DEGIRO de plusieurs années tout en bornant ce gel à quelques secondes.
+ */
+const MAX_ROWS = 50_000;
+
 // POST /api/ingest/csv — champ multipart `file` ; `kind` (portfolio|account|transactions|auto)
 // et `mode` (preview|commit) dans le corps.
 router.post('/', upload.single('file'), async (req, res, next) => {
@@ -27,6 +37,11 @@ router.post('/', upload.single('file'), async (req, res, next) => {
     const { delimiter, rows } = parseCsv(text);
     if (!rows.length) {
       return res.status(422).json({ error: 'CSV vide ou illisible' });
+    }
+    if (rows.length > MAX_ROWS) {
+      return res.status(413).json({
+        error: `Fichier trop volumineux : ${rows.length} lignes (maximum ${MAX_ROWS}). Découpe l'export par année et importe-les l'un après l'autre — les doublons sont ignorés.`,
+      });
     }
 
     const requested = req.body.kind && req.body.kind !== 'auto' ? req.body.kind : null;

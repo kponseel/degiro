@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { config } from '../src/config.js';
 import { closePool } from '../src/db/pool.js';
 import { resetDb } from './helpers.js';
 
@@ -108,9 +109,12 @@ describe('Auth par lien magique', () => {
     expect(res.status).toBe(401);
   });
 
-  it("en production sans SMTP, le lien n'est JAMAIS exposé par l'API", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+  it("hors développement et sans SMTP, le lien n'est JAMAIS exposé par l'API", async () => {
+    // Le mode est figé au chargement du module — c'est justement ce qui rend la
+    // protection non contournable depuis une requête. On agit donc sur le
+    // commutateur réel plutôt que sur NODE_ENV.
+    const prev = config.auth.devLoginLinks;
+    config.auth.devLoginLinks = false;
     try {
       const res = await request(app)
         .post('/api/auth/request-link')
@@ -118,7 +122,27 @@ describe('Auth par lien magique', () => {
       expect(res.status).toBe(503);
       expect(JSON.stringify(res.body)).not.toContain('token=');
     } finally {
-      process.env.NODE_ENV = prev;
+      config.auth.devLoginLinks = prev;
+    }
+  });
+
+  it('sans APP_URL, aucun lien n’est fabriqué à partir de l’en-tête Host', async () => {
+    // Sans cette règle, un attaquant ferait envoyer à sa victime un lien valide
+    // pointant vers son propre domaine, et récupérerait le jeton.
+    const prevUrl = config.auth.appUrl;
+    const prevDev = config.isDevOrTest;
+    config.auth.appUrl = '';
+    config.isDevOrTest = false;
+    try {
+      const res = await request(app)
+        .post('/api/auth/request-link')
+        .set('Host', 'attaquant.example')
+        .send({ email: 'victime@example.com' });
+      expect(res.status).toBe(503);
+      expect(JSON.stringify(res.body)).not.toContain('attaquant.example');
+    } finally {
+      config.auth.appUrl = prevUrl;
+      config.isDevOrTest = prevDev;
     }
   });
 

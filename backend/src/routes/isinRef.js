@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
+import { userHoldsIsin } from '../services/ownership.js';
 
 const router = Router();
 const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
@@ -45,6 +46,12 @@ router.put('/:isin', async (req, res, next) => {
   }
   const { sector = null, country = null, asset_class = null, ticker = null } = parsed.data;
   try {
+    // `isin_ref` est partagée par tous les comptes : sans ce contrôle, n'importe
+    // quel inscrit réécrirait la référence d'un titre qu'il ne détient pas et
+    // fausserait l'Exposition de tout le monde (voir services/ownership.js).
+    if (!(await userHoldsIsin(req.user.id, isin))) {
+      return res.status(403).json({ error: 'Tu ne peux corriger que les titres présents dans ton portefeuille.' });
+    }
     const pool = getPool();
     await pool.query(
       `INSERT INTO isin_ref (isin, ticker, sector, country, asset_class, manual_override, updated_at)

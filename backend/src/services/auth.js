@@ -119,8 +119,31 @@ export async function requestMagicLink({ email, pseudo, appUrl }) {
 
   const existing = await findUserByEmail(mail);
   const wantedPseudo = cleanPseudo(pseudo);
-  if (!existing && wantedPseudo && (await pseudoTaken(wantedPseudo))) {
+
+  // Contrôle du pseudo volontairement INDÉPENDANT de l'existence du compte :
+  // le conditionner à « email inconnu » en faisait un oracle d'énumération —
+  // avec un pseudo connu comme pris, la réponse (200 ou 409) révélait si une
+  // adresse était inscrite. La réponse ne dépend désormais que du pseudo.
+  if (wantedPseudo && (await pseudoTaken(wantedPseudo))) {
     return { sent: false, error: 'pseudo_taken' };
+  }
+
+  // Liste d'inscription optionnelle : vide = ouvert à tous (comportement par
+  // défaut). Renseignée, seules ces adresses peuvent créer un compte ; les
+  // comptes déjà existants continuent de se connecter.
+  const allowed = config.auth.allowedEmails;
+  if (!existing && allowed.length && !allowed.includes(mail)) {
+    return { sent: false, error: 'not_allowed' };
+  }
+
+  // Garde-fou anti-harcèlement, par ADRESSE et non par IP : le limiteur d'IP ne
+  // protège pas la victime d'un envoi massif depuis des sources changeantes.
+  const [recent] = await getPool().query(
+    'SELECT COUNT(*) AS n FROM magic_links WHERE email = ? AND created_at > (NOW() - INTERVAL 15 MINUTE)',
+    [mail],
+  );
+  if (Number(recent[0]?.n || 0) >= 5) {
+    return { sent: false, error: 'too_many_requests' };
   }
 
   const raw = randomToken();
@@ -130,14 +153,32 @@ export async function requestMagicLink({ email, pseudo, appUrl }) {
   );
 
   const base = (appUrl || config.auth.appUrl || '').replace(/\/+$/, '');
+  if (!base) {
+    // Sans base de lien fiable, le lien serait inutilisable ou pointerait où le
+    // client l'a demandé : on refuse plutôt que d'envoyer n'importe quoi.
+    logger.error('APP_URL non configuré : lien de connexion non délivré');
+    return { sent: false, error: 'mail_not_configured' };
+  }
   const link = `${base}/auth/verify?token=${raw}`;
-  const { mode } = await sendMagicLink(mail, link, existing ? existing.pseudo : wantedPseudo);
+
+  // Un SMTP injoignable ou mal réglé ne doit pas ressortir en « erreur interne » :
+  // c'est le cas de panne le plus probable en production, et l'utilisateur a
+  // besoin de savoir que le problème vient de l'envoi, pas de sa demande.
+  let mode;
+  try {
+    ({ mode } = await sendMagicLink(mail, link, existing ? existing.pseudo : wantedPseudo));
+  } catch (err) {
+    logger.error(`Envoi du lien de connexion impossible : ${err.message}`);
+    return { sent: false, error: 'mail_failed' };
+  }
 
   if (mode === 'dev') {
-    if (process.env.NODE_ENV === 'production') {
-      // Prod sans SMTP : ne JAMAIS renvoyer le lien dans la réponse HTTP —
-      // ce serait une prise de compte ouverte à quiconque connaît un email.
-      logger.error('SMTP non configuré en production : lien magique non délivré (configurer SMTP_*)');
+    if (!config.auth.devLoginLinks) {
+      // Hors développement, ne JAMAIS renvoyer le lien dans la réponse HTTP : ce
+      // serait une prise de compte ouverte à quiconque connaît une adresse email.
+      // Le test porte sur un mode de développement EXPLICITE — une variable
+      // d'environnement oubliée en production laisse donc la porte fermée.
+      logger.error('SMTP non configuré : lien magique non délivré (configurer SMTP_*)');
       return { sent: false, error: 'mail_not_configured' };
     }
     // Développement : le lien est renvoyé pour dérouler le flux sans serveur mail.

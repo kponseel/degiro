@@ -55,3 +55,28 @@ export async function requireAuth(req, res, next) {
     return next(err);
   }
 }
+
+/**
+ * Chemins (sous /api) qu'un jeton d'extension a le droit d'appeler.
+ * L'extension ne fait qu'une chose : déposer une capture.
+ */
+const EXTENSION_ALLOWED = [/^\/ingest(\/|$)/];
+
+/**
+ * Restreint la portée du jeton d'extension.
+ *
+ * Ce jeton vit dans le stockage local d'une extension de navigateur : il est
+ * bien plus exposé qu'un cookie de session. Or il ouvrait jusqu'ici la totalité
+ * de l'API — y compris la suppression du compte et, pour un administrateur, la
+ * gestion des inscrits. Le limiter à l'ingestion aligne son pouvoir sur son
+ * usage réel, et transforme sa fuite en incident sans conséquence.
+ *
+ * À monter après `requireAuth`, sur le préfixe /api.
+ */
+export function restrictExtensionScope(req, res, next) {
+  if (!req.user?.viaExtension) return next();
+  if (EXTENSION_ALLOWED.some((re) => re.test(req.path))) return next();
+  return res.status(403).json({
+    error: "Ce jeton d'extension ne permet que l'envoi de captures. Connecte-toi pour le reste.",
+  });
+}
