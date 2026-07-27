@@ -96,9 +96,21 @@ dangereuse sans le signaler.
 | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` | Envoi des liens de connexion | Avertissement au démarrage ; **personne ne peut se connecter** (le lien n'est jamais renvoyé dans la réponse HTTP hors développement). |
 | `OWNER_EMAIL` | Compte propriétaire (utilisateur #1, hérite des données existantes) | Avertissement ; aucun compte propriétaire créé. |
 | `ADMIN_EMAIL` | Accès à la page Administration | À défaut, l'administrateur est `OWNER_EMAIL`. |
-| `ALLOWED_EMAILS` | Liste blanche d'inscription, adresses séparées par des virgules | Vide = **inscription ouverte à tout internet**. À renseigner si l'instance n'est pas destinée au public. |
+| `ALLOWED_EMAILS` | Liste blanche d'inscription, adresses séparées par des virgules | Vide = pas de filtrage par adresse. Voir aussi le **code d'invitation** ci-dessous, plus souple. |
 | `API_TOKEN` | Jeton de service (propriétaire) pour scripts et diagnostic | Voie de service indisponible. |
 | `OPENFIGI_API_KEY` | Enrichissement ISIN | Enrichissement dégradé. |
+
+### Code d'invitation
+
+Créer un compte exige un **code d'invitation**, modifiable à chaud depuis
+**Administration** (réservé à `ADMIN_EMAIL`) — sans redéploiement ni redémarrage.
+Valeur initiale : `kev2026`.
+
+- Il n'est demandé que pour **créer** un compte : les inscrits existants se
+  connectent sans lui, changer le code ne coupe donc l'accès à personne.
+- Le vider depuis l'administration rouvre l'inscription à tous.
+- Complémentaire d'`ALLOWED_EMAILS` : le code se partage sans connaître les
+  adresses à l'avance, la liste blanche verrouille des adresses précises.
 
 `NODE_ENV` n'a pas besoin d'être défini : les protections sont actives **par
 défaut** et ne s'assouplissent que si `NODE_ENV` vaut explicitement

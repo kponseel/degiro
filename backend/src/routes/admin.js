@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { isAdminUser } from '../services/auth.js';
 import { listUsers, adminUpdateUser, adminDeleteUser } from '../services/admin.js';
+import { getInviteCode, setInviteCode, MIN_INVITE_LENGTH } from '../services/settings.js';
 
 const router = Router();
 
@@ -15,6 +16,35 @@ router.use((req, res, next) => {
 router.get('/users', async (_req, res, next) => {
   try {
     return res.json({ users: await listUsers() });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// GET /api/admin/invite-code — code en vigueur (l'administrateur doit pouvoir
+// le relire pour le communiquer ; c'est un code de partage, pas un secret
+// personnel, et il est donc rendu en clair).
+router.get('/invite-code', async (_req, res, next) => {
+  try {
+    const code = await getInviteCode();
+    return res.json({ code, open: code === null });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// PUT /api/admin/invite-code — change le code. Une valeur vide rouvre
+// l'inscription à tous : c'est permis, mais il faut le vouloir explicitement.
+router.put('/invite-code', async (req, res, next) => {
+  try {
+    const result = await setInviteCode(req.body?.code);
+    if (result.error === 'too_short') {
+      return res.status(400).json({ error: `Code trop court (${MIN_INVITE_LENGTH} caractères minimum) — un code court se devine.` });
+    }
+    if (result.error === 'too_long') {
+      return res.status(400).json({ error: 'Code trop long (255 caractères maximum).' });
+    }
+    return res.json({ code: result.code, open: result.code === null });
   } catch (err) {
     return next(err);
   }

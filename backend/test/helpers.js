@@ -3,7 +3,10 @@ import { getPool } from '../src/db/pool.js';
 export const TEST_TOKEN = 'test_token_0123456789';
 export const AUTH = { Authorization: `Bearer ${TEST_TOKEN}` };
 
-const TABLES = ['positions', 'snapshots', 'transactions', 'isin_ref', 'etf_holdings', 'market_prices', 'sessions', 'magic_links', 'extension_tokens', 'ai_insights', 'ai_prompts', 'users'];
+// `app_settings` en fait partie : le code d'invitation y vit, et le laisser en
+// place ferait échouer toute création de compte des autres tests. Chaque test qui
+// s'intéresse au code le pose donc lui-même.
+const TABLES = ['positions', 'snapshots', 'transactions', 'isin_ref', 'etf_holdings', 'market_prices', 'sessions', 'magic_links', 'extension_tokens', 'ai_insights', 'ai_prompts', 'app_settings', 'users'];
 
 /** Vide toutes les tables métier (à appeler en beforeEach des tests DB). */
 export async function resetDb() {

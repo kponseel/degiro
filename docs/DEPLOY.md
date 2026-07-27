@@ -39,7 +39,7 @@ démarrage** (migrations idempotentes) — aucune exécution SQL manuelle néces
 | `OWNER_EMAIL` | **ton** email : devient l'utilisateur #1 et hérite des données existantes |
 | `ADMIN_EMAIL` | email de l'administrateur (page Administration) — à défaut, `OWNER_EMAIL` |
 | `APP_URL` | **OBLIGATOIRE** — `https://degiro.estim.pro` (sans slash final). Le démarrage est **refusé** si elle manque : sans elle, la base du lien de connexion se déduirait de l'en-tête `Host` envoyé par le client, ce qui permettrait de faire parvenir à une victime un lien valide pointant ailleurs. |
-| `ALLOWED_EMAILS` | (optionnel) liste blanche d'inscription, adresses séparées par des virgules. **Vide = inscription ouverte à tout internet.** |
+| `ALLOWED_EMAILS` | (optionnel) liste blanche d'inscription, adresses séparées par des virgules. Voir aussi le **code d'invitation**, réglable depuis Administration. |
 | `NODE_ENV` | (optionnel) inutile : les protections — cookie `Secure`, refus d'exposer le lien — sont actives **par défaut** et ne s'assouplissent que sur `development`/`test` explicites. |
 | `SMTP_HOST` | `smtp.hostinger.com` |
 | `SMTP_PORT` | `587` (STARTTLS) ou `465` (TLS) |
@@ -48,6 +48,14 @@ démarrage** (migrations idempotentes) — aucune exécution SQL manuelle néces
 | `MAIL_FROM` | `DEGIRO Analyzer <noreply@estim.pro>` |
 | `SESSION_TTL_DAYS` / `MAGIC_LINK_TTL_MIN` | (optionnel) défauts `30` / `15` |
 | `OPENFIGI_API_KEY` | (optionnel) clé gratuite openfigi.com pour l'enrichissement |
+
+## Code d'invitation
+
+Créer un compte exige un code, **modifiable depuis Administration** sans
+redéploiement. Valeur initiale `kev2026` (posée par la migration 010).
+
+Il n'est demandé qu'à la **création** : les inscrits existants se connectent sans
+lui. Le vider rouvre l'inscription à tous.
 
 ## Comptes & connexion (lien magique)
 

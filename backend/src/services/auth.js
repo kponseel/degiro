@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { sendMagicLink } from './mailer.js';
 import { deleteAiData } from './aiInsights.js';
+import { inviteCodeAccepts } from './settings.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -112,7 +113,7 @@ async function purgeStale() {
  *    (modifiable ensuite dans Mon compte). S'il est fourni, il doit être libre.
  * @returns {Promise<{ sent:boolean, devLink?:string, error?:string }>}
  */
-export async function requestMagicLink({ email, pseudo, appUrl }) {
+export async function requestMagicLink({ email, pseudo, appUrl, inviteCode }) {
   const mail = normalizeEmail(email);
   if (!isValidEmail(mail)) return { sent: false, error: 'invalid_email' };
   await purgeStale().catch(() => {});
@@ -134,6 +135,13 @@ export async function requestMagicLink({ email, pseudo, appUrl }) {
   const allowed = config.auth.allowedEmails;
   if (!existing && allowed.length && !allowed.includes(mail)) {
     return { sent: false, error: 'not_allowed' };
+  }
+
+  // Code d'invitation : exigé pour CRÉER un compte, jamais pour se connecter à
+  // un compte existant — un invité de la première heure n'a pas à retenir un
+  // code que l'administrateur aura pu changer entre-temps.
+  if (!existing && !(await inviteCodeAccepts(inviteCode))) {
+    return { sent: false, error: 'invite_required' };
   }
 
   // Garde-fou anti-harcèlement, par ADRESSE et non par IP : le limiteur d'IP ne
