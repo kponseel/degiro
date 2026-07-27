@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getNews } from '../lib/api.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import StockLinks from '../components/StockLinks.jsx';
-import { sectorColorIndex, distinctSectors, filterNews, toggleInSet } from '../lib/newsFilter.js';
+import { sectorColorIndex, distinctSectors, filterNews, toggleInSet, newsStatus, relTime } from '../lib/newsFilter.js';
 
 function relDate(s) {
   if (!s) return '';
@@ -53,6 +53,8 @@ export default function News({ onGoImport }) {
   const filtered = useMemo(() => filterNews(items, selStocks, selSectors), [items, selStocks, selSectors]);
   const nameByIsin = useMemo(() => Object.fromEntries(stocks.map((s) => [s.isin, s.name])), [stocks]);
   const activeFilters = selStocks.size + selSectors.size;
+  const status = newsStatus(data || {});
+  const fetchedLabel = relTime(data?.fetchedAt);
 
   if (error && !data) return <Banner kind="err">Erreur : {error}</Banner>;
   if (!data) return <Spinner />;
@@ -135,16 +137,22 @@ export default function News({ onGoImport }) {
         <div className="card-title" style={{ margin: 0 }}>
           Actualités <span className="muted" style={{ fontWeight: 500 }}>· {filtered.length} article{filtered.length > 1 ? 's' : ''}{activeFilters > 0 ? ' filtré' + (filtered.length > 1 ? 's' : '') : ''}</span>
         </div>
-        <button className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} disabled={busy} onClick={() => load(true)}>
-          {busy ? 'Chargement…' : 'Rafraîchir'}
-        </button>
+        {/* Dater la récupération : sans cela, un rafraîchissement qui ramène les
+            mêmes articles — le cas courant — est indiscernable d'un bouton mort. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {fetchedLabel && (
+            <span className="muted" style={{ fontSize: 12.5 }} aria-live="polite">
+              Actualisé {fetchedLabel}
+            </span>
+          )}
+          <button className="btn ghost" style={{ padding: '6px 12px', fontSize: 13 }} disabled={busy} onClick={() => load(true)}>
+            {busy ? 'Chargement…' : 'Rafraîchir'}
+          </button>
+        </div>
       </div>
 
-      {!data.available && (
-        <Banner kind="info">
-          Aucune actualité récupérée pour le moment (source publique momentanément indisponible, ou secteurs/tickers pas
-          encore enrichis). Lance l'enrichissement depuis <strong>Import / Réglages</strong> puis rafraîchis.
-        </Banner>
+      {status.message && (
+        <Banner kind={status.kind === 'empty' ? 'info' : 'warn'}>{status.message}</Banner>
       )}
 
       {filtered.length > 0 && (
