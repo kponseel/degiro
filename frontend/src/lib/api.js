@@ -11,9 +11,12 @@ function qs(obj) {
  * en anglais et sans indiquer quoi faire.
  */
 function humanMessage(status, body) {
+  // Le 401 passe AVANT le message du serveur : celui-ci vaut « Non authentifié »,
+  // qui laissait l'utilisateur devant une erreur technique sans issue sur chaque
+  // page. Le message métier a ici plus de valeur que celui de l'API.
+  if (status === 401) return 'Ta session a expiré. Reconnecte-toi pour continuer.';
   if (body && typeof body === 'object' && body.error) return body.error;
   if (status === 0) return 'Connexion au serveur impossible. Vérifie ta connexion internet, puis réessaie.';
-  if (status === 401) return 'Ta session a expiré. Reconnecte-toi.';
   if (status === 429) return 'Trop de requêtes d’affilée. Patiente un instant, puis réessaie.';
   if (status === 502 || status === 503 || status === 504) return 'Le service est momentanément indisponible. Réessaie dans un instant.';
   if (status >= 500) return 'Une erreur est survenue côté serveur. Réessaie dans un instant.';

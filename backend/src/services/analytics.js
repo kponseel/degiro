@@ -24,7 +24,14 @@ const round = (n, d = 2) => {
  */
 export function attribution(positions, dividends = new Map()) {
   const total = positions.reduce((s, p) => s + (Number(p.value_eur) || 0), 0);
-  const totalPl = positions.reduce((s, p) => s + (Number(p.pl_eur) || 0), 0);
+  // Le Portfolio.csv de DEGIRO ne porte aucune plus-value latente : `pl_eur` est
+  // alors nul PARTOUT. Sommer en traitant null comme 0 donnait « 0,00 € » —
+  // indiscernable d'un portefeuille réellement à l'équilibre, alors que la donnée
+  // est simplement absente. On ne totalise donc que ce qui est connu, et on ne
+  // renvoie un total que s'il repose sur au moins une valeur.
+  const known = positions.filter((p) => p.pl_eur != null);
+  const hasPl = known.length > 0;
+  const totalPl = known.reduce((s, p) => s + (Number(p.pl_eur) || 0), 0);
 
   const rows = positions.map((p) => {
     const value = Number(p.value_eur) || 0;
@@ -56,8 +63,10 @@ export function attribution(positions, dividends = new Map()) {
     rows,
     totals: {
       value_eur: round(total),
-      pl_eur: round(totalPl),
-      pl_pct: total - totalPl ? round(totalPl / (total - totalPl), 4) : null,
+      // `null` et non `0` quand aucune position ne porte de plus-value : l'écran
+      // doit afficher « — », pas un zéro qui ressemble à une mesure.
+      pl_eur: hasPl ? round(totalPl) : null,
+      pl_pct: hasPl && total - totalPl ? round(totalPl / (total - totalPl), 4) : null,
       dividends_eur: round([...dividends.values()].reduce((s, v) => s + (Number(v) || 0), 0)),
     },
   };

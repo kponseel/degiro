@@ -46,7 +46,8 @@ export async function computeLookthrough(accountId = 1) {
     total += v;
     const holdings = byEtf.get(p.isin);
     const looksEtf = p.asset_class === 'ETF' || p.product_type === 'ETF'
-      || /ETF|UCITS|ETC|ISHARES|XTRACKERS|LYXOR|AMUNDI|VANGUARD|SPDR|INVESCO|WISDOMTREE|VANECK/i.test(p.name || '');
+      // `\b` obligatoire : « NETFLIX » contient « ETF » et passait pour un ETF.
+      || /\b(ETF|UCITS|ETC|ISHARES|XTRACKERS|LYXOR|AMUNDI|VANGUARD|SPDR|INVESCO|WISDOMTREE|VANECK)\b/i.test(p.name || '');
 
     if (holdings && holdings.length) {
       covered.push(p.isin);

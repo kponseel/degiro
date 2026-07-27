@@ -70,7 +70,12 @@ function ResultStep({ built, onReset, onPasteOpen }) {
 }
 
 // ── Le wizard, une question par écran ────────────────────────────────
-function Wizard({ pf, expo, initialIsin, onBuilt }) {
+function Wizard({ pf, expo, initialIsin: rawIsin, onBuilt }) {
+  // Un ISIN venu de l'URL (#/ai?isin=…) peut ne plus être détenu — position
+  // revendue, lien partagé, portefeuille remplacé. On ne le retient que s'il
+  // correspond à une position réelle : sinon l'étape de choix du titre était
+  // sautée, puis la génération échouait sans rien dire à l'utilisateur.
+  const initialIsin = (pf?.positions || []).some((p) => p.isin === rawIsin) ? rawIsin : null;
   const total = useMemo(() => pf.positions.reduce((s, p) => s + (Number(p.value_eur) || 0), 0), [pf]);
   const sorted = useMemo(() => [...pf.positions].sort((a, b) => (b.value_eur || 0) - (a.value_eur || 0)), [pf]);
 
