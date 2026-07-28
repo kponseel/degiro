@@ -11,16 +11,58 @@ const els = {
   apiUrl: $('apiUrl'), token: $('token'), save: $('save'), saveMsg: $('saveMsg'),
   capture: $('capture'), error: $('error'), success: $('success'),
   diagBox: $('diagBox'), steps: $('steps'), copyDiag: $('copyDiag'), last: $('last'),
+  pin: $('pin'), tokenLink: $('tokenLink'),
 };
+
+/**
+ * Instance par défaut. L'adresse était à saisir à la main alors qu'elle est la
+ * même pour tout le monde — une étape de plus, et une occasion de se tromper.
+ * Le champ reste modifiable pour une instance auto-hébergée.
+ */
+const ANALYZER_PAR_DEFAUT = 'https://degiro.estim.pro';
 
 let lastReport = null;
 
 function show(el, text) { el.textContent = text; el.hidden = !text; }
 
 // ── Réglages ────────────────────────────────────────────────────────
-const stored = await chrome.storage.local.get(['apiUrl', 'token', 'lastCapture']);
-els.apiUrl.value = stored.apiUrl || '';
-els.token.value = stored.token || '';
+const stored = await chrome.storage.local.get(['apiUrl', 'token', 'brouillon', 'lastCapture']);
+// `brouillon` : ce qui a été tapé sans être enregistré. Le popup se ferme dès
+// que Chrome perd le focus — typiquement en allant chercher son jeton — et la
+// saisie en cours était alors perdue à chaque fois.
+els.apiUrl.value = stored.apiUrl || stored.brouillon?.apiUrl || ANALYZER_PAR_DEFAUT;
+els.token.value = stored.token || stored.brouillon?.token || '';
+
+const lienReglages = () => {
+  try {
+    return `${new URL(els.apiUrl.value.trim() || ANALYZER_PAR_DEFAUT).origin}/#/settings`;
+  } catch {
+    return `${ANALYZER_PAR_DEFAUT}/#/settings`;
+  }
+};
+els.tokenLink.href = lienReglages();
+
+// Mémorisation au fil de la frappe : rien n'est perdu si la fenêtre se ferme.
+let minuteur;
+for (const champ of [els.apiUrl, els.token]) {
+  champ.addEventListener('input', () => {
+    els.tokenLink.href = lienReglages();
+    clearTimeout(minuteur);
+    minuteur = setTimeout(() => {
+      chrome.storage.local.set({
+        brouillon: { apiUrl: els.apiUrl.value.trim(), token: els.token.value.trim() },
+      });
+    }, 250);
+  });
+}
+
+// Mode onglet : même page, mais elle ne se referme plus au moindre clic ailleurs.
+if (new URLSearchParams(location.search).has('tab')) document.body.classList.add('in-tab');
+
+els.pin.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('src/popup.html?tab=1') });
+  window.close();
+});
 if (stored.lastCapture) {
   const d = new Date(stored.lastCapture.at);
   els.last.textContent = `dernière capture ${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
@@ -52,6 +94,7 @@ els.save.addEventListener('click', async () => {
   }
 
   await chrome.storage.local.set({ apiUrl, token });
+  await chrome.storage.local.remove('brouillon');
   els.saveMsg.className = 'msg ok';
   return show(els.saveMsg, 'Réglages enregistrés.');
 });

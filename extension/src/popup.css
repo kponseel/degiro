@@ -23,6 +23,12 @@ header {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
   margin-bottom: 12px;
 }
+/* Les boutons sont pleine largeur par défaut ; celui de l'en-tête ne doit pas. */
+header button { width: auto; margin-top: 0; flex: 0 0 auto; }
+
+/* Ouvert dans un onglet : la largeur de popup n'a plus lieu d'être. */
+body.in-tab { width: min(620px, 100%); margin: 0 auto; padding: 28px 22px; }
+body.in-tab #pin { display: none; }
 
 .muted { color: var(--muted); font-size: 11.5px; }
 

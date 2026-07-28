@@ -176,13 +176,19 @@ export default function ExtensionTokens() {
         <strong>Coller dans l'extension</strong>
       </div>
       <p className="muted" style={{ marginTop: 2 }}>
-        Clique sur l'icône de l'extension dans Chrome, puis renseigne ces deux champs
-        et valide par <strong>Enregistrer</strong>. Chrome demandera l'autorisation
-        d'appeler ce serveur&nbsp;: accepte, sinon l'envoi ne peut pas fonctionner.
+        Clique sur l'icône de l'extension dans Chrome, colle le jeton et valide par
+        <strong> Enregistrer</strong>. Chrome demandera l'autorisation d'appeler ce
+        serveur&nbsp;: accepte, sinon l'envoi ne peut pas fonctionner.
+      </p>
+      <p className="muted" style={{ marginTop: 6 }}>
+        La fenêtre de l'extension se referme dès que Chrome perd le focus — donc dès
+        que tu reviens ici chercher ton jeton. Le bouton <strong>Épingler</strong>, en
+        haut de cette fenêtre, la rouvre dans un onglet qui, lui, reste ouvert. Ce qui
+        est déjà tapé est de toute façon conservé.
       </p>
 
       <div className="field" style={{ maxWidth: 420, marginTop: 10 }}>
-        <label htmlFor="ext-origin">« Adresse de ton Analyzer » — à copier tel quel</label>
+        <label htmlFor="ext-origin">« Adresse de ton Analyzer » — déjà pré-remplie</label>
         <div className="token-reveal">
           <code id="ext-origin">{origin}</code>
           <button
