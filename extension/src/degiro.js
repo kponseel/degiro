@@ -281,7 +281,9 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
   // les devises — un solde en dollars alimenté par les dividendes américains —
   // et creusait un écart inexpliqué avec le total affiché par DEGIRO.
   const cash = totals.cash ?? cashEur;
-  const summed = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0) + (cash ?? 0));
+  const cashSource = totals.cash !== undefined ? 'DEGIRO (converti)' : 'lignes en euros';
+  const positionsTotal = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0));
+  const summed = round2(positionsTotal + (cash ?? 0));
 
   const payload = {
     schema_version: 1,
@@ -308,6 +310,13 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
       // Devises non converties, pour expliquer un éventuel reliquat au lieu de
       // laisser l'utilisateur devant un écart nu.
       cashOther,
+      // Décomposition de notre total : sans elle, un écart ne désigne pas son
+      // origine — titres mal lus, ou liquidités mal comptées.
+      positionsTotal,
+      cash: cash === undefined ? undefined : round2(cash),
+      cashSource,
+      degiroPositions: totals.positions,
+      degiroCash: totals.cash,
       degiroTotal: totals.netLiq,
       computedTotal: summed,
       // Un écart > 1 € signale un champ mal lu : à vérifier avant de se fier aux chiffres.

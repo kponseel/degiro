@@ -61,8 +61,9 @@ export default function ExtensionTokens() {
   return (
     <Card title="Extension Chrome — capture en un clic">
       <p className="muted" style={{ marginTop: 0 }}>
-        L'extension capture ton portefeuille depuis ta session DEGIRO ouverte, sans fichier à manipuler.
-        Trois étapes : <strong>1.</strong> installe-la, <strong>2.</strong> génère un jeton, <strong>3.</strong> colle-le dans l'extension.
+        Réglage initial, à ne faire qu'une fois : <strong>1.</strong> installe l'extension,
+        <strong>2.</strong> génère un jeton, <strong>3.</strong> colle-le dedans.
+        L'usage au quotidien est décrit juste après.
       </p>
 
       <div className="ext-step">
@@ -208,6 +209,9 @@ export default function ExtensionTokens() {
       </div>
       <p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
         « Jeton d'extension »&nbsp;: celui généré à l'étape 2, qui commence par <code>dgx_</code>.
+      </p>
+      <p style={{ marginTop: 12, marginBottom: 0 }}>
+        C'est fini pour l'installation. <strong>La suite explique comment capturer.</strong>
       </p>
     </Card>
   );

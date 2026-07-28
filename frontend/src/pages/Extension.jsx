@@ -95,6 +95,62 @@ export default function Extension() {
         <ExtensionTokens />
       </div>
 
+      {/* L'installation était décrite jusqu'au collage du jeton, et s'arrêtait là :
+          rien ne disait comment capturer, ni où regarder ensuite. C'est pourtant
+          le seul geste qu'on refera, chaque semaine. */}
+      <div style={{ marginTop: 16 }}>
+        <Card title="S'en servir — le geste à retenir">
+          <p className="muted" style={{ marginTop: 0 }}>
+            L'installation ne se fait qu'une fois. Ensuite, mettre à jour ton analyse tient en
+            quatre gestes, à refaire quand tu veux.
+          </p>
+
+          <ol className="ext-instr">
+            <li>
+              <strong>Ouvre <code>trader.degiro.nl</code> et connecte-toi.</strong>
+              <div className="muted">
+                L'extension travaille à partir de cette session : sans elle, elle n'a accès à rien.
+              </div>
+            </li>
+            <li>
+              <strong>Va sur ton portefeuille et laisse la page s'afficher quelques secondes.</strong>
+              <div className="muted">
+                L'extension récupère les identifiants de session au passage, dans les appels que le
+                site DEGIRO fait lui-même. Sur une page à peine ouverte, il n'y en a pas encore eu.
+              </div>
+            </li>
+            <li>
+              <strong>Clique sur l'icône de l'extension</strong>, puis sur
+              <strong> « Capturer mon portefeuille »</strong>.
+              <div className="muted">
+                Quelques secondes : elle lit tes positions, tes positions fermées et l'historique de
+                tes ordres, puis envoie le tout ici.
+              </div>
+            </li>
+            <li>
+              <strong>Attends le message vert</strong> — par exemple
+              «&nbsp;Envoyé : 27 positions, 412 transactions, 85&nbsp;946&nbsp;€&nbsp;».
+              <div className="muted">
+                Un message rouge&nbsp;? Ouvre le panneau <strong>Diagnostic</strong> juste en dessous :
+                la section suivante explique chaque cas.
+              </div>
+            </li>
+          </ol>
+
+          <p style={{ marginTop: 12 }}>
+            <strong>Reviens ensuite ici</strong> : tes pages Portefeuille, Performance et Exposition
+            sont à jour. Rien d'autre à faire.
+          </p>
+
+          <Banner kind="info">
+            Capture aussi souvent que tu veux — une par semaine suffit à suivre l'évolution. Deux
+            captures identiques ne créent pas de doublon&nbsp;: l'extension te répondra simplement
+            «&nbsp;déjà enregistré&nbsp;». Et si tu gardes la fenêtre épinglée dans un onglet, la
+            capture se lance en deux clics.
+          </Banner>
+        </Card>
+      </div>
+
       <div style={{ marginTop: 16 }}>
         <Card title="Ça ne marche pas — que faire">
           <p className="muted" style={{ marginTop: 0 }}>
