@@ -7,7 +7,6 @@ import { plural } from '../lib/format.js';
 import { Card, Banner } from '../components/ui.jsx';
 import Uploader from '../components/Uploader.jsx';
 import IsinEditor from '../components/IsinEditor.jsx';
-import ExtensionTokens from '../components/ExtensionTokens.jsx';
 
 function EtfHoldingsUploader({ onImported }) {
   const inputId = useId();
@@ -184,7 +183,7 @@ function AccountCard({ user, onUserChange, onLogout }) {
   );
 }
 
-export default function Settings({ onImported, onGoOverview, user, onUserChange, onLogout, theme, onThemeChange }) {
+export default function Settings({ onImported, onGoOverview, onGoExtension, user, onUserChange, onLogout, theme, onThemeChange }) {
   const [enrichMsg, setEnrichMsg] = useState(null);
   const [portfolioJustImported, setPortfolioJustImported] = useState(false);
 
@@ -207,6 +206,25 @@ export default function Settings({ onImported, onGoOverview, user, onUserChange,
 
   return (
     <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: 880 }}>
+      <AccountCard user={user} onUserChange={onUserChange} onLogout={onLogout} />
+
+      {/* L'extension a sa propre page, mise en avant dans le menu : la dupliquer
+          ici en ferait diverger les deux versions. On garde le strict nécessaire
+          pour décider si elle est faite pour soi. */}
+      <Card title="Extension Chrome — la voie la plus simple">
+        <p className="muted" style={{ marginTop: 0 }}>
+          Un clic et ton portefeuille arrive ici, sans aucun fichier à exporter. Elle apporte
+          en plus l'<strong>historique complet de tes ordres</strong> — d'où viennent les positions
+          fermées et les plus-values réalisées, que le seul Portfolio.csv ne contient pas.
+        </p>
+        <p className="muted" style={{ fontSize: 12.5 }}>
+          <strong>Prérequis :</strong> un ordinateur (Chrome, Edge ou Brave) — pas de version mobile ;
+          une session DEGIRO ouverte dans le navigateur au moment de la capture. Elle ne connaît ni ton
+          mot de passe ni tes identifiants.
+        </p>
+        <button className="btn" onClick={onGoExtension}>Installer l'extension →</button>
+      </Card>
+
       <Card title="Importer un export DEGIRO">
         <p className="muted" style={{ marginTop: 0 }}>
           Exportez vos fichiers depuis DEGIRO puis déposez-les ici. Le type est détecté automatiquement ; une prévisualisation
@@ -241,10 +259,6 @@ export default function Settings({ onImported, onGoOverview, user, onUserChange,
           <IsinEditor reloadKey={enrichMsg?.text} />
         </div>
       </Card>
-
-      <AccountCard user={user} onUserChange={onUserChange} onLogout={onLogout} />
-
-      <ExtensionTokens />
 
       <Card title="Apparence">
         {/* « Système » est le défaut : sans choix explicite, la feuille de styles

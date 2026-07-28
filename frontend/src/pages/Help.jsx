@@ -8,23 +8,6 @@ import { buildBrowserAgentPrompt } from '../lib/browserAgentPrompt.js';
  * est précisément le moment où on vient y chercher quelque chose.
  */
 
-function Kbd({ children }) {
-  return <kbd className="help-kbd">{children}</kbd>;
-}
-
-const SHORTCUTS = [
-  { keys: ['⌘K'], alt: ['Ctrl', 'K'], what: 'Ouvrir la palette : atteindre n\'importe quelle page ou action' },
-  { keys: ['g', 'p'], what: 'Aller au portefeuille' },
-  { keys: ['g', 'e'], what: "Aller à l'exposition" },
-  { keys: ['g', 'h'], what: 'Aller à la performance' },
-  { keys: ['g', 'd'], what: 'Aller aux dividendes' },
-  { keys: ['g', 'n'], what: 'Aller aux actus' },
-  { keys: ['g', 'i'], what: 'Aller aux prompts IA' },
-  { keys: ['g', 'r'], what: 'Aller aux réglages / import' },
-  { keys: ['g', '?'], what: 'Ouvrir cette aide' },
-  { keys: ['Échap'], what: 'Fermer le panneau ou la fenêtre ouverte' },
-];
-
 const TIPS = [
   {
     title: 'Commence par la vraie exposition',
@@ -75,11 +58,11 @@ const FAQ = [
   },
   {
     q: "L'extension me demande « l'adresse de mon Analyzer » — je mets quoi ?",
-    a: "L'adresse à laquelle tu consultes cette page, sans rien après le nom de domaine (par exemple https://degiro.estim.pro). Pas besoin de la retenir : Réglages → Extension Chrome l'affiche prête à copier, à l'étape 3, juste sous le jeton.",
+    a: "L'adresse à laquelle tu consultes cette page, sans rien après le nom de domaine (par exemple https://degiro.estim.pro). Elle est désormais pré-remplie dans l'extension — tu n'as normalement rien à saisir. La page « Installer l'extension » l'affiche aussi, prête à copier.",
   },
   {
     q: "L'extension Chrome ne capture rien",
-    a: "Ouvre son panneau Diagnostic : chaque étape y est marquée ✓ ou ✗ avec son détail. Le plus fréquent : l'onglet DEGIRO a été ouvert avant l'installation de l'extension (recharge-le avec F5), ou la session a expiré (reconnecte-toi).",
+    a: "Ouvre son panneau Diagnostic : chaque étape y est marquée ✓ ou ✗ avec son détail. La page « Installer l'extension » liste chaque symptôme et son remède. Le plus fréquent : l'onglet DEGIRO a été ouvert avant l'installation de l'extension (recharge-le avec F5), ou la session a expiré (reconnecte-toi).",
   },
   {
     q: 'Mes données sont-elles visibles par les autres utilisateurs ?',
@@ -237,37 +220,6 @@ export default function Help({ onGoImport, onReplayTour }) {
           <dt>Prompts IA</dt>
           <dd>Des questions d'analyse déjà remplies avec tes chiffres, à copier dans l'assistant de ton choix.</dd>
         </dl>
-      </Card>
-
-      <Card title="Raccourcis clavier">
-        <div className="table-wrap">
-          <table className="data compact">
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', width: 170 }}>Touches</th>
-                <th style={{ textAlign: 'left' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SHORTCUTS.map((s) => (
-                <tr key={s.what}>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}
-                    {s.alt && (
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        {' '}ou {s.alt.map((k) => <Kbd key={k}>{k}</Kbd>)}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: 'left' }}>{s.what}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="muted" style={{ marginTop: 12, fontSize: 12.5 }}>
-          Les raccourcis à deux touches s'enchaînent : appuie sur <Kbd>g</Kbd>, relâche, puis la seconde touche.
-        </p>
       </Card>
 
       <Card title="Astuces">

@@ -75,7 +75,7 @@ export default function ExtensionTokens() {
         </p>
         <a className="btn" href="/api/extension/download" download>⬇ Télécharger l'extension (.zip)</a>
 
-        <details className="ext-help">
+        <details className="ext-help" open>
           <summary>Instructions d'installation (Windows / Mac)</summary>
           <ol className="ext-instr">
             <li><strong>Décompresse le .zip</strong> téléchargé.

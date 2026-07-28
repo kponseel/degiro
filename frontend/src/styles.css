@@ -159,6 +159,24 @@ button { font: inherit; cursor: pointer; }
 }
 .tab:hover { background: var(--line-soft); color: var(--ink); }
 .tab.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 660; }
+
+/* Entrée mise en avant : contour teinté plutôt qu'un fond plein, pour rester
+   lisible à côté de l'onglet actif sans lui disputer la place. La couleur seule
+   ne suffirait pas — le contour reste perceptible sans distinction de teinte. */
+.tab-highlight {
+  color: var(--accent-ink);
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  font-weight: 640;
+}
+.tab-highlight:hover { background: var(--accent-soft); }
+.tab-highlight.active { border-style: solid; }
+
+.nav-highlight {
+  color: var(--accent-ink);
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  font-weight: 640;
+}
+.nav-highlight.active { border-style: solid; }
 .tab .glyph { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.9; }
 
 .topbar-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
@@ -291,6 +309,24 @@ button { font: inherit; cursor: pointer; }
 .help-tips { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
 .help-tip strong { display: block; margin-bottom: 4px; font-size: 13.5px; }
 .help-tip p { margin: 0; font-size: 13px; line-height: 1.55; }
+/* Voie alternative proposée pendant la bienvenue (l'extension). */
+.onboard-alt {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  background: var(--accent-soft);
+  border-radius: 11px;
+}
+.onboard-alt-head { display: flex; align-items: center; gap: 8px; color: var(--accent-ink); }
+
+/* Dépannage de l'extension : symptôme → cause → remède, tout déplié. */
+.trouble { margin: 6px 0 0; }
+.trouble-item { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.trouble-item:last-child { border-bottom: none; padding-bottom: 0; }
+.trouble-item dt { font-weight: 650; font-size: 13.5px; margin-bottom: 4px; }
+.trouble-item dd { margin: 0; font-size: 13px; line-height: 1.6; max-width: 72ch; }
+.trouble-fix { margin-top: 4px; font-weight: 600; color: var(--accent-ink); }
+
 .help-faq { display: flex; flex-direction: column; }
 .help-faq-item { border-bottom: 1px solid var(--line); }
 .help-faq-item:last-child { border-bottom: none; }
