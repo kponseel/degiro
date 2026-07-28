@@ -5,12 +5,11 @@ import Onboarding from './components/Onboarding.jsx';
 import WelcomeTour from './components/WelcomeTour.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import { useHashRoute } from './lib/useHashRoute.js';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews, IconHelp, IconTheme, IconExtension } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconAdmin, IconNews, IconHelp, IconTheme, IconExtension } from './components/icons.jsx';
 import { readTheme, resolveTheme, nextTheme, saveTheme, systemPrefersDark } from './lib/theme.js';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
 import History from './pages/History.jsx';
-import Dividends from './pages/Dividends.jsx';
 import News from './pages/News.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
@@ -27,7 +26,6 @@ const PAGES = [
   // sur l'onglet compact et dans son propre titre. Trois noms pour un écran : on ne
   // pouvait ni s'y référer à l'oral, ni la retrouver dans l'aide. Un seul nom.
   { id: 'history', label: 'Performance', short: 'Performance', icon: IconHistory, Comp: History },
-  { id: 'dividends', label: 'Dividendes', short: 'Dividendes', icon: IconDividends, Comp: Dividends },
   { id: 'news', label: 'Actus', short: 'Actus', icon: IconNews, Comp: News },
   { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
   { id: 'settings', label: 'Import / Réglages', short: 'Réglages', icon: IconSettings, Comp: Settings },
@@ -305,7 +303,10 @@ export default function App() {
     );
   }
 
-  const current = pages.find((p) => p.id === route) || pages[0];
+  // Les dividendes vivent désormais dans Performance : l'ancienne route reste
+  // valable pour ne casser aucun lien ou marque-page.
+  const resolue = route === 'dividends' ? 'history' : route;
+  const current = pages.find((p) => p.id === resolue) || pages[0];
   const Comp = current.Comp;
 
   const commands = [

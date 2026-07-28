@@ -32,8 +32,7 @@ const STEPS = [
       <ul className="tour-list">
         <li><strong>Portefeuille</strong> — tes positions et leurs +/− values. Clique une ligne : tout son détail s'ouvre.</li>
         <li><strong>Exposition</strong> — secteurs, pays, devises. L'onglet <em>vraie exposition</em> éclate tes ETF en leurs titres : c'est là qu'on découvre qu'on détient trois fois la même entreprise.</li>
-        <li><strong>Performance</strong> — ta courbe, et ton TWR face à un indice de référence.</li>
-        <li><strong>Dividendes</strong> — l'encaissé, par ligne et par mois.</li>
+        <li><strong>Performance</strong> — ta courbe, ton TWR face à un indice, tes plus-values réalisées et tes dividendes.</li>
         <li><strong>Actus</strong> — l'actualité de tes titres, avec les raccourcis vers Yahoo Finance et Finviz.</li>
       </ul>
     ),

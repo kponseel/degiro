@@ -65,7 +65,7 @@ export default function RealizedPanel({ realized, latentPl = null }) {
             sub="positions fermées (vendues)"
             tone={tone(ret.realized)}
           />
-          <Stat label="Dividendes encaissés" value={fmtEur(ret.dividends)} sub="détail dans l'onglet Dividendes" tone={ret.dividends ? 'pos' : ''} />
+          <Stat label="Dividendes encaissés" value={fmtEur(ret.dividends)} sub="détail en bas de page" tone={ret.dividends ? 'pos' : ''} />
           <Stat
             label={ret.partial ? 'Total (hors latent)' : 'Gain total'}
             value={signEur(ret.total)}
@@ -215,6 +215,26 @@ export default function RealizedPanel({ realized, latentPl = null }) {
                   </ul>
                 </Banner>
               </div>
+            )}
+
+            {/* État des données sources : quand le tableau n'affiche que des
+                tirets, cette ligne dit si le problème vient des données — et
+                le journal serveur porte les mêmes comptes. */}
+            {realized?.sources && (
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>
+                Données sources&nbsp;: {plural(realized.sources.orders, 'ordre')} en base
+                ({realized.sources.buys} achats, {realized.sources.sells} ventes),
+                période {fmtDate(realized.sources.oldest)} → {fmtDate(realized.sources.newest)}.
+                {realized.sources.noEur > 0 && (
+                  <span className="warn"> {plural(realized.sources.noEur, 'ordre')} sans montant en euros — réimporte ton Transactions.csv pour les compléter.</span>
+                )}
+                {realized.sources.suspectDuplicates > 0 && (
+                  <span className="warn"> {plural(realized.sources.suspectDuplicates, 'doublon présumé', 'doublons présumés')} (même titre, même jour, même quantité sous deux identifiants).</span>
+                )}
+                {realized.sources.noEur === 0 && realized.sources.suspectDuplicates === 0 && (
+                  <span> Aucun montant manquant, aucun doublon détecté.</span>
+                )}
+              </p>
             )}
 
             <div className="fiscal-note">

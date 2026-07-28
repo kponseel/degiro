@@ -1,5 +1,6 @@
 import { getPool } from '../db/pool.js';
 import { computePerformance } from './performance.js';
+import { logger } from '../logger.js';
 
 /**
  * Outils d'analyse de portefeuille — dans l'esprit des bons gestionnaires :
@@ -309,6 +310,54 @@ async function dividendFlows(accountId) {
 }
 
 /**
+ * État des données qui alimentent le calcul du réalisé — pour répondre à
+ * « pourquoi c'est vide alors que j'ai tout chargé » sans accès à la base.
+ *
+ * `suspectDuplicates` : un même ordre entré DEUX fois sous deux identifiants
+ * différents (identifiant d'ordre DEGIRO d'un côté, identifiant reconstruit de
+ * l'autre) passe la contrainte d'unicité et fausse quantités et prix moyen. On
+ * le repère par la coïncidence (isin, jour, quantité) sur des identifiants
+ * distincts — présomption, pas preuve, d'où le nom.
+ */
+async function realizedSources(accountId) {
+  const [[compte]] = await getPool().query(
+    `SELECT COUNT(*) AS orders,
+            SUM(type = 'buy')  AS buys,
+            SUM(type = 'sell') AS sells,
+            SUM(amount_eur IS NULL) AS noEur,
+            SUM(amount_eur IS NULL AND type = 'buy')  AS buysNoEur,
+            SUM(amount_eur IS NULL AND type = 'sell') AS sellsNoEur,
+            MIN(tx_date) AS oldest,
+            MAX(tx_date) AS newest
+     FROM transactions
+     WHERE account_id = ? AND type IN ('buy', 'sell')`,
+    [accountId],
+  );
+  const [dups] = await getPool().query(
+    `SELECT isin, DATE(tx_date) AS jour, qty, COUNT(*) AS n
+     FROM transactions
+     WHERE account_id = ? AND type IN ('buy', 'sell') AND isin IS NOT NULL AND qty IS NOT NULL
+     GROUP BY isin, DATE(tx_date), qty
+     HAVING COUNT(*) > 1
+     LIMIT 20`,
+    [accountId],
+  );
+  const n = (v) => Number(v) || 0;
+  return {
+    orders: n(compte.orders),
+    buys: n(compte.buys),
+    sells: n(compte.sells),
+    noEur: n(compte.noEur),
+    buysNoEur: n(compte.buysNoEur),
+    sellsNoEur: n(compte.sellsNoEur),
+    oldest: compte.oldest ? String(compte.oldest).slice(0, 10) : null,
+    newest: compte.newest ? String(compte.newest).slice(0, 10) : null,
+    suspectDuplicates: dups.length,
+    duplicateSamples: dups.slice(0, 5).map((d) => ({ isin: d.isin, jour: String(d.jour).slice(0, 10), qty: Number(d.qty), n: Number(d.n) })),
+  };
+}
+
+/**
  * Vue « réalisé / fiscal » : plus-values encaissées à chaque vente et flux de
  * dividendes, datés, pour un filtrage par année/mois côté client. Chiffres
  * bruts (aucun taux d'imposition appliqué).
@@ -322,7 +371,25 @@ export async function computeRealized(accountId = 1) {
     ...dividends.map((d) => d.date.slice(0, 4)),
   ])].filter(Boolean).sort();
   const dividendsTotal = round(dividends.reduce((s, d) => s + d.amount_eur, 0));
-  return { events, byIsin, totals, dividends, dividendsTotal, years };
+  const sources = await realizedSources(accountId);
+
+  // Journal côté serveur : quand l'écran n'affiche que des tirets, ces comptes
+  // disent en une ligne si le problème vient des données (montants absents,
+  // doublons) ou du calcul. C'est la ligne à chercher dans les journaux.
+  logger.info({
+    compte: accountId,
+    ordres: sources.orders,
+    achats: sources.buys,
+    ventes: sources.sells,
+    sansMontantEur: sources.noEur,
+    ventesCalculees: totals.sales - totals.unknown,
+    ventesIncalculables: totals.unknown,
+    motifs: totals.unknownBy,
+    doublonsPresumes: sources.suspectDuplicates,
+    periode: `${sources.oldest ?? '—'} → ${sources.newest ?? '—'}`,
+  }, 'Réalisé : état des données sources');
+
+  return { events, byIsin, totals, dividends, dividendsTotal, years, sources };
 }
 
 /**
