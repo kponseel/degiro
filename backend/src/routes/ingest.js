@@ -8,7 +8,8 @@ const router = Router();
 // POST /api/ingest — reçoit, valide et stocke un snapshot (+ positions) et,
 // optionnellement, l'historique des transactions (achats/ventes) capturé par
 // l'extension. Le snapshot est déduit par capture_id ; les transactions sont
-// idempotentes via external_id (INSERT IGNORE) — les renvoyer ne double rien.
+// idempotentes via external_id (upsert réparateur : la version la plus complète
+// d'un ordre gagne, une valeur absente n'efface rien) — les renvoyer ne double rien.
 router.post('/', async (req, res, next) => {
   const parsed = ingestSchema.safeParse(req.body);
   if (!parsed.success) {

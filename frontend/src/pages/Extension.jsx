@@ -48,13 +48,18 @@ const PANNES = [
   },
   {
     symptome: "« Historique des transactions ✗ » (HTTP 502 ou autre)",
-    cause: "Le service de reporting de DEGIRO refuse parfois une demande. L'extension réessaie alors année par année.",
-    remede: "Sans gravité : le portefeuille est capturé quand même. Le diagnostic indique les années manquantes — relance plus tard pour les récupérer.",
+    cause: "Le service de reporting de DEGIRO refuse parfois une demande. L'extension réessaie en découpant, puis s'arrête si DEGIRO refuse tout — le diagnostic affiche alors sa réponse exacte.",
+    remede: "Sans gravité : le portefeuille est capturé quand même. Relance plus tard — tant que l'historique n'est pas complet, la capture suivante retentera tout.",
   },
   {
     symptome: '« Contrôle du total ✗ » — un écart de quelques euros',
     cause: 'Le plus souvent un solde en devise (des dollars, typiquement, venant de dividendes américains). Le diagnostic le nomme désormais.',
     remede: "Rien à faire si le montant correspond à ce solde. Un écart important, lui, mérite d'être signalé.",
+  },
+  {
+    symptome: "J'ai vidé mes données côté Analyzer, et l'historique ne revient pas",
+    cause: "L'extension retient que ton historique complet a déjà été envoyé, et ne relit que la période récente — elle ne peut pas savoir que la base a été vidée.",
+    remede: 'Révoque ton jeton ci-dessus et génères-en un nouveau : la prochaine capture refera la découverte complète.',
   },
   {
     symptome: "L'icône de l'extension a disparu de la barre",
@@ -148,6 +153,11 @@ export default function Extension() {
             «&nbsp;déjà enregistré&nbsp;». Et si tu gardes la fenêtre épinglée dans un onglet, la
             capture se lance en deux clics.
           </Banner>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+            La première capture retrouve toute seule ta première année chez DEGIRO et lit l'historique
+            complet de tes ordres. Les suivantes ne relisent que la période récente&nbsp;: le passé ne
+            change pas, et DEGIRO n'est pas sollicité pour rien.
+          </p>
         </Card>
       </div>
 
