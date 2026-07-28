@@ -9,19 +9,25 @@
     <header>
       <strong>DEGIRO Analyzer</strong>
       <span id="last" class="muted"></span>
+      <!-- La fenêtre du popup se ferme dès que Chrome perd le focus — donc dès
+           qu'on va chercher son jeton dans un autre onglet. Ce bouton rouvre la
+           même page dans un onglet, qui lui reste ouvert. -->
+      <button id="pin" class="ghost small" title="Ouvrir dans un onglet (reste ouvert)">Épingler</button>
     </header>
 
     <section class="settings">
       <label for="apiUrl">Adresse de ton Analyzer</label>
-      <input id="apiUrl" type="url" placeholder="https://degiro.exemple.fr" spellcheck="false" />
+      <input id="apiUrl" type="url" placeholder="https://degiro.estim.pro" spellcheck="false" />
       <p class="hint">
-        L'adresse à laquelle tu consultes ton Analyzer, sans rien après le nom de domaine.
-        Elle est affichée prête à copier dans <strong>Réglages → Extension Chrome</strong>, étape 3.
+        Pré-remplie. À changer seulement si tu héberges ton Analyzer ailleurs.
       </p>
 
       <label for="token">Jeton d'extension</label>
       <input id="token" type="password" placeholder="dgx_…" spellcheck="false" />
-      <p class="hint">Au même endroit, étape 2. Le jeton n'est affiché qu'une seule fois.</p>
+      <p class="hint">
+        <a id="tokenLink" href="#" target="_blank" rel="noopener">Ouvrir Réglages → Extension Chrome</a>
+        pour en générer un. Le jeton n'est affiché qu'une seule fois.
+      </p>
 
       <button id="save" class="ghost">Enregistrer</button>
       <p id="saveMsg" class="msg" hidden></p>

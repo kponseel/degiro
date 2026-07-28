@@ -49,6 +49,7 @@ export function parsePortfolio(update) {
   const rows = (update?.portfolio?.value || []).map(flattenRow);
   const products = [];
   const closed = [];
+  const cashOther = [];
   let cashEur;
 
   for (const row of rows) {
@@ -57,9 +58,17 @@ export function parsePortfolio(update) {
 
     if (isCash) {
       // L'identifiant vaut « EUR » ou « FLATEX_EUR » selon l'entité qui détient
-      // le cash ; les deux comptent, les autres devises non (pas de taux ici).
-      if (id.replace(/^FLATEX_/, '') !== 'EUR') continue;
+      // le cash. Les autres devises ne sont pas additionnables ici, faute de
+      // taux de change dans cette réponse — mais on les COMPTE, car les ignorer
+      // en silence creusait un écart avec le total de DEGIRO sans que rien ne
+      // dise d'où il venait (un solde en dollars, typiquement, alimenté par les
+      // dividendes de titres américains).
+      const devise = id.replace(/^FLATEX_/, '');
       const value = amount(row.value);
+      if (devise !== 'EUR') {
+        if (value) cashOther.push({ currency: devise, value });
+        continue;
+      }
       if (value !== undefined) cashEur = round2((cashEur ?? 0) + value);
       continue;
     }
@@ -71,7 +80,7 @@ export function parsePortfolio(update) {
     else products.push(entry); // position détenue
   }
 
-  return { products, closed, cashEur };
+  return { products, closed, cashEur, cashOther };
 }
 
 /** Totaux affichés par DEGIRO — sert de contrôle face à notre propre somme. */
@@ -240,7 +249,7 @@ export const transactionProductIds = (txRows) =>
  * dans le diagnostic pour repérer tout de suite une lecture qui a dérivé.
  */
 export function buildPayload({ update, products: infoByLot, transactions, captureId, capturedAt }) {
-  const { products, closed, cashEur } = parsePortfolio(update);
+  const { products, closed, cashEur, cashOther } = parsePortfolio(update);
   const index = indexProducts(infoByLot);
 
   const positions = [];
@@ -267,7 +276,12 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
   }
 
   const totals = parseTotals(update);
-  const summed = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0) + (cashEur ?? 0));
+  // Liquidités : on préfère le solde total que DEGIRO a lui-même converti en
+  // euros (`reportCashBal`). Sommer nos seules lignes en euros laissait de côté
+  // les devises — un solde en dollars alimenté par les dividendes américains —
+  // et creusait un écart inexpliqué avec le total affiché par DEGIRO.
+  const cash = totals.cash ?? cashEur;
+  const summed = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0) + (cash ?? 0));
 
   const payload = {
     schema_version: 1,
@@ -278,7 +292,7 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
     positions,
     transactions: txs,
   };
-  if (cashEur !== undefined) payload.cash_eur = cashEur;
+  if (cash !== undefined) payload.cash_eur = round2(cash);
 
   return {
     payload,
@@ -291,6 +305,9 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
       transactionsRead: txRows.length,
       skipped,
       cashEur,
+      // Devises non converties, pour expliquer un éventuel reliquat au lieu de
+      // laisser l'utilisateur devant un écart nu.
+      cashOther,
       degiroTotal: totals.netLiq,
       computedTotal: summed,
       // Un écart > 1 € signale un champ mal lu : à vérifier avant de se fier aux chiffres.

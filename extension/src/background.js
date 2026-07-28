@@ -35,6 +35,61 @@ async function findTab() {
 
 const ask = (tabId, message) => chrome.tabs.sendMessage(tabId, message);
 
+/** Première année interrogée : DEGIRO n'existait pas avant, inutile de remonter plus loin. */
+const PREMIERE_ANNEE = 2003;
+
+/**
+ * Récupère l'historique des ordres.
+ *
+ * DEGIRO répond **502 sur une plage trop large** : demander vingt-six ans d'un
+ * coup fait tomber son service de reporting, et la capture repartait alors sans
+ * le moindre ordre — donc sans positions fermées ni plus-values.
+ *
+ * On tente d'abord la plage entière (un seul appel quand ça passe), puis on
+ * retombe sur un découpage année par année. Un échec sur une année n'annule pas
+ * les autres : un historique partiel vaut mieux que rien, à condition de dire
+ * lesquelles manquent.
+ */
+async function fetchTransactions(tabId, creds) {
+  const aujourdhui = new Date();
+  const finale = aujourdhui.getFullYear();
+
+  const lire = async (du, au) => {
+    const res = await ask(tabId, {
+      type: 'FETCH',
+      url: urls.transactions(creds.intAccount, creds.sessionId, du, au),
+    }).catch(() => null);
+    return res?.ok && res.json ? parseTransactions(res.json) : null;
+  };
+
+  const entier = await lire('01/01/2000', ddmmyyyy(aujourdhui));
+  if (entier) {
+    return { rows: entier, failed: 0, detail: `${entier.length} ordre(s)` };
+  }
+
+  // Repli : une requête par année civile, de la plus ancienne à la plus récente.
+  const rows = [];
+  const vues = new Set();
+  const echecs = [];
+  for (let an = PREMIERE_ANNEE; an <= finale; an += 1) {
+    const au = an === finale ? ddmmyyyy(aujourdhui) : `31/12/${an}`;
+    const lot = await lire(`01/01/${an}`, au);
+    if (lot === null) { echecs.push(an); continue; }
+    for (const row of lot) {
+      // Les bornes d'années peuvent se recouvrir : on dédoublonne sur l'ordre.
+      const cle = String(row?.orderId ?? row?.id ?? `${row?.date}|${row?.productId}|${row?.quantity}`);
+      if (vues.has(cle)) continue;
+      vues.add(cle);
+      rows.push(row);
+    }
+  }
+
+  const detail = echecs.length
+    ? `${rows.length} ordre(s), découpé par année — ${echecs.length} année(s) refusée(s) : ${echecs.join(', ')}`
+    : `${rows.length} ordre(s), découpé par année (la plage entière a été refusée)`;
+  return { rows, failed: echecs.length, detail };
+}
+
 /** Un pas de diagnostic : libellé, verdict, détail lisible. */
 const step = (report, label, ok, detail) => {
   report.steps.push({ label, ok, detail });
@@ -99,11 +154,9 @@ async function capture() {
 
   // Historique complet des ordres — positions fermées et plus-values réalisées.
   // Best-effort : un échec ici n'empêche pas la capture du portefeuille.
-  const txUrl = urls.transactions(creds.intAccount, creds.sessionId, '01/01/2000', ddmmyyyy(new Date()));
-  const txRes = await ask(tab.id, { type: 'FETCH', url: txUrl });
-  const txJson = txRes?.ok && txRes.json ? txRes.json : null;
-  step(report, 'Historique des transactions', Boolean(txJson),
-    txJson ? `${parseTransactions(txJson).length} ordre(s)` : `HTTP ${txRes?.status ?? '?'} — capturé sans historique`);
+  const tx = await fetchTransactions(tab.id, creds);
+  const txJson = tx.rows.length ? tx.rows : null;
+  step(report, 'Historique des transactions', tx.rows.length > 0 || tx.failed === 0, tx.detail);
 
   // Résolution des identifiants produit en ISIN, par lots de 100. On résout à la
   // fois les positions (détenues + soldées) et les produits cités par les ordres :
@@ -148,10 +201,15 @@ async function capture() {
   // Contrôle de cohérence : notre somme doit coller au total affiché par DEGIRO.
   if (diagnostics.totalGap !== null) {
     const consistent = Math.abs(diagnostics.totalGap) <= 1;
+    // Les devises non converties sont la cause la plus fréquente d'un reliquat :
+    // le dire évite de faire chercher une lecture fautive là où il n'y en a pas.
+    const devises = (diagnostics.cashOther || [])
+      .map((c) => `${c.value} ${c.currency}`).join(', ');
     step(report, 'Contrôle du total', consistent,
       consistent
         ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
-        : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €)`);
+        : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €)`
+          + (devises ? ` — liquidités en devises non converties : ${devises}` : ''));
   }
 
   if (!payload.positions.length) {
