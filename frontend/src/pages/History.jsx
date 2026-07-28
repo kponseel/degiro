@@ -6,6 +6,7 @@ import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
 import RealizedPanel from '../components/RealizedPanel.jsx';
+import Dividends from './Dividends.jsx';
 
 const TT = { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' };
 const axisTick = { fontSize: 12, fill: 'var(--ink-faint)' };
@@ -297,6 +298,11 @@ export default function History({ onGoImport }) {
           </div>
         </Card>
       )}
+
+      {/* Les dividendes vivent ici, en bas de la page Performance : ils font
+          partie du rendement, mais ne méritaient pas un onglet à eux seuls. */}
+      <div className="card-title" style={{ margin: '22px 2px 12px' }}>Dividendes</div>
+      <Dividends onGoImport={onGoImport} />
     </>
   );
 }

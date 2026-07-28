@@ -3,6 +3,7 @@ import request from 'supertest';
 import { attribution, concentration, riskMetrics, realizedPnl } from '../src/services/analytics.js';
 import { createApp } from '../src/app.js';
 import { getPool, closePool } from '../src/db/pool.js';
+import { saveTransactions } from '../src/services/transactions.js';
 import { AUTH, resetDb } from './helpers.js';
 
 const app = createApp();
@@ -241,5 +242,55 @@ describe('GET /api/analytics', () => {
     expect(body.realized.dividendsTotal).toBe(25);
     // Seules les années avec activité réalisée (vente ou dividende) sont listées.
     expect(body.realized.years).toEqual(['2024']);
+  });
+});
+
+describe('diagnostic des données sources du réalisé', () => {
+  it('compte les ordres, les montants manquants et les doublons présumés', async () => {
+    await resetDb();
+    const ordre = (external, qty, eur, date = '2024-03-01 10:00:00') => ({
+      tx_date: date,
+      type: qty < 0 ? 'sell' : 'buy',
+      isin: 'US67066G1040',
+      description: 'NVIDIA CORP',
+      qty,
+      amount: -1,
+      currency: 'EUR',
+      amount_eur: eur,
+      external_id: external,
+    });
+    await saveTransactions([
+      ordre('src-1', 10, -1000, '2021-01-05 09:00:00'),
+      ordre('src-2', 5, null, '2022-06-01 09:00:00'),      // montant manquant
+      // Doublon présumé : même titre, même jour, même quantité, deux identifiants
+      // — le vecteur réel est un import ancien à identifiant reconstruit + une
+      // capture d'extension à identifiant d'ordre.
+      ordre('src-3', -8, 900, '2024-03-01 10:00:00'),
+      ordre('src-4', -8, 900, '2024-03-01 15:00:00'),
+    ], 1);
+
+    const { body } = await request(app).get('/api/analytics').set(AUTH);
+    const s = body.realized.sources;
+    expect(s.orders).toBe(4);
+    expect(s.buys).toBe(2);
+    expect(s.sells).toBe(2);
+    expect(s.noEur).toBe(1);
+    expect(s.buysNoEur).toBe(1);
+    expect(s.oldest).toBe('2021-01-05');
+    expect(s.newest).toBe('2024-03-01');
+    expect(s.suspectDuplicates).toBe(1);
+    expect(s.duplicateSamples[0]).toMatchObject({ isin: 'US67066G1040', qty: -8, n: 2 });
+  });
+
+  it('un jeu de données sain ne signale rien', async () => {
+    await resetDb();
+    await saveTransactions([
+      { tx_date: '2021-01-05 09:00:00', type: 'buy', isin: 'US67066G1040', description: 'NVIDIA', qty: 10, amount: -1, currency: 'EUR', amount_eur: -1000, external_id: 'sain-1' },
+      { tx_date: '2024-01-05 09:00:00', type: 'sell', isin: 'US67066G1040', description: 'NVIDIA', qty: -10, amount: -1, currency: 'EUR', amount_eur: 1500, external_id: 'sain-2' },
+    ], 1);
+    const { body } = await request(app).get('/api/analytics').set(AUTH);
+    expect(body.realized.sources.noEur).toBe(0);
+    expect(body.realized.sources.suspectDuplicates).toBe(0);
+    expect(body.realized.totals.net).toBeGreaterThan(0);
   });
 });

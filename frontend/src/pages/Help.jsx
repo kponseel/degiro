@@ -210,11 +210,10 @@ export default function Help({ onGoImport, onReplayTour }) {
           </dd>
           <dt>Performance</dt>
           <dd>
-            La courbe de valeur, et le <strong>TWR</strong> : la performance débarrassée de l'effet de tes
-            versements, donc comparable à un indice de référence.
+            La courbe de valeur, le <strong>TWR</strong> (la performance débarrassée de l'effet de tes
+            versements, donc comparable à un indice), tes plus-values réalisées — et tes
+            <strong> dividendes</strong>, en bas de page, tirés du relevé de compte.
           </dd>
-          <dt>Dividendes</dt>
-          <dd>Ce que tu as encaissé, par ligne et par mois. Vient du relevé de compte.</dd>
           <dt>Actus</dt>
           <dd>L'actualité des titres que tu détiens, filtrable, avec des liens vers les pages finance.</dd>
           <dt>Prompts IA</dt>
