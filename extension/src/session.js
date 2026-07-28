@@ -63,9 +63,11 @@ export const urls = {
   // Historique des ordres (achats/ventes), agrégé par ordre — la seule source des
   // positions fermées et des plus-values réalisées. `fromDate`/`toDate` au format
   // JJ/MM/AAAA attendu par DEGIRO ; on remonte très loin pour tout capturer.
-  transactions: (intAccount, sessionId, fromDate, toDate) =>
+  transactions: (intAccount, sessionId, fromDate, toDate, groupByOrder = true) =>
     'https://trader.degiro.nl/reporting/secure/v4/transactions'
     + `?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
-    + '&groupTransactionsByOrder=true'
+    // `groupTransactionsByOrder` agrège les exécutions partielles en un ordre.
+    // Paramètre facultatif : certaines instances le refusent, d'où le repli.
+    + (groupByOrder ? '&groupTransactionsByOrder=true' : '')
     + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
 };
