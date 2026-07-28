@@ -5,7 +5,7 @@ import Onboarding from './components/Onboarding.jsx';
 import WelcomeTour from './components/WelcomeTour.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import { useHashRoute } from './lib/useHashRoute.js';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews, IconHelp, IconTheme } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconDividends, IconAdmin, IconNews, IconHelp, IconTheme, IconExtension } from './components/icons.jsx';
 import { readTheme, resolveTheme, nextTheme, saveTheme, systemPrefersDark } from './lib/theme.js';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
@@ -14,26 +14,29 @@ import Dividends from './pages/Dividends.jsx';
 import News from './pages/News.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
+import Extension from './pages/Extension.jsx';
 import Help from './pages/Help.jsx';
 import Admin from './pages/Admin.jsx';
 
-// `short` = libellé compact des onglets ; `key` = raccourci après « g » ;
-// `offTab` = joignable par la palette et le tiroir, mais pas d'onglet dédié
-// (l'aide a son propre bouton « ? » dans la barre supérieure).
+// `short` = libellé compact des onglets ; `offTab` = joignable par la palette
+// et le tiroir, mais pas d'onglet dédié (l'aide a son bouton « ? » dans la barre).
 const PAGES = [
-  { id: 'overview', label: "Vue d'ensemble", short: 'Portefeuille', key: 'p', icon: IconOverview, Comp: Overview },
-  { id: 'exposure', label: 'Exposition', short: 'Exposition', key: 'e', icon: IconExposure, Comp: Exposure },
+  { id: 'overview', label: "Vue d'ensemble", short: 'Portefeuille', icon: IconOverview, Comp: Overview },
+  { id: 'exposure', label: 'Exposition', short: 'Exposition', icon: IconExposure, Comp: Exposure },
   // Cette page s'est longtemps appelée « Historique » dans le menu, « Performance »
   // sur l'onglet compact et dans son propre titre. Trois noms pour un écran : on ne
   // pouvait ni s'y référer à l'oral, ni la retrouver dans l'aide. Un seul nom.
-  { id: 'history', label: 'Performance', short: 'Performance', key: 'h', icon: IconHistory, Comp: History },
-  { id: 'dividends', label: 'Dividendes', short: 'Dividendes', key: 'd', icon: IconDividends, Comp: Dividends },
-  { id: 'news', label: 'Actus', short: 'Actus', key: 'n', icon: IconNews, Comp: News },
-  { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', key: 'i', icon: IconAI, Comp: AiPrompts },
-  { id: 'settings', label: 'Import / Réglages', short: 'Réglages', key: 'r', icon: IconSettings, Comp: Settings },
-  { id: 'help', label: 'Aide & astuces', short: 'Aide', key: '?', icon: IconHelp, Comp: Help, offTab: true },
+  { id: 'history', label: 'Performance', short: 'Performance', icon: IconHistory, Comp: History },
+  { id: 'dividends', label: 'Dividendes', short: 'Dividendes', icon: IconDividends, Comp: Dividends },
+  { id: 'news', label: 'Actus', short: 'Actus', icon: IconNews, Comp: News },
+  { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
+  { id: 'settings', label: 'Import / Réglages', short: 'Réglages', icon: IconSettings, Comp: Settings },
+  // `highlight` : mise en avant visuelle. L'extension est le chemin le plus court
+  // vers des données complètes, et elle était enterrée dans un repli des Réglages.
+  { id: 'extension', label: "Installer l'extension", short: 'Extension', icon: IconExtension, Comp: Extension, highlight: true },
+  { id: 'help', label: 'Aide & astuces', short: 'Aide', icon: IconHelp, Comp: Help, offTab: true },
   // Visible uniquement pour l'administrateur (ADMIN_EMAIL).
-  { id: 'admin', label: 'Administration', short: 'Admin', key: 'a', icon: IconAdmin, Comp: Admin, adminOnly: true },
+  { id: 'admin', label: 'Administration', short: 'Admin', icon: IconAdmin, Comp: Admin, adminOnly: true },
 ];
 
 function Login({ initialError }) {
@@ -246,35 +249,22 @@ export default function App() {
 
   const pages = useMemo(() => PAGES.filter((p) => !p.adminOnly || user?.isAdmin), [user]);
 
-  // Raccourcis : ⌘K/Ctrl+K ouvre la palette ; « g » puis une lettre change de page.
+  // ⌘K / Ctrl+K ouvre la palette « Aller à… », qui a aussi son bouton dans la
+  // barre. Les raccourcis « g » puis une lettre ont été retirés : invisibles,
+  // impossibles à deviner, ils n'apportaient rien à une application qu'on ouvre
+  // quelques minutes par semaine.
   useEffect(() => {
     if (status !== 'ready') return undefined;
-    let pending = false;
-    let timer;
     const isTyping = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-
     function onKey(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !isTyping(e.target)) {
         e.preventDefault();
         setPaletteOpen((o) => !o);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-      if (pending) {
-        const hit = pages.find((p) => p.key === e.key.toLowerCase());
-        pending = false;
-        clearTimeout(timer);
-        if (hit) { e.preventDefault(); go(hit.id); }
-        return;
-      }
-      if (e.key.toLowerCase() === 'g') {
-        pending = true;
-        timer = setTimeout(() => { pending = false; }, 1400);
       }
     }
     window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); clearTimeout(timer); };
-  }, [status, pages, go]);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [status]);
 
   function finishOnboarding() {
     if (user) localStorage.setItem(`degiro_onboarded_${user.id}`, '1');
@@ -305,14 +295,21 @@ export default function App() {
   if (status === 'login') return <Login initialError={loginError} />;
   if (needsOnboarding === null) return <Spinner />;
   if (needsOnboarding) {
-    return <Onboarding user={user} onFinished={finishOnboarding} onSkip={finishOnboarding} />;
+    return (
+      <Onboarding
+        user={user}
+        onFinished={finishOnboarding}
+        onSkip={finishOnboarding}
+        onInstallExtension={() => { finishOnboarding(); navigate('extension', { replace: true }); }}
+      />
+    );
   }
 
   const current = pages.find((p) => p.id === route) || pages[0];
   const Comp = current.Comp;
 
   const commands = [
-    ...pages.map((p) => ({ id: `go-${p.id}`, label: p.label, group: 'Aller à', hint: `g ${p.key}`, run: () => go(p.id) })),
+    ...pages.map((p) => ({ id: `go-${p.id}`, label: p.label, group: 'Aller à', run: () => go(p.id) })),
     { id: 'act-import', label: 'Importer un fichier DEGIRO', group: 'Action', run: () => go('settings') },
     { id: 'act-tour', label: 'Revoir la présentation', group: 'Action', run: replayTour },
     { id: 'act-refresh', label: 'Rafraîchir les données', group: 'Action', run: () => setReloadKey((k) => k + 1) },
@@ -343,7 +340,7 @@ export default function App() {
             return (
               <button
                 key={p.id}
-                className={`tab ${route === p.id ? 'active' : ''}`}
+                className={`tab ${route === p.id ? 'active' : ''} ${p.highlight ? 'tab-highlight' : ''}`}
                 onClick={() => go(p.id)}
                 aria-current={route === p.id ? 'page' : undefined}
               >
@@ -394,7 +391,11 @@ export default function App() {
           {pages.map((p) => {
             const Icon = p.icon;
             return (
-              <button key={p.id} className={route === p.id ? 'active' : ''} onClick={() => go(p.id)}>
+              <button
+                key={p.id}
+                className={`${route === p.id ? 'active' : ''} ${p.highlight ? 'nav-highlight' : ''}`}
+                onClick={() => go(p.id)}
+              >
                 <Icon /> {p.short}
               </button>
             );
@@ -413,6 +414,7 @@ export default function App() {
           onUserChange={setUser}
           onLogout={handleLogout}
           onGoImport={() => go('settings')}
+          onGoExtension={() => go('extension')}
           onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
           onReplayTour={replayTour}
           theme={theme}

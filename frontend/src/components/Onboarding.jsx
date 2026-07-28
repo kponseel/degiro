@@ -4,10 +4,11 @@ import Uploader from './Uploader.jsx';
 /**
  * Parcours de bienvenue d'un compte sans données : guide l'utilisateur pour
  * attacher son premier portefeuille (et, en option, son relevé de compte).
- * @param onFinished  appelé après le premier import de portefeuille réussi
- * @param onSkip      « Explorer d'abord » — entre dans l'app sans importer
+ * @param onFinished          appelé après le premier import de portefeuille réussi
+ * @param onSkip              « Explorer d'abord » — entre dans l'app sans importer
+ * @param onInstallExtension  entre dans l'app directement sur la page Extension
  */
-export default function Onboarding({ user, onFinished, onSkip }) {
+export default function Onboarding({ user, onFinished, onSkip, onInstallExtension }) {
   const [portfolioDone, setPortfolioDone] = useState(false);
 
   return (
@@ -67,6 +68,28 @@ export default function Onboarding({ user, onFinished, onSkip }) {
             </div>
           </li>
         </ol>
+
+        {/* L'extension est le chemin le plus court, mais elle demande une
+            installation : on la propose ici en disant ce qu'elle apporte, plutôt
+            que de la laisser se découvrir plus tard au hasard d'un menu. */}
+        <div className="onboard-alt">
+          <div className="onboard-alt-head">
+            <span aria-hidden="true">⚡</span>
+            <strong>Plus simple : l'extension Chrome</strong>
+          </div>
+          <p className="muted" style={{ margin: '4px 0 0' }}>
+            Un clic et ton portefeuille arrive ici, sans aucun fichier à exporter. Elle apporte
+            en plus l'<strong>historique de tes ordres</strong> — d'où viennent tes positions
+            fermées et tes plus-values réalisées, que le seul Portfolio.csv ne contient pas.
+          </p>
+          <p className="muted" style={{ margin: '6px 0 0', fontSize: 12.5 }}>
+            Sur ordinateur uniquement. Elle lit ta session DEGIRO déjà ouverte : ni mot de passe,
+            ni identifiants.
+          </p>
+          <button className="btn" style={{ marginTop: 12 }} onClick={onInstallExtension}>
+            Installer l'extension →
+          </button>
+        </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
           {portfolioDone ? (

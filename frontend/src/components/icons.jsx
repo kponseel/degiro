@@ -24,6 +24,11 @@ export const IconAdmin = () => (
 export const IconHelp = () => (
   <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M9.2 9a2.8 2.8 0 0 1 5.5.8c0 1.9-2.7 2.3-2.7 4" /><line x1="12" y1="17.5" x2="12" y2="17.5" /></svg>
 );
+// Pièce de puzzle : c'est ainsi que Chrome lui-même désigne les extensions,
+// jusque dans le bouton de sa barre d'outils.
+export const IconExtension = () => (
+  <svg {...base}><path d="M10 3.5a1.8 1.8 0 0 1 3.6 0V5H17a1 1 0 0 1 1 1v3.4h1.5a1.8 1.8 0 0 1 0 3.6H18V17a1 1 0 0 1-1 1h-3.4v-1.5a1.8 1.8 0 0 0-3.6 0V18H6a1 1 0 0 1-1-1v-3.4H3.5a1.8 1.8 0 0 1 0-3.6H5V6a1 1 0 0 1 1-1h4z" /></svg>
+);
 export const IconNews = () => (
   <svg {...base}><path d="M4 4h13v16H5a1 1 0 0 1-1-1z" /><path d="M17 8h3v9a3 3 0 0 1-3 3" /><line x1="7" y1="8" x2="13" y2="8" /><line x1="7" y1="12" x2="13" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>
 );
