@@ -354,9 +354,45 @@ export function mapAccount(rows) {
     .filter((t) => t.tx_date && t.amount !== null);
 }
 
-/** Transactions.csv → ordres normalisés (buy/sell). */
+/**
+ * Fusionne les exécutions partielles d'un même ordre.
+ *
+ * Le Transactions.csv de DEGIRO contient UNE LIGNE PAR EXÉCUTION : un ordre
+ * servi en trois fois y occupe trois lignes qui partagent le même « ID de
+ * l'ordre ». Or cet identifiant sert de clé de dédoublonnage en base
+ * (`external_id`) : importées telles quelles, seules les quantités de la
+ * première exécution étaient conservées — les deux autres disparaissaient en
+ * silence, et le prix moyen pondéré était faux d'autant.
+ *
+ * Limite connue : un ordre dont les exécutions chevauchent la borne de DEUX
+ * exports (un fichier par année, ordre à cheval sur le 31 décembre) ne peut pas
+ * être resommé côté serveur — chaque fichier n'en voit qu'une part, et la plus
+ * grosse gagne. Le cas est rarissime, et une capture d'extension sur la plage
+ * entière le répare : DEGIRO y agrège l'ordre complet.
+ */
+function aggregateOrders(txs) {
+  const round = (n, d) => { const f = 10 ** d; return Math.round(n * f) / f; };
+  const parOrdre = new Map();
+  const out = [];
+  for (const t of txs) {
+    const prev = parOrdre.get(t.external_id);
+    if (!prev) { parOrdre.set(t.external_id, t); out.push(t); continue; }
+    prev.qty = round(prev.qty + t.qty, 6);
+    // Frais : somme de ce qui est connu (un frais absent vaut zéro).
+    if (t.amount != null) prev.amount = round((prev.amount ?? 0) + t.amount, 2);
+    // Montant EUR : une exécution sans montant rend le total inconnaissable —
+    // null plutôt qu'une somme partielle présentée comme complète.
+    prev.amount_eur = prev.amount_eur == null || t.amount_eur == null
+      ? null
+      : round(prev.amount_eur + t.amount_eur, 2);
+    if (t.tx_date < prev.tx_date) prev.tx_date = t.tx_date;
+  }
+  return out;
+}
+
+/** Transactions.csv → ordres normalisés (buy/sell), une ligne PAR ORDRE. */
 export function mapTransactions(rows) {
-  return rows
+  return aggregateOrders(rows
     .map((r) => {
       const txDate = parseDateEu(pick(r, FIELDS.date), pick(r, FIELDS.time));
       const qty = parseNumberEu(pick(r, FIELDS.qty));
@@ -388,7 +424,7 @@ export function mapTransactions(rows) {
         external_id: orderId || syntheticId('tx', txDate, isin, qty),
       };
     })
-    .filter((t) => t.tx_date && t.isin && t.qty !== null);
+    .filter((t) => t.tx_date && t.isin && t.qty !== null));
 }
 
 // ─── Identifiants ────────────────────────────────────────────────────────────

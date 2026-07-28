@@ -12,13 +12,10 @@ import {
   buildPayload, parsePortfolio, parseTransactions, productIds, transactionProductIds, chunk,
 } from './degiro.js';
 import { isComplete, intAccountFromClient, urls } from './session.js';
+import { captureHistory } from './history.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
 const isDegiro = (tab) => String(tab?.url || '').startsWith('https://trader.degiro.nl/');
-
-/** Date au format JJ/MM/AAAA attendu par l'endpoint transactions de DEGIRO. */
-const pad2 = (n) => String(n).padStart(2, '0');
-const ddmmyyyy = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 
 /**
  * Retrouve l'onglet DEGIRO. L'extension ne demande pas la permission `tabs` :
@@ -35,87 +32,36 @@ async function findTab() {
 
 const ask = (tabId, message) => chrome.tabs.sendMessage(tabId, message);
 
-/** Première année interrogée : DEGIRO n'existait pas avant, inutile de remonter plus loin. */
-const PREMIERE_ANNEE = 2003;
-
 /**
- * Récupère l'historique des ordres.
- *
- * DEGIRO répond **502 sur une plage trop large** : demander vingt-six ans d'un
- * coup fait tomber son service de reporting, et la capture repartait alors sans
- * le moindre ordre — donc sans positions fermées ni plus-values.
- *
- * On tente d'abord la plage entière (un seul appel quand ça passe), puis on
- * retombe sur un découpage année par année. Un échec sur une année n'annule pas
- * les autres : un historique partiel vaut mieux que rien, à condition de dire
- * lesquelles manquent.
+ * Récupère l'historique des ordres. Toute la stratégie (découverte de la
+ * première année, arrêt sur années vides, balayage, mémoire inter-captures)
+ * vit dans `history.js`, testable hors navigateur — ici on ne fait que le
+ * branchement au stockage et à l'onglet DEGIRO.
  */
 async function fetchTransactions(tabId, creds) {
-  const aujourdhui = new Date();
-  const finale = aujourdhui.getFullYear();
-  // Ce que DEGIRO a répondu la dernière fois qu'il a refusé. Sans cette trace, le
-  // diagnostic annonçait « refusé » sans jamais dire pourquoi — inexploitable.
-  let refus = null;
+  // Mémoire par compte DEGIRO ET par jeton Analyzer : régénérer un jeton force
+  // une nouvelle découverte complète. C'est le remède documenté quand les
+  // données ont été vidées côté Analyzer — l'extension ne peut pas le détecter.
+  const { token } = await chrome.storage.local.get('token');
+  const cle = `txHistory_${creds.intAccount}_${String(token || '').slice(0, 12)}`;
+  const state = (await chrome.storage.local.get(cle))[cle] || null;
 
-  const lire = async (du, au, grouper = true) => {
+  const fetchRange = async (du, au, grouper = true) => {
     const res = await ask(tabId, {
       type: 'FETCH',
       url: urls.transactions(creds.intAccount, creds.sessionId, du, au, grouper),
     }).catch((e) => ({ ok: false, status: 0, error: String(e.message || e) }));
-    if (res?.ok && res.json) return parseTransactions(res.json);
+    if (res?.ok && res.json) return { ok: true, rows: parseTransactions(res.json) };
     const corps = String(res?.text || res?.error || '').trim().slice(0, 120);
-    refus = `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}`;
-    return null;
+    return { ok: false, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };
   };
 
-  const fin = ddmmyyyy(aujourdhui);
-
-  // 1. La plage entière, agrégée par ordre — le chemin normal.
-  const entier = await lire('01/01/2000', fin);
-  if (entier) return { rows: entier, failed: 0, detail: `${entier.length} ordre(s)` };
-
-  // 2. Même plage sans l'agrégation par ordre : ce paramètre est facultatif, et
-  //    c'est le premier suspect quand l'endpoint répond en erreur.
-  const brut = await lire('01/01/2000', fin, false);
-  if (brut) return { rows: brut, failed: 0, detail: `${brut.length} ordre(s) (sans agrégation par ordre)` };
-
-  // 3. Une année seule, en sondage. Si DEGIRO refuse aussi celle-ci, il refuse
-  //    l'endpoint et non la plage : inutile d'enchaîner vingt-quatre requêtes
-  //    vouées à l'échec, on s'arrête en disant ce qu'il répond.
-  const sonde = await lire(`01/01/${finale}`, fin);
-  if (sonde === null) {
-    return {
-      rows: [],
-      failed: 1,
-      detail: `refusé par DEGIRO même sur une seule année — ${refus}`,
-    };
-  }
-
-  // 4. La plage large est bien en cause : on la découpe année par année.
-  const rows = [];
-  const vues = new Set();
-  const echecs = [];
-  const garder = (lot) => {
-    for (const row of lot) {
-      // Les bornes d'années peuvent se recouvrir : on dédoublonne sur l'ordre.
-      const cle = String(row?.orderId ?? row?.id ?? `${row?.date}|${row?.productId}|${row?.quantity}`);
-      if (vues.has(cle)) continue;
-      vues.add(cle);
-      rows.push(row);
-    }
-  };
-  garder(sonde);
-
-  for (let an = PREMIERE_ANNEE; an < finale; an += 1) {
-    const lot = await lire(`01/01/${an}`, `31/12/${an}`);
-    if (lot === null) { echecs.push(an); continue; }
-    garder(lot);
-  }
-
-  const detail = echecs.length
-    ? `${rows.length} ordre(s), découpé par année — ${echecs.length} année(s) refusée(s) (${echecs.join(', ')}) — ${refus}`
-    : `${rows.length} ordre(s), découpé par année (la plage entière a été refusée)`;
-  return { rows, failed: echecs.length, detail };
+  const out = await captureHistory({ today: new Date(), state, fetchRange });
+  // La mémoire n'est PAS écrite ici : tant que l'envoi à Analyzer n'a pas
+  // abouti, ces ordres ne sont enregistrés nulle part. L'écrire trop tôt — un
+  // jeton manquant suffit — condamnerait l'historique à ne jamais repartir,
+  // chaque capture suivante ne relisant plus que la période récente.
+  return { ...out, storageKey: cle };
 }
 
 /** Un pas de diagnostic : libellé, verdict, détail lisible. */
@@ -251,6 +197,15 @@ async function capture() {
   const sent = await send(payload);
   step(report, 'Envoi à Analyzer', sent.ok, sent.detail);
   if (!sent.ok) return { ok: false, report, diagnostics, error: sent.detail };
+
+  // L'envoi a abouti ET chaque ordre lu figure dans le payload : la mémoire de
+  // couverture peut être posée. Si des ordres ont été écartés faute d'ISIN
+  // résolu (panne passagère de products/info), on ne la pose PAS — la capture
+  // suivante relira tout, ce qui coûte quelques requêtes mais ne perd rien.
+  const historiqueEntier = diagnostics.transactionsRead === payload.transactions.length;
+  if (tx.nextState && tx.storageKey && historiqueEntier) {
+    await chrome.storage.local.set({ [tx.storageKey]: tx.nextState }).catch(() => {});
+  }
 
   const summary = {
     at: report.at,

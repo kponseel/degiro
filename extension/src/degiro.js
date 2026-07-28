@@ -190,6 +190,55 @@ function txExternalId(row, isin) {
 }
 
 /**
+ * Regroupe les exécutions partielles d'un même ordre en une seule ligne.
+ *
+ * Sans agrégation côté DEGIRO (repli `groupTransactionsByOrder=false`), un
+ * ordre servi en plusieurs fois arrive en plusieurs lignes qui partagent le
+ * même `orderId`. Or l'identifiant externe côté serveur est précisément cet
+ * `orderId` : envoyées telles quelles, seules les quantités de la première
+ * exécution étaient conservées — les autres disparaissaient en silence, et le
+ * prix moyen pondéré était faux d'autant.
+ *
+ * Sur des lignes déjà agrégées (le cas normal), les `orderId` sont uniques et
+ * cette fonction est neutre.
+ */
+export function aggregateByOrder(rows) {
+  const parOrdre = new Map();
+  const out = [];
+  for (const row of rows || []) {
+    const oid = String(row?.orderId ?? '').trim();
+    if (!oid) { out.push(row); continue; }
+    const cumul = parOrdre.get(oid);
+    if (!cumul) {
+      // Les montants sont normalisés dès la première exécution : DEGIRO les
+      // renvoie parfois en objet `{ EUR: x }`, qu'une simple addition ignorerait.
+      const copie = { ...row };
+      copie.quantity = num(row.quantity);
+      copie.totalInBaseCurrency = amount(row.totalInBaseCurrency);
+      copie.feeInBaseCurrency = amount(row.feeInBaseCurrency) ?? 0;
+      parOrdre.set(oid, copie);
+      out.push(copie);
+      continue;
+    }
+    // Quantité : indispensable — une exécution sans quantité rend l'ordre
+    // inutilisable, comme le veut toTransaction.
+    const q = num(row?.quantity);
+    cumul.quantity = cumul.quantity === undefined || q === undefined ? undefined : cumul.quantity + q;
+    // Montant : une exécution sans montant rend le TOTAL inconnaissable. Une
+    // somme partielle présentée comme complète serait pire qu'une absence.
+    const total = amount(row?.totalInBaseCurrency);
+    cumul.totalInBaseCurrency = cumul.totalInBaseCurrency === undefined || total === undefined
+      ? undefined
+      : cumul.totalInBaseCurrency + total;
+    // Frais : un frais absent vaut zéro (cas normal d'une exécution sans frais).
+    cumul.feeInBaseCurrency += amount(row?.feeInBaseCurrency) ?? 0;
+    // La date la plus ancienne fait foi.
+    if (row?.date && (!cumul.date || String(row.date) < String(cumul.date))) cumul.date = row.date;
+  }
+  return out;
+}
+
+/**
  * Assemble un ordre au format normalisé attendu par l'API (table `transactions`).
  * Renvoie `null` sans ISIN exploitable ou sans date : une ligne inclassable.
  *
@@ -268,7 +317,7 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
   }
 
   // Ordres → transactions normalisées ; sans ISIN résolu, l'ordre est ignoré.
-  const txRows = parseTransactions(transactions);
+  const txRows = aggregateByOrder(parseTransactions(transactions));
   const txs = [];
   for (const row of txRows) {
     const tx = toTransaction(row, index[String(row?.productId ?? '')]);

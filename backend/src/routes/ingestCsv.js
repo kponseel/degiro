@@ -38,7 +38,7 @@ function receiveFile(req, res) {
     upload.single('file')(req, res, (err) => {
       if (!err) return resolve();
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return reject(Object.assign(new Error("Fichier trop volumineux (5 Mo maximum). Découpe ton export par année et importe-les l'un après l'autre — les doublons sont ignorés."), { status: 413 }));
+        return reject(Object.assign(new Error("Fichier trop volumineux (5 Mo maximum). Découpe ton export par année et importe-les l'un après l'autre — un mouvement déjà importé n'est pas compté deux fois."), { status: 413 }));
       }
       if (err.code === 'LIMIT_UNEXPECTED_FILE') {
         return reject(Object.assign(new Error(`Champ de fichier inattendu (« ${err.field} ») : le fichier doit être envoyé dans le champ « file ».`), { status: 400 }));
@@ -74,7 +74,7 @@ router.post('/', async (req, res, next) => {
     }
     if (rows.length > MAX_ROWS) {
       return res.status(413).json({
-        error: `Fichier trop volumineux : ${rows.length} lignes (maximum ${MAX_ROWS}). Découpe l'export par année et importe-les l'un après l'autre — les doublons sont ignorés.`,
+        error: `Fichier trop volumineux : ${rows.length} lignes (maximum ${MAX_ROWS}). Découpe l'export par année et importe-les l'un après l'autre — un mouvement déjà importé n'est pas compté deux fois.`,
       });
     }
 
