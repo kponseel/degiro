@@ -13,7 +13,7 @@ depuis la session DEGIRO que tu as **déjà ouverte** dans ton navigateur.
 
 1. Ouvre `chrome://extensions` et active le **Mode développeur** (en haut à droite).
 2. **Charger l'extension non empaquetée** → sélectionne ce dossier `extension/`.
-3. Dans l'Analyzer : **Réglages → Extension Chrome** → *Générer un jeton*, puis copie-le
+3. Dans l'Analyzer : page **Import / Extension** → *Générer un jeton*, puis copie-le
    (il n'est affiché qu'une seule fois).
 4. Clique sur l'icône de l'extension, renseigne l'adresse de ton Analyzer et colle le jeton,
    puis **Enregistrer**. Chrome demandera l'autorisation d'appeler ce serveur — accepte.

@@ -2,13 +2,9 @@ import { Card, Banner } from '../components/ui.jsx';
 import ExtensionTokens from '../components/ExtensionTokens.jsx';
 
 /**
- * Page dédiée à l'extension Chrome : à quoi elle sert, comment l'installer, et
- * quoi faire quand ça coince.
- *
- * Elle vivait auparavant dans un coin des Réglages, sous une section repliée —
- * autant dire nulle part pour qui découvre l'application. C'est pourtant le
- * chemin le plus court vers des données complètes : l'extension lit l'historique
- * des ordres, que les CSV ne donnent qu'au prix de plusieurs exports.
+ * Guide de l'extension Chrome : à quoi elle sert, comment l'installer, et quoi
+ * faire quand ça coince. Rendu par la page « Import / Extension », qui réunit
+ * tous les moyens de faire entrer des données.
  *
  * Le contenu s'adresse à quelqu'un qui n'a jamais installé d'extension : aucune
  * étape n'est sous-entendue, et chaque panne connue a son remède.
@@ -92,7 +88,7 @@ export default function Extension() {
         </p>
         <Banner kind="info">
           Sur ordinateur uniquement (Chrome, Edge ou Brave). Sur téléphone, l'import d'un fichier CSV
-          depuis <strong>Import / Réglages</strong> reste la solution.
+          — plus bas sur cette page — reste la solution.
         </Banner>
       </Card>
 

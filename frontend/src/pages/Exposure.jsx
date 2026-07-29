@@ -157,7 +157,7 @@ function Lookthrough({ data }) {
       {missing.length > 0 && (
         <div className="sub muted" style={{ marginTop: 14, fontSize: 12.5 }}>
           Sans composition (comptés en bloc) : {missing.map((m) => m.name || m.isin).join(', ')}. Importez leurs
-          compositions depuis <strong>Import / Réglages → Compositions d'ETF</strong> pour les éclater.
+          compositions depuis <strong>Import / Extension → Compositions d'ETF</strong> pour les éclater.
         </div>
       )}
       {total > 0 && (
@@ -244,7 +244,7 @@ export default function Exposure({ onGoImport }) {
               <><strong>{fmtPct(sectorUnknown)} du portefeuille n'a pas de secteur renseigné</strong> (ETF et ISIN non
               enrichis) : ces lignes sont regroupées sous « Non classé » dans le camembert ci-dessus.</>
             )}{' '}
-            Renseignez-les depuis <strong>Import / Réglages → Références ISIN</strong>.
+            Renseignez-les depuis <strong>Import / Extension → Références ISIN</strong>.
           </Banner>
         </div>
       )}

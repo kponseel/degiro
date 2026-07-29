@@ -135,7 +135,7 @@ Les migrations s'appliquent via `npm run migrate` (ou phpMyAdmin pour inspecter)
 
 L'extension Chrome tourne sur `trader.degiro.nl` : le cookie de session
 (`SameSite=Lax`) n'est donc pas envoyé vers l'API. Chaque utilisateur génère son
-propre jeton dans **Réglages → Extension Chrome**, et l'extension l'envoie en
+propre jeton sur la page **Import / Extension**, et l'extension l'envoie en
 `Authorization: Bearer dgx_…`.
 
 - Le jeton n'est affiché en clair **qu'à la création** ; seul son SHA‑256 est stocké.

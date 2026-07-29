@@ -59,7 +59,7 @@ export default function Onboarding({ user, onFinished, onSkip, onInstallExtensio
                 <strong>Optionnel : ton relevé de compte</strong>
                 <div className="muted step-hint">
                   Account.csv (DEGIRO → <em>Activité</em> → <em>Relevés</em>) active les <strong>dividendes</strong> et
-                  la <strong>vraie performance (TWR)</strong>. Tu pourras le faire plus tard depuis Import / Réglages.
+                  la <strong>vraie performance (TWR)</strong>. Tu pourras le faire plus tard depuis Import / Extension.
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <Uploader hint="auto" title="Relevé de compte" description="Account.csv — dépôts, dividendes, frais" />

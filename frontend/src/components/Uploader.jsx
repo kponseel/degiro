@@ -95,13 +95,13 @@ function SamplePreview({ kind, sample }) {
 
 /**
  * Dépôt d'un export DEGIRO : prévisualisation puis import.
- * Partagé entre Réglages et l'onboarding.
+ * Partagé entre la page Import / Extension et l'onboarding.
  * @param onImported  rafraîchit les pages après un commit réussi
  * @param onDone      callback(result) après un commit réussi (ex. aller à la Vue d'ensemble)
  */
 export default function Uploader({ hint, title, description, onImported, onDone }) {
-  // Trois uploaders coexistent sur la page Réglages : un id en dur ferait
-  // pointer les trois labels sur le premier input.
+  // Trois uploaders coexistent sur la page Import / Extension : un id en dur
+  // ferait pointer les trois labels sur le premier input.
   const inputId = useId();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);

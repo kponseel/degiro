@@ -235,7 +235,7 @@ async function send(payload) {
   }
 
   const body = await res.json().catch(() => null);
-  if (res.status === 401) return { ok: false, detail: 'Jeton refusé (révoqué ou mal collé). Génère-en un nouveau dans Réglages.' };
+  if (res.status === 401) return { ok: false, detail: "Jeton refusé (révoqué ou mal collé). Génère-en un nouveau sur la page Import / Extension de l'Analyzer." };
   if (!res.ok) return { ok: false, detail: `HTTP ${res.status}${body?.error ? ` — ${body.error}` : ''}` };
   return { ok: true, body, detail: body?.deduplicated ? 'déjà enregistré (identique)' : 'enregistré' };
 }
