@@ -78,7 +78,7 @@ Ce fichier est celui qui apporte les **dividendes**, les **retenues à la source
 
 Pour **chaque** fichier téléchargé :
 
-1. Va sur ${url} → **Import / Réglages** → « Importer un export DEGIRO ».
+1. Va sur ${url} → **Import / Extension** → « Importer un export DEGIRO ».
 2. Sélectionne le fichier. Le type est reconnu automatiquement.
 3. **Vérifie la prévisualisation avant de valider** : le type détecté doit être cohérent (portefeuille / transactions / relevé de compte) et les colonnes ne doivent pas être décalées.
 4. Si la prévisualisation semble décalée, ou si le type n'est pas reconnu : **ne valide pas**, signale-le-moi et passe au fichier suivant.

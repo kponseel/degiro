@@ -98,7 +98,7 @@ valable 15 min, un clic ouvre une session (cookie httpOnly, 30 jours).
 ## Premier accès
 
 Ouvrir `https://degiro.estim.pro` → saisir ton email (celui de `OWNER_EMAIL`) +
-un pseudo → cliquer le lien reçu → **Import / Réglages** → déposer `Portfolio.csv`
+un pseudo → cliquer le lien reçu → **Import / Extension** → déposer `Portfolio.csv`
 (toute langue) → **Lancer l'enrichissement**. Tes amis se connectent pareil avec
 leur propre email ; chacun ne voit que ses données.
 

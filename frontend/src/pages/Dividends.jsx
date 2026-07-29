@@ -19,7 +19,7 @@ export default function Dividends({ onGoImport }) {
       <Card>
         <Empty title="Aucun dividende pour l'instant">
           Importe ton <strong>relevé de compte</strong> (Account.csv) depuis l'onglet{' '}
-          <button className="link-btn" onClick={onGoImport}>Import / Réglages</button> pour voir tes
+          <button className="link-btn" onClick={onGoImport}>Import / Extension</button> pour voir tes
           dividendes perçus sur 12 mois.
         </Empty>
       </Card>

@@ -1,111 +1,13 @@
-import { useEffect, useId, useState } from 'react';
-import {
-  enrichNow, getEtfHoldings, uploadEtfHoldings,
-  updatePseudo, deleteMyData, deleteAccount,
-} from '../lib/api.js';
-import { plural } from '../lib/format.js';
+import { useState } from 'react';
+import { updatePseudo, deleteMyData, deleteAccount } from '../lib/api.js';
 import { Card, Banner } from '../components/ui.jsx';
-import Uploader from '../components/Uploader.jsx';
-import IsinEditor from '../components/IsinEditor.jsx';
 
-function EtfHoldingsUploader({ onImported }) {
-  const inputId = useId();
-  const [etfs, setEtfs] = useState(null);
-  const [selected, setSelected] = useState('');
-  const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-
-  async function reload() {
-    try {
-      const res = await getEtfHoldings();
-      setEtfs(res.etfs || []);
-      setSelected((cur) => cur || (res.etfs?.[0]?.isin ?? ''));
-    } catch (e) {
-      setError(e.status === 404 ? null : (e.body?.error || e.message));
-      setEtfs([]);
-    }
-  }
-
-  useEffect(() => { reload(); }, []);
-
-  async function confirm() {
-    if (!selected || !file) return;
-    setBusy(true); setError(null); setResult(null);
-    try {
-      const res = await uploadEtfHoldings(file, selected, 'commit');
-      setResult(res);
-      setFile(null);
-      await reload();
-      onImported?.();
-    } catch (e) {
-      setError(e.body?.error || e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card title="Compositions d'ETF (look-through)">
-      <p className="muted" style={{ marginTop: 0 }}>
-        Téléchargez le fichier « Holdings » d'un ETF (page de l'émetteur : iShares, Amundi, Vanguard…) puis importez-le ici.
-        Chaque ETF sera éclaté en ses titres dans <strong>Exposition → Vraie exposition</strong>, révélant vos surexpositions.
-      </p>
-
-      {etfs && etfs.length === 0 && (
-        <Banner kind="info">Aucun ETF détecté dans votre portefeuille. Importez d'abord vos positions.</Banner>
-      )}
-
-      {etfs && etfs.length > 0 && (
-        <div className="grid" style={{ gap: 14 }}>
-          <div className="field" style={{ maxWidth: 520 }}>
-            <label>ETF à composer</label>
-            <select className="input" value={selected} onChange={(e) => setSelected(e.target.value)}>
-              {etfs.map((e) => (
-                <option key={e.isin} value={e.isin}>
-                  {e.covered ? '✓ ' : '• '}{e.name || e.isin} ({e.isin}){e.covered ? ` — ${e.count} titres` : ' — à importer'}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className={`drop ${file ? 'armed' : ''}`}>
-            <div className="meta">
-              <span className="k">Fichier de composition</span>
-              <span className="d">{file ? file.name : 'Holdings.csv de l\'émetteur (nom, ISIN, poids %)'}</span>
-            </div>
-            {/* Même défaut que dans Uploader.jsx : `hidden` sortait l'input de
-                l'ordre de tabulation. Voir .sr-only dans styles.css. */}
-            <label className="btn ghost" htmlFor={inputId}>
-              {file ? 'Changer' : 'Choisir un CSV'}
-              <input
-                id={inputId}
-                className="sr-only"
-                type="file"
-                accept=".csv,text/csv,text/comma-separated-values,text/plain,application/csv,application/octet-stream"
-                onChange={(e) => { setFile(e.target.files[0]); setResult(null); setError(null); }}
-              />
-            </label>
-          </div>
-
-          <div>
-            <button className="btn" onClick={confirm} disabled={busy || !file || !selected}>
-              {busy ? 'Import…' : 'Importer la composition'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && <div style={{ marginTop: 12 }}><Banner kind="err">{error}</Banner></div>}
-      {result && (
-        <div style={{ marginTop: 12 }}>
-          <Banner kind="info">Composition importée : {plural(result.saved, 'titre enregistré', 'titres enregistrés')} pour {result.etf_isin}.</Banner>
-        </div>
-      )}
-    </Card>
-  );
-}
+/**
+ * Réglages : uniquement les paramètres de l'utilisateur — compte (pseudo,
+ * déconnexion, effacement) et apparence. Tout ce qui fait entrer des données
+ * (extension, imports CSV, ETF, enrichissement) vit sur la page
+ * « Import / Extension » : une intention, un endroit du menu.
+ */
 
 function AccountCard({ user, onUserChange, onLogout }) {
   const [pseudo, setPseudo] = useState(user?.pseudo || '');
@@ -183,82 +85,10 @@ function AccountCard({ user, onUserChange, onLogout }) {
   );
 }
 
-export default function Settings({ onImported, onGoOverview, onGoExtension, user, onUserChange, onLogout, theme, onThemeChange }) {
-  const [enrichMsg, setEnrichMsg] = useState(null);
-  const [portfolioJustImported, setPortfolioJustImported] = useState(false);
-
-  async function runEnrich() {
-    setEnrichMsg({ kind: 'info', text: 'Enrichissement en cours… (récupération des secteurs)' });
-    try {
-      const res = await enrichNow();
-      const n = res.enriched ?? 0;
-      const s = res.sectorsFilled ?? 0;
-      const traites = plural(n, 'titre traité', 'titres traités');
-      const text = s > 0
-        ? `Enrichissement terminé : ${traites}, ${plural(s, 'secteur complété', 'secteurs complétés')} automatiquement.`
-        : `Enrichissement terminé : ${traites}. Aucun secteur récupéré (source externe momentanément indisponible) — tu peux les saisir à la main ci-dessous.`;
-      setEnrichMsg({ kind: 'info', text });
-      onImported?.();
-    } catch (e) {
-      setEnrichMsg({ kind: 'err', text: e.status === 404 ? "Endpoint d'enrichissement pas encore disponible." : (e.body?.error || e.message) });
-    }
-  }
-
+export default function Settings({ user, onUserChange, onLogout, theme, onThemeChange }) {
   return (
     <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: 880 }}>
       <AccountCard user={user} onUserChange={onUserChange} onLogout={onLogout} />
-
-      {/* L'extension a sa propre page, mise en avant dans le menu : la dupliquer
-          ici en ferait diverger les deux versions. On garde le strict nécessaire
-          pour décider si elle est faite pour soi. */}
-      <Card title="Extension Chrome — la voie la plus simple">
-        <p className="muted" style={{ marginTop: 0 }}>
-          Un clic et ton portefeuille arrive ici, sans aucun fichier à exporter. Elle apporte
-          en plus l'<strong>historique complet de tes ordres</strong> — d'où viennent les positions
-          fermées et les plus-values réalisées, que le seul Portfolio.csv ne contient pas.
-        </p>
-        <p className="muted" style={{ fontSize: 12.5 }}>
-          <strong>Prérequis :</strong> un ordinateur (Chrome, Edge ou Brave) — pas de version mobile ;
-          une session DEGIRO ouverte dans le navigateur au moment de la capture. Elle ne connaît ni ton
-          mot de passe ni tes identifiants.
-        </p>
-        <button className="btn" onClick={onGoExtension}>Installer l'extension →</button>
-      </Card>
-
-      <Card title="Importer un export DEGIRO">
-        <p className="muted" style={{ marginTop: 0 }}>
-          Exportez vos fichiers depuis DEGIRO puis déposez-les ici. Le type est détecté automatiquement ; une prévisualisation
-          s'affiche avant l'import définitif.
-        </p>
-        <div className="grid" style={{ gap: 22 }}>
-          <Uploader
-            hint="auto" title="Portefeuille (positions)" description="Portfolio.csv — vos lignes actuelles"
-            onImported={onImported}
-            onDone={(res) => { if (res.kind === 'portfolio' && !res.deduplicated) setPortfolioJustImported(true); }}
-          />
-          <Uploader hint="auto" title="Relevé de compte" description="Account.csv — dépôts, dividendes, frais" onImported={onImported} />
-          <Uploader hint="auto" title="Transactions" description="Transactions.csv — vos ordres exécutés" onImported={onImported} />
-        </div>
-        {portfolioJustImported && (
-          <div style={{ marginTop: 16 }}>
-            <button className="btn" onClick={onGoOverview}>Voir la vue d'ensemble →</button>
-          </div>
-        )}
-      </Card>
-
-      <EtfHoldingsUploader onImported={onImported} />
-
-      <Card title="Enrichissement ISIN">
-        <p className="muted" style={{ marginTop: 0 }}>
-          Complète secteur, pays et ticker de chaque position via des sources externes. Résultats mis en cache et corrigeables à la main.
-        </p>
-        <button className="btn" onClick={runEnrich}>Lancer l'enrichissement</button>
-        {enrichMsg && <div style={{ marginTop: 12 }}><Banner kind={enrichMsg.kind}>{enrichMsg.text}</Banner></div>}
-        <div style={{ marginTop: 18 }}>
-          <div className="card-title">Références ISIN (correction manuelle)</div>
-          <IsinEditor reloadKey={enrichMsg?.text} />
-        </div>
-      </Card>
 
       <Card title="Apparence">
         {/* « Système » est le défaut : sans choix explicite, la feuille de styles

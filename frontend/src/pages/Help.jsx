@@ -11,7 +11,7 @@ import { buildBrowserAgentPrompt } from '../lib/browserAgentPrompt.js';
 const TIPS = [
   {
     title: 'Commence par la vraie exposition',
-    body: "C'est la vue qui surprend le plus. Importe la composition de tes ETF (Réglages → Compositions d'ETF), puis regarde l'onglet « vraie exposition » : les titres que tu détiens sans le savoir apparaissent, et les doublons entre deux ETF aussi.",
+    body: "C'est la vue qui surprend le plus. Importe la composition de tes ETF (Import / Extension → Compositions d'ETF), puis regarde l'onglet « vraie exposition » : les titres que tu détiens sans le savoir apparaissent, et les doublons entre deux ETF aussi.",
   },
   {
     title: 'Le relevé de compte débloque deux vues',
@@ -23,7 +23,7 @@ const TIPS = [
   },
   {
     title: 'Les secteurs se complètent tout seuls',
-    body: "Réglages → Lancer l'enrichissement. Ce qui reste vide se corrige à la main juste en dessous, et la correction est conservée.",
+    body: "Import / Extension → Lancer l'enrichissement. Ce qui reste vide se corrige à la main juste en dessous, et la correction est conservée.",
   },
   {
     title: 'Une capture par jour suffit',
@@ -42,7 +42,7 @@ const FAQ = [
   },
   {
     q: 'Je ne vois aucun dividende',
-    a: "Les dividendes viennent du relevé de compte (Account.csv), pas du portefeuille. DEGIRO → Activité → Relevés, puis importe-le dans Réglages.",
+    a: "Les dividendes viennent du relevé de compte (Account.csv), pas du portefeuille. DEGIRO → Activité → Relevés, puis importe-le dans Import / Extension.",
   },
   {
     q: 'Ma performance a l\'air fausse',
@@ -50,7 +50,7 @@ const FAQ = [
   },
   {
     q: 'Un secteur ou un pays reste vide',
-    a: "Les sources gratuites ne connaissent pas tout. Lance l'enrichissement, puis complète à la main dans Réglages → Références ISIN. Ta correction est définitive et prioritaire.",
+    a: "Les sources gratuites ne connaissent pas tout. Lance l'enrichissement, puis complète à la main dans Import / Extension → Références ISIN. Ta correction est définitive et prioritaire.",
   },
   {
     q: 'Mon historique semble incomplet (ventes ou dividendes manquants)',
@@ -58,11 +58,11 @@ const FAQ = [
   },
   {
     q: "L'extension me demande « l'adresse de mon Analyzer » — je mets quoi ?",
-    a: "L'adresse à laquelle tu consultes cette page, sans rien après le nom de domaine (par exemple https://degiro.estim.pro). Elle est désormais pré-remplie dans l'extension — tu n'as normalement rien à saisir. La page « Installer l'extension » l'affiche aussi, prête à copier.",
+    a: "L'adresse à laquelle tu consultes cette page, sans rien après le nom de domaine (par exemple https://degiro.estim.pro). Elle est désormais pré-remplie dans l'extension — tu n'as normalement rien à saisir. La page « Import / Extension » l'affiche aussi, prête à copier.",
   },
   {
     q: "L'extension Chrome ne capture rien",
-    a: "Ouvre son panneau Diagnostic : chaque étape y est marquée ✓ ou ✗ avec son détail. La page « Installer l'extension » liste chaque symptôme et son remède. Le plus fréquent : l'onglet DEGIRO a été ouvert avant l'installation de l'extension (recharge-le avec F5), ou la session a expiré (reconnecte-toi).",
+    a: "Ouvre son panneau Diagnostic : chaque étape y est marquée ✓ ou ✗ avec son détail. La page « Import / Extension » liste chaque symptôme et son remède. Le plus fréquent : l'onglet DEGIRO a été ouvert avant l'installation de l'extension (recharge-le avec F5), ou la session a expiré (reconnecte-toi).",
   },
   {
     q: 'Mes données sont-elles visibles par les autres utilisateurs ?',
@@ -172,7 +172,7 @@ export default function Help({ onGoImport, onReplayTour }) {
           <li>
             <strong>Importe-le ici</strong>
             <div className="muted">
-              Réglages → <em>Importer un export DEGIRO</em>. Le type de fichier est reconnu tout seul,
+              Import / Extension → <em>Importer un export DEGIRO</em>. Le type de fichier est reconnu tout seul,
               et une prévisualisation s'affiche avant de valider.
             </div>
           </li>

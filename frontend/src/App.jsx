@@ -13,7 +13,7 @@ import History from './pages/History.jsx';
 import News from './pages/News.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
-import Extension from './pages/Extension.jsx';
+import ImportExtension from './pages/ImportExtension.jsx';
 import Help from './pages/Help.jsx';
 import Admin from './pages/Admin.jsx';
 
@@ -28,10 +28,12 @@ const PAGES = [
   { id: 'history', label: 'Performance', short: 'Performance', icon: IconHistory, Comp: History },
   { id: 'news', label: 'Actus', short: 'Actus', icon: IconNews, Comp: News },
   { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
-  { id: 'settings', label: 'Import / Réglages', short: 'Réglages', icon: IconSettings, Comp: Settings },
-  // `highlight` : mise en avant visuelle. L'extension est le chemin le plus court
-  // vers des données complètes, et elle était enterrée dans un repli des Réglages.
-  { id: 'extension', label: "Installer l'extension", short: 'Extension', icon: IconExtension, Comp: Extension, highlight: true },
+  // `highlight` : mise en avant visuelle. Tout ce qui fait ENTRER des données —
+  // extension Chrome, fichiers CSV, compléments — vit sur cette seule page :
+  // c'est le geste récurrent de l'outil, il ne doit y avoir qu'une porte.
+  { id: 'import', label: 'Import / Extension', short: 'Import', icon: IconExtension, Comp: ImportExtension, highlight: true },
+  // Les Réglages ne portent plus que les paramètres de l'utilisateur (compte, thème).
+  { id: 'settings', label: 'Réglages', short: 'Réglages', icon: IconSettings, Comp: Settings },
   { id: 'help', label: 'Aide & astuces', short: 'Aide', icon: IconHelp, Comp: Help, offTab: true },
   // Visible uniquement pour l'administrateur (ADMIN_EMAIL).
   { id: 'admin', label: 'Administration', short: 'Admin', icon: IconAdmin, Comp: Admin, adminOnly: true },
@@ -298,20 +300,21 @@ export default function App() {
         user={user}
         onFinished={finishOnboarding}
         onSkip={finishOnboarding}
-        onInstallExtension={() => { finishOnboarding(); navigate('extension', { replace: true }); }}
+        onInstallExtension={() => { finishOnboarding(); navigate('import', { replace: true }); }}
       />
     );
   }
 
-  // Les dividendes vivent désormais dans Performance : l'ancienne route reste
-  // valable pour ne casser aucun lien ou marque-page.
-  const resolue = route === 'dividends' ? 'history' : route;
+  // Anciennes routes toujours servies pour ne casser aucun lien ou marque-page :
+  // les dividendes vivent dans Performance, et la page extension a fusionné avec
+  // l'import dans « Import / Extension » (le popup de l'extension y renvoie).
+  const resolue = route === 'dividends' ? 'history' : route === 'extension' ? 'import' : route;
   const current = pages.find((p) => p.id === resolue) || pages[0];
   const Comp = current.Comp;
 
   const commands = [
     ...pages.map((p) => ({ id: `go-${p.id}`, label: p.label, group: 'Aller à', run: () => go(p.id) })),
-    { id: 'act-import', label: 'Importer un fichier DEGIRO', group: 'Action', run: () => go('settings') },
+    { id: 'act-import', label: 'Importer un fichier DEGIRO', group: 'Action', run: () => go('import') },
     { id: 'act-tour', label: 'Revoir la présentation', group: 'Action', run: replayTour },
     { id: 'act-refresh', label: 'Rafraîchir les données', group: 'Action', run: () => setReloadKey((k) => k + 1) },
     { id: 'act-theme', label: 'Basculer le thème clair / sombre', group: 'Action', run: toggleTheme },
@@ -414,8 +417,8 @@ export default function App() {
           user={user}
           onUserChange={setUser}
           onLogout={handleLogout}
-          onGoImport={() => go('settings')}
-          onGoExtension={() => go('extension')}
+          onGoImport={() => go('import')}
+          onGoExtension={() => go('import')}
           onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
           onReplayTour={replayTour}
           theme={theme}

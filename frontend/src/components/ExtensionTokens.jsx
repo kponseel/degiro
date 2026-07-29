@@ -61,7 +61,7 @@ export default function ExtensionTokens() {
   return (
     <Card title="Extension Chrome — capture en un clic">
       <p className="muted" style={{ marginTop: 0 }}>
-        Réglage initial, à ne faire qu'une fois : <strong>1.</strong> installe l'extension,
+        Réglage initial, à ne faire qu'une fois : <strong>1.</strong> installe l'extension,{' '}
         <strong>2.</strong> génère un jeton, <strong>3.</strong> colle-le dedans.
         L'usage au quotidien est décrit juste après.
       </p>

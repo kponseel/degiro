@@ -33,11 +33,12 @@ const stored = await chrome.storage.local.get(['apiUrl', 'token', 'brouillon', '
 els.apiUrl.value = stored.apiUrl || stored.brouillon?.apiUrl || ANALYZER_PAR_DEFAUT;
 els.token.value = stored.token || stored.brouillon?.token || '';
 
+// Les jetons se génèrent sur la page « Import / Extension » de l'Analyzer.
 const lienReglages = () => {
   try {
-    return `${new URL(els.apiUrl.value.trim() || ANALYZER_PAR_DEFAUT).origin}/#/settings`;
+    return `${new URL(els.apiUrl.value.trim() || ANALYZER_PAR_DEFAUT).origin}/#/import`;
   } catch {
-    return `${ANALYZER_PAR_DEFAUT}/#/settings`;
+    return `${ANALYZER_PAR_DEFAUT}/#/import`;
   }
 };
 els.tokenLink.href = lienReglages();

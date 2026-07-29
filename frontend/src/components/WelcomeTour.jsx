@@ -43,10 +43,8 @@ const STEPS = [
       <>
         <ul className="tour-list">
           <li><kbd>⌘K</kbd> (ou <kbd>Ctrl</kbd>+<kbd>K</kbd>) — tout atteindre sans lâcher le clavier.</li>
-          <li><kbd>g</kbd> puis une lettre — changer de vue : <kbd>p</kbd> portefeuille, <kbd>e</kbd> exposition, <kbd>h</kbd> performance, <kbd>d</kbd> dividendes.</li>
           <li>Les tableaux se trient en cliquant sur les en-têtes, et se filtrent en haut de page.</li>
         </ul>
-        <p className="muted">La liste complète est dans l'Aide.</p>
       </>
     ),
   },
@@ -56,7 +54,7 @@ const STEPS = [
       <>
         <p>Deux façons, au choix :</p>
         <ul className="tour-list">
-          <li><strong>Import CSV</strong> — l'export DEGIRO, déposé dans <em>Réglages</em>. Aucune installation.</li>
+          <li><strong>Import CSV</strong> — l'export DEGIRO, déposé dans <em>Import / Extension</em>. Aucune installation.</li>
           <li><strong>Extension Chrome</strong> — un clic depuis ta session DEGIRO ouverte, sans fichier à manipuler.</li>
         </ul>
         <p className="muted">

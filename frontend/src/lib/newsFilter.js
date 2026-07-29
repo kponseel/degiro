@@ -68,7 +68,7 @@ export function newsStatus({ available, degraded } = {}) {
     return {
       kind: 'empty',
       message:
-        "Aucune actualité pour tes titres en ce moment. Si tes secteurs ne sont pas encore renseignés, lance l'enrichissement depuis Import / Réglages.",
+        "Aucune actualité pour tes titres en ce moment. Si tes secteurs ne sont pas encore renseignés, lance l'enrichissement depuis Import / Extension.",
     };
   }
   return { kind: 'ok', message: null };
