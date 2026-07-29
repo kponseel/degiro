@@ -143,8 +143,11 @@ const FIELDS = {
   fees: [
     'frais de transaction', 'frais de transaction et/ou de tiers', 'frais',
     'transaction costs', 'transaction and/or third party costs',
+    'transaction and/or third party fees',
     'kosten', 'transactiekosten', 'gebühren',
   ],
+  // Frais de conversion de devise, facturés en plus des frais de transaction.
+  autofx: ['autofx fee', 'frais autofx', 'autofx'],
   orderId: ["id de l'ordre", 'id ordre', 'order id', 'order-id', 'orderid', 'auftrags-id'],
 };
 
@@ -177,6 +180,20 @@ export function pickAmount(row, aliases) {
   const here = parseNumberEu(row[keys[i]]);
   if (here !== null) return here;
   return i + 1 < keys.length ? parseNumberEu(row[keys[i + 1]]) : null;
+}
+
+/**
+ * Montant en euros d'une colonne : soit la devise est dans une colonne voisine
+ * (« Valeur », « », « EUR »), soit l'en-tête la porte lui-même (« Value EUR »,
+ * « Total EUR » — la forme des exports anglais récents). Rater la seconde forme
+ * laissait TOUS les montants à nul, et donc toutes les plus-values à « — ».
+ */
+export function pickEurAmount(row, aliases) {
+  if (pickAmountCurrency(row, aliases) === 'EUR') return pickAmount(row, aliases);
+  const suffixes = aliases.flatMap((a) => [`${a} eur`, `${a} en eur`, `${a} in eur`]);
+  const direct = pick(row, suffixes);
+  if (direct !== undefined && direct !== '') return parseNumberEu(direct);
+  return null;
 }
 
 /** Devise attachée à une colonne montant : la cellule elle-même ou sa voisine. */
@@ -390,6 +407,31 @@ function aggregateOrders(txs) {
   return out;
 }
 
+/**
+ * Identifiant d'ordre : la cellule nommée, ou sa voisine. L'export réel a une
+ * colonne « Order ID » VIDE suivie d'une colonne sans titre qui porte l'UUID —
+ * le rater faisait retomber chaque ligne sur un identifiant reconstruit, qui ne
+ * se dédoublonne pas avec les captures de l'extension.
+ */
+function findOrderId(row) {
+  const keys = Object.keys(row);
+  const i = indexOf(row, FIELDS.orderId);
+  if (i === -1) return null;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  for (const j of [i, i + 1, i - 1]) {
+    if (j < 0 || j >= keys.length) continue;
+    const v = String(row[keys[j]] ?? '').trim();
+    if (UUID_RE.test(v)) return v;
+  }
+  return String(row[keys[i]] ?? '').trim() || null;
+}
+
+/** Somme de frais dont chacun peut manquer ; null si aucun n'est connu. */
+function sumFees(fees, autofx) {
+  if (fees == null && autofx == null) return null;
+  return Math.round(((fees ?? 0) + (autofx ?? 0)) * 100) / 100;
+}
+
 /** Transactions.csv → ordres normalisés (buy/sell), une ligne PAR ORDRE. */
 export function mapTransactions(rows) {
   return aggregateOrders(rows
@@ -397,7 +439,7 @@ export function mapTransactions(rows) {
       const txDate = parseDateEu(pick(r, FIELDS.date), pick(r, FIELDS.time));
       const qty = parseNumberEu(pick(r, FIELDS.qty));
       const isin = findIsin(r);
-      const orderId = (pick(r, FIELDS.orderId) || '').trim() || null;
+      const orderId = findOrderId(r);
       // Devise du cours : à défaut, un balayage libre ramasserait le code de la
       // place de marché (« NDQ ») et le prendrait pour une devise.
       const currency = pickAmountCurrency(r, FIELDS.price)
@@ -406,9 +448,12 @@ export function mapTransactions(rows) {
       // Valeur EUR brute de l'ordre : indispensable au calcul des plus-values.
       // La colonne « Valeur » n'est retenue que si elle est bien en EUR (sinon
       // c'est la valeur en devise du titre) ; à défaut on prend le « Total » EUR.
-      let grossEur = null;
-      if (pickAmountCurrency(r, FIELDS.tradeValue) === 'EUR') grossEur = pickAmount(r, FIELDS.tradeValue);
-      if (grossEur == null && pickAmountCurrency(r, FIELDS.total) === 'EUR') grossEur = Math.abs(pickAmount(r, FIELDS.total) ?? 0) || null;
+      let grossEur = pickEurAmount(r, FIELDS.tradeValue);
+      if (grossEur == null) {
+        const total = pickEurAmount(r, FIELDS.total);
+        // « Total » est net de frais : repli seulement, le brut reste préférable.
+        grossEur = total == null ? null : Math.abs(total) || null;
+      }
       // Signe : achat = sortie de cash (négatif), vente = entrée (positif).
       const amountEur = grossEur == null || qty == null ? null
         : (qty < 0 ? Math.abs(grossEur) : -Math.abs(grossEur));
@@ -418,7 +463,7 @@ export function mapTransactions(rows) {
         isin,
         description: pick(r, FIELDS.name) || null,
         qty,
-        amount: pickAmount(r, FIELDS.fees),
+        amount: sumFees(pickEurAmount(r, FIELDS.fees) ?? pickAmount(r, FIELDS.fees), pickAmount(r, FIELDS.autofx)),
         currency,
         amount_eur: amountEur,
         external_id: orderId || syntheticId('tx', txDate, isin, qty),

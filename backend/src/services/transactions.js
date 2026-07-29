@@ -29,10 +29,10 @@ import { getPool } from '../db/pool.js';
  * parseur ne sache lire les montants en euros, valeur que rien d'autre ne peut
  * reconstruire.
  *
- * @returns {Promise<{ received: number, inserted: number, completed: number }>}
+ * @returns {Promise<{ received: number, inserted: number, completed: number, cleaned: number }>}
  */
 export async function saveTransactions(txs, accountId = 1) {
-  if (!txs.length) return { received: 0, inserted: 0, completed: 0 };
+  if (!txs.length) return { received: 0, inserted: 0, completed: 0, cleaned: 0 };
   const pool = getPool();
 
   // On relève l'état AVANT d'écrire. `affectedRows` ne permet pas de distinguer
@@ -80,6 +80,28 @@ export async function saveTransactions(txs, accountId = 1) {
                         COALESCE(VALUES(qty), transactions.qty), transactions.qty)`,
     [rows],
   );
+  // Relève des jumeaux « reconstruits » : les vieux imports lisaient la colonne
+  // Order ID vide (l'export réel la décale d'un cran) et retombaient sur un
+  // identifiant reconstruit (`tx-…`). Le même ordre réimporté avec son vrai
+  // UUID créerait un DOUBLON — quantités comptées deux fois, prix moyen faux.
+  // Quand un ordre arrive avec un identifiant DEGIRO, son éventuel jumeau
+  // reconstruit (même type, même titre, même jour, même quantité) est retiré.
+  const avecUuid = txs.filter(
+    (t) => !/^(tx|acc|dgx)-/.test(t.external_id) && t.isin && t.qty != null && t.tx_date,
+  );
+  let cleaned = 0;
+  for (let i = 0; i < avecUuid.length; i += 500) {
+    const lot = avecUuid.slice(i, i + 500);
+    const tuples = lot.map((t) => [t.type, t.isin, String(t.tx_date).slice(0, 10), t.qty]);
+    const [res] = await pool.query(
+      `DELETE FROM transactions
+        WHERE account_id = ? AND external_id LIKE 'tx-%'
+          AND (type, isin, DATE(tx_date), qty) IN (?)`,
+      [accountId, tuples],
+    );
+    cleaned += res.affectedRows;
+  }
+
   // Comptage sur les identifiants UNIQUES : un même external_id apparu deux
   // fois dans le lot ne représente qu'un seul mouvement.
   const inserted = new Set(txs.filter((t) => !connus.has(t.external_id)).map((t) => t.external_id)).size;
@@ -89,5 +111,5 @@ export async function saveTransactions(txs, accountId = 1) {
   const completed = new Set(
     txs.filter((t) => connus.get(t.external_id) === true && t.amount_eur != null).map((t) => t.external_id),
   ).size;
-  return { received: txs.length, inserted, completed };
+  return { received: txs.length, inserted, completed, cleaned };
 }
