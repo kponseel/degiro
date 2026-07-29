@@ -53,10 +53,34 @@ function balancedObjects(text) {
 }
 
 /**
+ * Réparations légères avant de renoncer : les deux défauts de JSON que les
+ * assistants (et les presse-papiers) produisent vraiment — la virgule finale
+ * avant `}` ou `]`, et les guillemets typographiques d'un chat qui « embellit ».
+ * Les guillemets ne sont remplacés qu'en dehors du contenu utile : une citation
+ * française À L'INTÉRIEUR d'une chaîne survit, car "…" reste équilibré.
+ */
+const repairJson = (s) => s
+  .replace(/[“”„]/g, '"')
+  .replace(/,\s*([}\]])/g, '$1');
+
+const parseCandidate = (body) => {
+  for (const attempt of [body, repairJson(body)]) {
+    try {
+      const parsed = JSON.parse(attempt);
+      // Le bloc attendu se reconnaît à sa référence — pas un objet quelconque
+      // que l'IA aurait cité dans son analyse.
+      if (parsed && typeof parsed === 'object' && 'ref' in parsed) return parsed;
+      return null; // JSON valide mais pas notre bloc : candidat suivant
+    } catch { /* tentative suivante */ }
+  }
+  return null;
+};
+
+/**
  * Retrouve le bloc de données dans un texte collé. Renvoie l'objet parsé, ou
  * null. Les blocs balisés sont tentés d'abord, du DERNIER au premier : le
- * prompt demande le bloc en fin de réponse, et l'analyse qui précède peut
- * elle-même contenir des extraits de code.
+ * prompt demande un bloc unique, mais une conversation copiée en entier peut
+ * en contenir plusieurs, et le bon est le plus récent.
  */
 export function extractDataBlock(raw) {
   const text = String(raw ?? '').slice(0, LIMITS.rawPaste);
@@ -69,23 +93,53 @@ export function extractDataBlock(raw) {
   for (const candidate of candidates) {
     const body = candidate.trim();
     if (!body.startsWith('{')) continue;
-    try {
-      const parsed = JSON.parse(body);
-      // Le bloc attendu se reconnaît à sa référence — pas un objet quelconque
-      // que l'IA aurait cité dans son analyse.
-      if (parsed && typeof parsed === 'object' && 'ref' in parsed) return parsed;
-    } catch { /* candidat suivant */ }
+    const parsed = parseCandidate(body);
+    if (parsed) return parsed;
   }
   return null;
 }
 
 // ── Messages d'erreur pour humains ───────────────────────────────────
 
-/** Traduit les erreurs zod en une phrase lisible (pas de jargon technique). */
+/**
+ * Décrit UNE erreur zod en français : quel champ, ce qui a été reçu, ce qui
+ * était attendu. L'ancien message ne nommait que le champ — l'utilisateur
+ * savait que « suggested_actions » clochait, mais pas pourquoi ni quoi faire.
+ */
+function describeIssue(i) {
+  const field = i.path.filter((p) => typeof p === 'string').join('.') || 'bloc';
+  switch (i.code) {
+    case 'invalid_enum_value':
+      return `« ${field} » vaut « ${i.received} » — valeurs possibles : ${i.options.join(', ')}`;
+    case 'invalid_union_discriminator':
+      return `« ${field || 'scope'} » doit valoir position ou portfolio`;
+    case 'too_big':
+    case 'too_small':
+      return i.type === 'number'
+        ? `« ${field} » doit être un entier entre 0 et 10`
+        : `« ${field} » est ${i.code === 'too_big' ? 'trop long' : 'trop court'}`;
+    case 'invalid_type':
+      if (i.received === 'undefined') return `le champ « ${field} » manque`;
+      return `« ${field} » : ${i.expected === 'number' ? 'un nombre (sans guillemets)' : `${i.expected}`} attendu, reçu ${i.received}`;
+    case 'invalid_literal':
+      return field === 'schema_version'
+        ? '« schema_version » doit rester 1'
+        : `« ${field} » doit rester tel que le prompt l'a pré-rempli`;
+    case 'invalid_string':
+      if (field.endsWith('isin')) return `« ${field} » doit être l'ISIN exact à 12 caractères (ex. FR0000121014), pas un ticker`;
+      if (field === 'ref') return '« ref » a été modifié — il doit rester tel que le prompt l\'a pré-rempli';
+      return `« ${field} » n'a pas la forme attendue`;
+    default:
+      return `« ${field} » est invalide`;
+  }
+}
+
+/** Traduit les erreurs zod en phrases lisibles, avec le remède. */
 function humanizeIssues(issues) {
-  const fields = [...new Set(issues.map((i) => i.path.filter((p) => typeof p === 'string')[0] || 'bloc'))];
-  return `Le bloc de données de l'assistant est incomplet ou altéré (champ${fields.length > 1 ? 's' : ''} : ${fields.slice(0, 4).join(', ')}). `
-    + "Redemande à l'assistant de terminer sa réponse par le bloc exact du prompt, puis recolle la réponse entière.";
+  const details = [...new Set(issues.map(describeIssue))].slice(0, 3);
+  const reste = issues.length > 3 ? ` (et ${issues.length - 3} autres soucis du même genre)` : '';
+  return `Le bloc de données de l'assistant est incomplet ou altéré : ${details.join(' ; ')}${reste}. `
+    + 'Réponds à l\'assistant « Renvoie uniquement le bloc de données JSON demandé, corrigé » puis colle sa nouvelle réponse.';
 }
 
 // ── Ingestion ────────────────────────────────────────────────────────
@@ -106,11 +160,26 @@ export async function ingestPastedInsight(accountId, raw, provider) {
 
   const block = extractDataBlock(raw);
   if (!block) {
+    // Deux situations très différentes derrière un même échec : le bloc est
+    // absent (l'assistant a répondu en prose), ou il est là mais cassé
+    // (réponse tronquée en cours de génération, copie partielle).
+    if (/"ref"\s*:/.test(raw)) {
+      return {
+        error: 'Le bloc de données est bien là, mais son contenu est cassé — réponse tronquée ou copie partielle, '
+          + "le plus souvent. Réponds à l'assistant « Renvoie uniquement le bloc de données demandé, complet » "
+          + 'puis colle sa nouvelle réponse.',
+      };
+    }
     return {
-      error: "Je n'ai pas trouvé le bloc de données dans ce texte. Copie la réponse ENTIÈRE de l'assistant "
-        + '(le bloc se trouve tout à la fin), sans la retaper à la main.',
+      error: "Je n'ai pas trouvé le bloc de données dans ce texte. Copie la réponse ENTIÈRE de l'assistant, sans la retaper à la main. "
+        + "S'il a répondu sans le bloc, réponds-lui « Termine par le bloc de données demandé dans mon message » et recolle sa réponse.",
     };
   }
+
+  // Le squelette pré-remplit scope et ref : s'ils reviennent avec une casse ou
+  // des espaces différents, c'est cosmétique, pas une trahison du contrat.
+  if (typeof block.scope === 'string') block.scope = block.scope.trim().toLowerCase();
+  if (typeof block.ref === 'string') block.ref = block.ref.trim();
 
   const parsed = insightSchema.safeParse(block);
   if (!parsed.success) return { error: humanizeIssues(parsed.error.issues) };

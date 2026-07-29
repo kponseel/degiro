@@ -109,6 +109,13 @@ export default function InsightPasteModal({ onClose, onIngested }) {
             />
 
             {error && <div style={{ marginTop: 10 }} className="banner err">{error}</div>}
+            {error && (
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+                Le plus simple, en général : retourne dans la conversation, réponds
+                «&nbsp;Renvoie uniquement le bloc de données demandé, complet et corrigé&nbsp;»,
+                puis colle sa nouvelle réponse ici.
+              </p>
+            )}
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
               <button className="btn" disabled={busy || !raw.trim()} onClick={submit}>
