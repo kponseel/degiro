@@ -299,14 +299,19 @@ async function dividendFlows(accountId) {
      ORDER BY tx_date ASC`,
     [accountId],
   );
-  return rows
-    .map((r) => ({
-      date: String(r.tx_date).slice(0, 10),
-      isin: r.isin,
-      name: r.description || r.isin,
-      amount_eur: r.eur == null ? null : round(Number(r.eur)),
-    }))
-    .filter((d) => d.amount_eur != null);
+  const tous = rows.map((r) => ({
+    date: String(r.tx_date).slice(0, 10),
+    isin: r.isin,
+    name: r.description || r.isin,
+    amount_eur: r.eur == null ? null : round(Number(r.eur)),
+  }));
+  // Les dividendes en devise (USD…) n'ont pas de montant en euros : ils ne
+  // peuvent pas entrer dans les totaux, mais leur NOMBRE doit remonter — les
+  // taire faisait passer un « Dividendes encaissés » amputé pour un total.
+  return {
+    flows: tous.filter((d) => d.amount_eur != null),
+    foreign: tous.filter((d) => d.amount_eur == null).length,
+  };
 }
 
 /**
@@ -365,7 +370,7 @@ async function realizedSources(accountId) {
 export async function computeRealized(accountId = 1) {
   const txs = await buySellTxs(accountId);
   const { events, byIsin, totals } = realizedPnl(txs);
-  const dividends = await dividendFlows(accountId);
+  const { flows: dividends, foreign: dividendsForeign } = await dividendFlows(accountId);
   const years = [...new Set([
     ...events.map((e) => e.date.slice(0, 4)),
     ...dividends.map((d) => d.date.slice(0, 4)),
@@ -389,7 +394,7 @@ export async function computeRealized(accountId = 1) {
     periode: `${sources.oldest ?? '—'} → ${sources.newest ?? '—'}`,
   }, 'Réalisé : état des données sources');
 
-  return { events, byIsin, totals, dividends, dividendsTotal, years, sources };
+  return { events, byIsin, totals, dividends, dividendsTotal, dividendsForeign, years, sources };
 }
 
 /**

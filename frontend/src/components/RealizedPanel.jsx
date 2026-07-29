@@ -65,7 +65,17 @@ export default function RealizedPanel({ realized, latentPl = null }) {
             sub="positions fermées (vendues)"
             tone={tone(ret.realized)}
           />
-          <Stat label="Dividendes encaissés" value={fmtEur(ret.dividends)} sub="détail en bas de page" tone={ret.dividends ? 'pos' : ''} />
+          {/* Les dividendes en devise (USD…) n'ont pas de contre-valeur euro dans
+              le relevé : ils ne peuvent pas entrer dans ce total. Le dire évite
+              de faire passer un chiffre partiel pour un encaissé complet. */}
+          <Stat
+            label="Dividendes encaissés"
+            value={fmtEur(ret.dividends)}
+            sub={realized?.dividendsForeign > 0
+              ? `en euros seuls — ${plural(realized.dividendsForeign, 'versement')} en devise, détail en bas de page`
+              : 'détail en bas de page'}
+            tone={ret.dividends ? 'pos' : ''}
+          />
           <Stat
             label={ret.partial ? 'Total (hors latent)' : 'Gain total'}
             value={signEur(ret.total)}
