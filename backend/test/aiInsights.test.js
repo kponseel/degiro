@@ -213,6 +213,120 @@ describe('POST /api/ai/insights — collage de la réponse', () => {
     expect(body.byIsin.IE00B4L5Y983.risk_score).toBe(3);
   });
 
+  // Un ISIN syntaxiquement valide et unique par index (US + 9 chiffres + clé).
+  const isinN = (i) => `US${String(i).padStart(9, '0')}${i % 10}`;
+
+  it('accepte un bloc généreux : 16 actions et 27 positions (le cas réel qui était refusé)', async () => {
+    // Reproduction du bloc d'un assistant consciencieux sur un portefeuille de
+    // 27 lignes : l'ancien plafond de 10 « suggested_actions » le refusait en
+    // entier, alors que c'est une réponse d'excellente qualité.
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent, { scope: 'portfolio', goal: 'risque' });
+    const block = {
+      schema_version: 1, ref, scope: 'portfolio', as_of: '2026-07-29',
+      risk_score: 8, diversification_score: 3, confidence: 'medium',
+      warnings: Array.from({ length: 6 }, (_, i) => ({ severity: 'high', label: `Alerte ${i}`, isin: null })),
+      suggested_actions: Array.from({ length: 16 }, (_, i) => ({ action: 'reduce', isin: isinN(i), rationale: `Motif ${i}` })),
+      positions: Array.from({ length: 27 }, (_, i) => ({ isin: isinN(i), risk_score: 5, recommendation: 'hold', note: `Note ${i}` })),
+      summary: 'Concentration extrême, corriger les PRU puis alléger.',
+    };
+    const res = await agent.post('/api/ai/insights').send({ raw: aiAnswer(block) });
+    expect(res.status).toBe(201);
+    expect(res.body.fanout).toBe(27);
+    const { body } = await agent.get('/api/ai/insights');
+    expect(body.portfolio.payload.suggested_actions).toHaveLength(16);
+  });
+
+  it('comprend les libellés français et la casse (« Conserver », « élevée », « Alléger »)', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent, { scope: 'portfolio', goal: 'risque' });
+    const block = {
+      schema_version: 1, ref, scope: 'Portfolio', as_of: '2026-07-29',
+      risk_score: '7/10', confidence: 'élevée',
+      warnings: [{ severity: 'Élevée', label: 'Concentration tech' }],
+      suggested_actions: [{ action: 'Alléger', isin: 'US67066G1040', rationale: 'Poids excessif' }],
+      positions: [{ isin: 'US67066G1040', risk_score: 7.5, recommendation: 'Conserver', note: 'ok' }],
+    };
+    const res = await agent.post('/api/ai/insights').send({ raw: aiAnswer(block) });
+    expect(res.status).toBe(201);
+    const { body } = await agent.get('/api/ai/insights');
+    expect(body.portfolio.risk_score).toBe(7); // « 7/10 » → 7
+    expect(body.portfolio.confidence).toBe('high');
+    expect(body.portfolio.payload.warnings[0].severity).toBe('high');
+    expect(body.portfolio.payload.suggested_actions[0].action).toBe('reduce');
+    expect(body.byIsin.US67066G1040.risk_score).toBe(8); // 7,5 arrondi
+    expect(body.byIsin.US67066G1040.recommendation).toBe('hold');
+  });
+
+  it('ignore les champs inventés au lieu de refuser le bloc', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent);
+    const res = await agent.post('/api/ai/insights').send({
+      raw: aiAnswer(validBlock(ref, { ticker: 'NVDA', target_price_2027: 250, notes_internes: ['x'] })),
+    });
+    expect(res.status).toBe(201);
+    const { body } = await agent.get('/api/ai/insights');
+    expect(body.byIsin.US67066G1040.payload.ticker).toBeUndefined();
+  });
+
+  it('un ticker à la place d’un ISIN : neutralisé dans les actions, écarté du fan-out', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent, { scope: 'portfolio', goal: 'risque' });
+    const block = {
+      schema_version: 1, ref, scope: 'portfolio', as_of: '2026-07-29', risk_score: 5,
+      suggested_actions: [{ action: 'reduce', isin: 'NVDA', rationale: 'Ticker au lieu d’ISIN' }],
+      positions: [
+        { isin: 'US67066G1040', risk_score: 6, recommendation: 'hold' },
+        { isin: 'NVDA', risk_score: 9, recommendation: 'sell' }, // inexploitable : à écarter, pas à refuser
+      ],
+    };
+    const res = await agent.post('/api/ai/insights').send({ raw: aiAnswer(block) });
+    expect(res.status).toBe(201);
+    expect(res.body.fanout).toBe(1);
+    const { body } = await agent.get('/api/ai/insights');
+    expect(body.portfolio.payload.suggested_actions[0].isin).toBeNull();
+  });
+
+  it('null vaut « non renseigné » sur les champs facultatifs, comme le prompt l’exige', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent);
+    const res = await agent.post('/api/ai/insights').send({
+      raw: aiAnswer(validBlock(ref, {
+        quality_score: null, confidence: null, fair_value: null, horizon_months: null,
+        bull_points: null, catalysts: null, summary: null,
+      })),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('répare une virgule finale — le défaut JSON le plus fréquent des assistants', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent);
+    const casse = JSON.stringify(validBlock(ref), null, 2).replace(/\n}$/, ',\n}');
+    const res = await agent.post('/api/ai/insights').send({ raw: `Analyse…\n\`\`\`json\n${casse}\n\`\`\`` });
+    expect(res.status).toBe(201);
+  });
+
+  it('un bloc tronqué reçoit un message dédié : demander la fin, pas tout recommencer', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent);
+    const tronque = JSON.stringify(validBlock(ref), null, 2).slice(0, 120);
+    const res = await agent.post('/api/ai/insights').send({ raw: `\`\`\`json\n${tronque}` });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toContain('cassé');
+    expect(res.body.error).toContain('Renvoie uniquement le bloc');
+  });
+
+  it('l’erreur de validation nomme le champ, la valeur reçue et les valeurs permises', async () => {
+    const agent = await signIn('alice@example.com');
+    const ref = await seedPrompt(agent);
+    const res = await agent.post('/api/ai/insights').send({ raw: aiAnswer(validBlock(ref, { recommendation: 'yolo' })) });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toContain('recommendation');
+    expect(res.body.error).toContain('yolo');
+    expect(res.body.error).toContain('strong_buy');
+  });
+
   it('le dernier avis sur un titre remplace l’ancien à l’affichage', async () => {
     const agent = await signIn('alice@example.com');
     const ref1 = await seedPrompt(agent);

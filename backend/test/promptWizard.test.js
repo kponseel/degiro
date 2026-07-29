@@ -52,6 +52,22 @@ describe('contexte compacté', () => {
     expect(top).toContain('+1 lignes plus petites omises');
   });
 
+  it('filtre par valeur minimale et le dit à l’IA', () => {
+    const filt = compactContext(pf, expo, { minValue: 1000, withExpo: false });
+    expect(filt).toContain('IE00B4L5Y983'); // 9 500 €
+    expect(filt).toContain('US67066G1040'); // 1 900 €
+    expect(filt).not.toContain('FR001400X2S4'); // 286 €
+    expect(filt).toContain('1 lignes sous');
+    expect(filt).toContain('omises');
+  });
+
+  it('le filtre ne gonfle pas les poids : ils restent relatifs au portefeuille entier', () => {
+    const filt = compactContext(pf, null, { minValue: 1000 });
+    // NVIDIA pèse 1900/11686 ≈ 16,3 % du portefeuille ENTIER, filtré ou pas.
+    const ligne = filt.split('\n').find((l) => l.startsWith('US67066G1040'));
+    expect(ligne).toContain('|16.3|');
+  });
+
   it('échappe les barres verticales d’un nom pour ne pas casser le tableau', () => {
     const tricky = { ...pf, positions: [{ ...nvda, name: 'A|B|C Corp' }] };
     const line = compactContext(tricky, null).split('\n').find((l) => l.startsWith('US67066G1040'));
@@ -68,8 +84,21 @@ describe('assemblage du prompt', () => {
       // Le squelette de fin doit reprendre la ref et la version.
       expect(built.text, g.id).toContain(`"ref": "${built.ref}"`);
       expect(built.text, g.id).toContain('"schema_version": 1');
-      expect(built.text, g.id).toContain('FORMAT DE FIN DE RÉPONSE');
+      expect(built.text, g.id).toContain('un seul bloc JSON');
     }
+  });
+
+  it('pré-remplit as_of avec la date du jour : un champ de moins à rater', () => {
+    const built = assemblePrompt({ goalId: 'risk', answers: {}, pf, expo, today: '2026-07-29' });
+    expect(built.text).toContain('"as_of": "2026-07-29"');
+  });
+
+  it('le filtre par valeur traverse le wizard jusqu’au prompt', () => {
+    const built = assemblePrompt({ goalId: 'risk', answers: { minValue: 1000 }, pf, expo });
+    expect(built.text).not.toContain('FR001400X2S4');
+    expect(built.text).toContain('omises');
+    const tout = assemblePrompt({ goalId: 'risk', answers: { minValue: 0 }, pf, expo });
+    expect(tout.text).toContain('FR001400X2S4');
   });
 
   it('un objectif « titre » fixe l’ISIN et l’injecte dans le squelette', () => {
@@ -93,15 +122,15 @@ describe('assemblage du prompt', () => {
     // légèrement puisqu'on ajoute une instruction).
     const court = assemblePrompt({ goalId: 'risk', answers: { length: 'court' }, pf, expo });
     const long = assemblePrompt({ goalId: 'risk', answers: { length: 'detaille' }, pf, expo });
-    expect(court.text).toContain('5 à 8 lignes');
-    expect(long.text).not.toContain('5 à 8 lignes');
+    expect(court.text).toContain('Sois concis');
+    expect(long.text).not.toContain('Sois concis');
   });
 
   it('le ton optionnel passé (null) ne laisse pas de trou dans la consigne', () => {
     const built = assemblePrompt({ goalId: 'rebalance', answers: { horizon: 'long', tone: null, length: 'court' }, pf, expo });
     // On inspecte le corps rédigé, hors squelette d'instructions (qui, lui,
     // contient légitimement « ISIN ou null »).
-    const body = built.text.split('FORMAT DE FIN')[0];
+    const body = built.text.split('FORMAT DE RÉPONSE')[0];
     expect(body).toContain('long terme');
     expect(body).not.toContain('undefined');
     expect(body).not.toMatch(/\bnull\b/);

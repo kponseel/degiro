@@ -5,11 +5,12 @@ import { buildFormatInstructions, makeRef } from '../../../shared/aiInsightContr
  * Générateur de prompts, module PUR (aucune API navigateur) : c'est lui qui
  * assemble le texte à copier, et c'est la seule partie testable hors navigateur.
  *
- * Deux partis pris pour économiser des tokens sans nuire à la fiabilité :
+ * Trois partis pris pour économiser des tokens sans nuire à la fiabilité :
  *  - le contexte du portefeuille est un TABLEAU compact (« ISIN|nom|poids »),
  *    pas des phrases : 2-3× moins de tokens en entrée, et mieux lu par l'IA ;
  *  - un mode « réponse courte » plafonne la prose (le vrai poids en sortie) ;
- *  - le bloc de données reste du JSON, le format que les modèles ratent le moins.
+ *  - la réponse demandée est le bloc JSON SEUL : l'analyse vit dans ses champs,
+ *    ce qui supprime la partie libre que chaque modèle formatait à sa façon.
  */
 
 const DISCLAIMER =
@@ -20,13 +21,17 @@ const pct = (v) => (Number.isFinite(v) ? `${(v * 100).toFixed(1)}` : '');
 
 /**
  * Contexte portefeuille en tableau serré. `top` limite le nombre de lignes
- * (une analyse ciblée n'a pas besoin des 27 positions), `withExpo` ajoute les
- * répartitions déjà agrégées.
+ * (une analyse ciblée n'a pas besoin des 27 positions), `minValue` écarte les
+ * lignes sous un seuil en euros (choisi par l'utilisateur dans le wizard),
+ * `withExpo` ajoute les répartitions déjà agrégées. Les poids restent calculés
+ * sur le portefeuille ENTIER : filtrer des lignes ne doit pas gonfler les autres.
  */
-export function compactContext({ snapshot, positions }, exposure, { top = 0, withExpo = true } = {}) {
+export function compactContext({ snapshot, positions }, exposure, { top = 0, withExpo = true, minValue = 0 } = {}) {
   const total = positions.reduce((s, p) => s + (Number(p.value_eur) || 0), 0) || 1;
   const sorted = [...positions].sort((a, b) => (Number(b.value_eur) || 0) - (Number(a.value_eur) || 0));
-  const shown = top > 0 ? sorted.slice(0, top) : sorted;
+  const min = Number(minValue) || 0;
+  const kept = min > 0 ? sorted.filter((p) => (Number(p.value_eur) || 0) >= min) : sorted;
+  const shown = top > 0 ? kept.slice(0, top) : kept;
 
   const lines = [
     `Portefeuille au ${fmtDate(snapshot.snapshot_date)} · investi ${fmtEur(total)} · liquidités ${fmtEur(snapshot.cash_eur)} · ${positions.length} lignes`,
@@ -39,7 +44,12 @@ export function compactContext({ snapshot, positions }, exposure, { top = 0, wit
       p.currency || '',
     ].join('|')),
   ];
-  if (top > 0 && sorted.length > top) lines.push(`… (+${sorted.length - top} lignes plus petites omises)`);
+  if (min > 0 && kept.length < sorted.length) {
+    const omises = sorted.filter((p) => (Number(p.value_eur) || 0) < min);
+    const somme = omises.reduce((s, p) => s + (Number(p.value_eur) || 0), 0);
+    lines.push(`… (${omises.length} lignes sous ${fmtEur(min)} volontairement omises — ${fmtEur(somme)} en tout ; concentre ton analyse sur les lignes listées)`);
+  }
+  if (top > 0 && kept.length > top) lines.push(`… (+${kept.length - top} lignes plus petites omises)`);
 
   if (withExpo && exposure) {
     const row = (label, arr) => (arr?.length
@@ -95,8 +105,22 @@ const LENGTH = {
   id: 'length',
   label: "Longueur de l'analyse ?",
   options: [
-    { value: 'court', label: 'Courte (5-8 lignes) — économise des tokens', default: true },
-    { value: 'detaille', label: 'Détaillée' },
+    { value: 'court', label: "Courte — l'essentiel (économise des tokens)", default: true },
+    { value: 'detaille', label: 'Détaillée — arguments et notes plus fournis' },
+  ],
+};
+
+// Filtre par valeur : analyser 27 lignes quand seules les grosses comptent
+// gaspille des tokens et noie l'analyse. Les seuils sont volontairement peu
+// nombreux — le but est un tri grossier, pas une requête.
+const LINES = {
+  id: 'minValue',
+  label: "Quelles lignes inclure dans l'analyse ?",
+  options: [
+    { value: 0, label: 'Toutes mes lignes', default: true },
+    { value: 500, label: 'Plus de 500 €' },
+    { value: 1000, label: 'Plus de 1 000 €' },
+    { value: 2500, label: 'Plus de 2 500 €' },
   ],
 };
 
@@ -159,10 +183,10 @@ Analyse ce titre ${horizonText[answers.horizon] || ''} :
     scope: 'portfolio',
     label: 'Analyser les risques',
     desc: 'Concentrations, vulnérabilités, comportement en cas de choc de marché.',
-    steps: [HORIZON, LENGTH],
+    steps: [LINES, HORIZON, LENGTH],
     body: ({ pf, expo, answers }) => `Tu es analyste risques. Voici mon portefeuille (courtier DEGIRO, en EUR).
 
-${compactContext(pf, expo)}
+${compactContext(pf, expo, { minValue: answers.minValue })}
 
 Évalue le risque ${horizonText[answers.horizon] || ''} :
 1. Concentrations et vulnérabilités principales (ligne, secteur, pays, devise).
@@ -174,10 +198,10 @@ ${compactContext(pf, expo)}
     scope: 'portfolio',
     label: 'Diversification & change',
     desc: 'Déséquilibres secteur/pays/devise et exposition au dollar.',
-    steps: [LENGTH],
-    body: ({ pf, expo }) => `Tu es gérant de portefeuille. Voici mes expositions (portefeuille en EUR).
+    steps: [LINES, LENGTH],
+    body: ({ pf, expo, answers }) => `Tu es gérant de portefeuille. Voici mes expositions (portefeuille en EUR).
 
-${compactContext(pf, expo)}
+${compactContext(pf, expo, { minValue: answers.minValue })}
 
 1. Déséquilibres d'exposition (secteur, pays, devise) et risques associés.
 2. Exposition au dollar : impact d'une variation EUR/USD de ±10 %, faut-il couvrir ?
@@ -188,10 +212,10 @@ ${compactContext(pf, expo)}
     scope: 'portfolio',
     label: 'Projection de dividendes',
     desc: 'Rendement attendu, solidité des versements, lignes à renforcer.',
-    steps: [LENGTH],
-    body: ({ pf, expo }) => `Tu es analyste revenus. Tu as accès au web pour les rendements récents. Voici mon portefeuille (EUR).
+    steps: [LINES, LENGTH],
+    body: ({ pf, expo, answers }) => `Tu es analyste revenus. Tu as accès au web pour les rendements récents. Voici mon portefeuille (EUR).
 
-${compactContext(pf, expo)}
+${compactContext(pf, expo, { minValue: answers.minValue })}
 
 1. Estime le rendement sur dividende actuel de chaque ligne qui en verse, et le rendement global du portefeuille.
 2. Solidité et croissance attendue de ces dividendes (payout, historique).
@@ -202,10 +226,10 @@ ${compactContext(pf, expo)}
     scope: 'portfolio',
     label: 'Rééquilibrer / optimiser',
     desc: 'Réallouer ce que tu détiens déjà — financer les achats par des ventes, avec ou sans argent frais.',
-    steps: [CASH, HORIZON, TONE, LENGTH],
+    steps: [LINES, CASH, HORIZON, TONE, LENGTH],
     body: ({ pf, expo, answers }) => `Tu es conseiller en allocation${answers.tone && toneText[answers.tone] ? `, ${toneText[answers.tone]}` : ''}. Voici mon portefeuille (DEGIRO, en EUR).
 
-${compactContext(pf, expo)}
+${compactContext(pf, expo, { minValue: answers.minValue })}
 
 Contrainte de budget : ${cashText[answers.cash] || cashText.none}
 
@@ -220,10 +244,10 @@ Propose un plan d'optimisation ${horizonText[answers.horizon] || ''} :
     scope: 'portfolio',
     label: 'Quand vendre / récupérer mon argent',
     desc: 'Prix de sortie, prise de profit, et le bon moment pour sécuriser ou récupérer ton capital.',
-    steps: [EXIT_REASON, HORIZON, LENGTH],
+    steps: [LINES, EXIT_REASON, HORIZON, LENGTH],
     body: ({ pf, expo, answers }) => `Tu es analyste actions avec accès au web pour des données récentes. Voici mon portefeuille (EUR).
 
-${compactContext(pf, expo)}
+${compactContext(pf, expo, { minValue: answers.minValue })}
 
 Objectif : ${exitReasonText[answers.exitReason] || exitReasonText.profit}
 Horizon : ${horizonText[answers.horizon] || 'à préciser'}.
@@ -245,7 +269,7 @@ export const stepDefault = (step) => (step.options.find((o) => o.default) || ste
  * Assemble le prompt final.
  * @returns {{ text, scope, isin, ref, goal }}
  */
-export function assemblePrompt({ goalId, answers = {}, pf, expo, sel = null, ref = makeRef() }) {
+export function assemblePrompt({ goalId, answers = {}, pf, expo, sel = null, ref = makeRef(), today = null }) {
   const goal = goalById(goalId);
   if (!goal) throw new Error(`objectif inconnu : ${goalId}`);
 
@@ -254,14 +278,17 @@ export function assemblePrompt({ goalId, answers = {}, pf, expo, sel = null, ref
   const isin = goal.scope === 'position' ? sel?.isin ?? null : null;
 
   const body = goal.body({ pf, expo, sel, weight, answers });
+  // La réponse est le bloc seul : la concision se joue dans ses champs texte.
   const short = answers.length === 'court'
-    ? '\n\nRéponds de façon concise : 5 à 8 lignes d\'analyse maximum avant le bloc de données.'
+    ? '\n\nSois concis : une phrase par point, va à l\'essentiel dans chaque champ texte.'
     : '';
 
   const text = `${body}
 
 ${DISCLAIMER}${short}
-${buildFormatInstructions({ ref, scope: goal.scope, isin })}`;
+${buildFormatInstructions({
+    ref, scope: goal.scope, isin, today: today || new Date().toISOString().slice(0, 10),
+  })}`;
 
   return { text, scope: goal.scope, isin, ref, goal: goal.id };
 }
