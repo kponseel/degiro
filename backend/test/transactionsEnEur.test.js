@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { createApp } from '../src/app.js';
 import { getPool, closePool } from '../src/db/pool.js';
-import { parseCsv, mapTransactions, detectKind } from '../src/services/csvParser.js';
+import { parseCsv, mapTransactions, mapAccount, detectKind } from '../src/services/csvParser.js';
 import { saveTransactions } from '../src/services/transactions.js';
-import { realizedPnl } from '../src/services/analytics.js';
+import { realizedPnl, computeRealized } from '../src/services/analytics.js';
 import { resetDb } from './helpers.js';
 
 createApp(); // charge la configuration et le pool comme en conditions réelles
@@ -102,5 +102,52 @@ describe('nettoyage des jumeaux à identifiant reconstruit', () => {
       'tx-9999999999999999999999',
     ]);
     expect(res.cleaned).toBe(0);
+  });
+});
+
+describe('relevé de compte réel — collisions et dividendes en devise', () => {
+  const H = 'Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id';
+
+  it('deux mouvements identiques à la même minute ne s’écrasent plus', () => {
+    // Deux jambes de frais identiques (même minute, même libellé, même montant) :
+    // l'identifiant reconstruit était le même, le second mouvement disparaissait.
+    const csv = [
+      H,
+      '28-07-2026,16:39,28-07-2026,ACME CORP,US0000000001,"Frais de courtage",,EUR,"-1,00",EUR,"100,00",',
+      '28-07-2026,16:39,28-07-2026,ACME CORP,US0000000001,"Frais de courtage",,EUR,"-1,00",EUR,"99,00",',
+    ].join('\n');
+    const txs = mapAccount(parseCsv(csv).rows);
+    expect(txs).toHaveLength(2);
+    expect(new Set(txs.map((t) => t.external_id)).size).toBe(2);
+    // Le premier garde l'identifiant historique : les réimports dédoublonnent
+    // toujours avec l'existant.
+    expect(txs[0].external_id.startsWith('acc-')).toBe(true);
+    expect(txs[0].external_id.includes('#')).toBe(false);
+    expect(txs[1].external_id.endsWith('#2')).toBe(true);
+  });
+
+  it('le réimport du même fichier reste idempotent malgré les suffixes', async () => {
+    const csv = [
+      H,
+      '28-07-2026,16:39,28-07-2026,ACME CORP,US0000000001,"Frais de courtage",,EUR,"-1,00",EUR,"100,00",',
+      '28-07-2026,16:39,28-07-2026,ACME CORP,US0000000001,"Frais de courtage",,EUR,"-1,00",EUR,"99,00",',
+    ].join('\n');
+    const txs = mapAccount(parseCsv(csv).rows);
+    const premier = await saveTransactions(txs, 1);
+    const second = await saveTransactions(mapAccount(parseCsv(csv).rows), 1);
+    expect(premier.inserted).toBe(2);
+    expect(second.inserted).toBe(0);
+    const [rows] = await getPool().query("SELECT COUNT(*) AS n FROM transactions WHERE account_id = 1 AND type = 'fee'");
+    expect(rows[0].n).toBe(2);
+  });
+
+  it('compte les dividendes en devise, exclus du total en euros', async () => {
+    await saveTransactions([
+      { tx_date: '2026-05-01 10:00:00', type: 'dividend', isin: 'US0000000001', description: 'Dividende', qty: null, amount: 10, currency: 'EUR', amount_eur: 10, external_id: 'acc-div-eur' },
+      { tx_date: '2026-06-01 10:00:00', type: 'dividend', isin: 'US0000000001', description: 'Dividende', qty: null, amount: 25, currency: 'USD', amount_eur: null, external_id: 'acc-div-usd' },
+    ], 1);
+    const realized = await computeRealized(1);
+    expect(realized.dividendsTotal).toBe(10);
+    expect(realized.dividendsForeign).toBe(1); // le versement USD est signalé, pas tu
   });
 });

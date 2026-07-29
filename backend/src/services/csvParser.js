@@ -346,9 +346,30 @@ function classifyDescription(desc) {
   return 'other';
 }
 
+/**
+ * Départage les identifiants reconstruits identiques.
+ *
+ * Deux mouvements peuvent être légitimement identiques à la même minute — deux
+ * frais, les deux jambes d'une opération de change — et recevaient le même
+ * identifiant : le second était silencieusement perdu (143 mouvements sur un
+ * relevé réel de 6 794). Le premier garde l'identifiant historique, pour que
+ * les réimports continuent de dédoublonner avec l'existant ; les suivants sont
+ * suffixés — l'ordre du fichier est stable d'un export à l'autre, et des
+ * mouvements au contenu identique sont de toute façon interchangeables.
+ */
+function disambiguateIds(txs) {
+  const vus = new Map();
+  for (const t of txs) {
+    const n = (vus.get(t.external_id) || 0) + 1;
+    vus.set(t.external_id, n);
+    if (n > 1) t.external_id = `${t.external_id}#${n}`.slice(0, 64);
+  }
+  return txs;
+}
+
 /** Account.csv (relevé de compte) → mouvements normalisés (table transactions). */
 export function mapAccount(rows) {
-  return rows
+  return disambiguateIds(rows
     .map((r) => {
       const txDate = parseDateEu(pick(r, FIELDS.date), pick(r, FIELDS.time));
       const description = pick(r, FIELDS.description) || '';
@@ -368,7 +389,7 @@ export function mapAccount(rows) {
         external_id: syntheticId('acc', txDate, description, amount),
       };
     })
-    .filter((t) => t.tx_date && t.amount !== null);
+    .filter((t) => t.tx_date && t.amount !== null));
 }
 
 /**
