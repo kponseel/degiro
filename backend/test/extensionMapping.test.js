@@ -322,6 +322,26 @@ describe('Extension — repérage de la session DEGIRO', () => {
     });
   });
 
+  it("relève le chemin de l'historique que l'application DEGIRO appelle elle-même", () => {
+    // Motif de la fonctionnalité : le 29/07/2026, notre chemin v4 répondait 502
+    // en continu — l'endpoint avait bougé. On suit celui de l'application.
+    expect(sniff('https://trader.degiro.nl/portfolio-reports/secure/v6/transactions?intAccount=1&sessionId=x'))
+      .toMatchObject({ txPath: '/portfolio-reports/secure/v6/transactions' });
+    // L'application appelle aussi en relatif.
+    expect(sniff('/reporting/secure/v5/transactions?fromDate=01/01/2026'))
+      .toMatchObject({ txPath: '/reporting/secure/v5/transactions' });
+    // Pas de confusion avec les autres endpoints.
+    expect(sniff('https://trader.degiro.nl/trading/secure/v5/update/123;jsessionid=ABCDEF123456').txPath).toBeUndefined();
+  });
+
+  it("construit l'URL de l'historique sur un chemin de remplacement", () => {
+    const u = urls.transactions('123', 'S123456789', '01/01/2026', '29/07/2026', true, '/portfolio-reports/secure/v6/transactions');
+    expect(u.startsWith('https://trader.degiro.nl/portfolio-reports/secure/v6/transactions?')).toBe(true);
+    expect(u).toContain('groupTransactionsByOrder=true');
+    // Sans chemin fourni : la v4 historique.
+    expect(urls.transactions('123', 'S123456789', 'a', 'b')).toContain('/reporting/secure/v4/transactions');
+  });
+
   it('les motifs dupliqués dans inject.js n’ont pas divergé', () => {
     // `inject.js` tourne dans la page et ne peut pas importer de module : ses
     // motifs sont recopiés. Ce test est le garde-fou contre la dérive.

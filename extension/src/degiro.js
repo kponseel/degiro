@@ -50,6 +50,7 @@ export function parsePortfolio(update) {
   const products = [];
   const closed = [];
   const cashOther = [];
+  const unsized = [];
   let cashEur;
 
   for (const row of rows) {
@@ -74,13 +75,19 @@ export function parsePortfolio(update) {
     }
 
     const size = num(row.size);
-    if (size === undefined) continue; // ligne sans quantité exploitable
     const entry = { ...row, productId: id };
+    if (size === undefined) {
+      // Ligne sans quantité exploitable : hors de notre somme, mais gardée à
+      // part — si elle porte une valeur, elle explique un écart avec le total
+      // DEGIRO, et le diagnostic doit pouvoir la nommer.
+      unsized.push(entry);
+      continue;
+    }
     if (size === 0) closed.push(entry); // position soldée
     else products.push(entry); // position détenue
   }
 
-  return { products, closed, cashEur, cashOther };
+  return { products, closed, cashEur, cashOther, unsized };
 }
 
 /** Totaux affichés par DEGIRO — sert de contrôle face à notre propre somme. */
@@ -298,7 +305,7 @@ export const transactionProductIds = (txRows) =>
  * dans le diagnostic pour repérer tout de suite une lecture qui a dérivé.
  */
 export function buildPayload({ update, products: infoByLot, transactions, captureId, capturedAt }) {
-  const { products, closed, cashEur, cashOther } = parsePortfolio(update);
+  const { products, closed, cashEur, cashOther, unsized } = parsePortfolio(update);
   const index = indexProducts(infoByLot);
 
   const positions = [];
@@ -333,6 +340,39 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
   const cashSource = totals.cash !== undefined ? 'DEGIRO (converti)' : 'lignes en euros';
   const positionsTotal = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0));
   const summed = round2(positionsTotal + (cash ?? 0));
+
+  // ── Pistes pour un écart côté titres ─────────────────────────────────
+  // Un « écart de 1 412 € » nu ne se corrige pas ; « Worldline : valeur
+  // incohérente » se vérifie en dix secondes. Trois familles de suspects :
+  // ligne valorisée mais sans quantité (exclue de notre somme), valeur reçue
+  // dans une autre devise que l'euro (prise telle quelle, elle fausse la
+  // somme), et action/ETF en euros dont la valeur DEGIRO contredit
+  // cours × quantité (donnée DEGIRO elle-même incohérente — cas des
+  // opérations sur titres mal répercutées).
+  const suspects = [];
+  const nomDe = (row) => index[row.productId]?.name || `produit ${row.productId}`;
+  for (const row of unsized) {
+    const v = amount(row.value);
+    if (v) suspects.push(`${nomDe(row)} : valorisée ${round2(v)} € mais sans quantité — hors de notre somme`);
+  }
+  for (const row of [...products, ...closed]) {
+    const info = index[row.productId] || {};
+    if (row.value && typeof row.value === 'object' && !('EUR' in row.value)) {
+      suspects.push(`${nomDe(row)} : valeur reçue en ${Object.keys(row.value)[0] || 'devise inconnue'}, pas en euros`);
+      continue;
+    }
+    const value = amount(row.value);
+    const price = num(row.price);
+    const size = num(row.size);
+    if (info.currency === 'EUR' && size
+      && ['STOCK', 'ETF', 'FUND', 'ETC', 'ETN'].includes(String(info.productType || '').toUpperCase())
+      && value !== undefined && price !== undefined) {
+      const attendu = round2(price * size);
+      if (Math.abs(attendu - value) > Math.max(2, Math.abs(value) * 0.01)) {
+        suspects.push(`${nomDe(row)} : valeur DEGIRO ${round2(value)} € ≠ cours × quantité ${attendu} €`);
+      }
+    }
+  }
 
   const payload = {
     schema_version: 1,
@@ -370,6 +410,8 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
       computedTotal: summed,
       // Un écart > 1 € signale un champ mal lu : à vérifier avant de se fier aux chiffres.
       totalGap: totals.netLiq === undefined ? null : round2(totals.netLiq - summed),
+      // Lignes qui peuvent expliquer un écart côté titres, nommées.
+      suspects,
     },
   };
 }

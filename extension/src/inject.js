@@ -20,6 +20,9 @@
     ['sessionId', /;jsessionid=([A-Za-z0-9._-]{8,})/i],
     ['intAccount', /\/v5\/update\/(\d{3,})/],
     ['intAccount', /[?&]intAccount=(\d{3,})/],
+    // Chemin de l'historique des ordres appelé par l'application DEGIRO — relevé
+    // ici pour suivre l'endpoint quand DEGIRO le déplace (502 continus sinon).
+    ['txPath', /(\/[a-z][a-z-]*\/secure\/v\d+\/transactions)(?=[?/]|$)/],
   ];
 
   /**

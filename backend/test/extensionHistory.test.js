@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { captureHistory, HISTORY_FLOOR, OVERLAP_DAYS } from '../../extension/src/history.js';
+import { captureHistory, makeRangeFetcher, HISTORY_FLOOR, OVERLAP_DAYS } from '../../extension/src/history.js';
 
 /** Ordre factice, identifiable. */
 const ordre = (annee, n = 1) => ({
@@ -207,5 +207,66 @@ describe('replis supplémentaires', () => {
     expect(out.rows.map((r) => r.id)).toContain('2014-1');
     expect(out.rows).toHaveLength(4);
     expect(out.nextState).not.toBeNull();
+  });
+});
+
+describe("bascule d'endpoint — le 502 permanent du 29/07/2026", () => {
+  const mort = { ok: false, status: 502, reason: 'HTTP 502 — Bad Gateway' };
+  const vivant = (rows = []) => ({ ok: true, rows });
+
+  it('bascule sur la version suivante quand le chemin courant est mort, et y reste', async () => {
+    const appels = [];
+    const doFetch = async (path) => {
+      appels.push(path);
+      return path === '/reporting/secure/v6/transactions' ? vivant() : mort;
+    };
+    const bascules = [];
+    const fetchRange = makeRangeFetcher({
+      candidates: ['/reporting/secure/v4/transactions', '/reporting/secure/v5/transactions', '/reporting/secure/v6/transactions'],
+      doFetch,
+      onSwitch: (p) => bascules.push(p),
+    });
+
+    expect((await fetchRange('01/01/2026', '29/07/2026')).ok).toBe(true);
+    expect(bascules).toEqual(['/reporting/secure/v6/transactions']);
+    // Les appels suivants vont DIRECTEMENT au chemin retenu : pas de re-balayage.
+    appels.length = 0;
+    expect((await fetchRange('01/01/2025', '31/12/2025')).ok).toBe(true);
+    expect(appels).toEqual(['/reporting/secure/v6/transactions']);
+  });
+
+  it('ne balaie qu’UNE fois quand tout est mort — pas d’arrosage sur vingt ans', async () => {
+    let appels = 0;
+    const fetchRange = makeRangeFetcher({
+      candidates: ['/a', '/b', '/c'],
+      doFetch: async () => { appels += 1; return mort; },
+    });
+    expect((await fetchRange('01/01/2026', '29/07/2026')).ok).toBe(false);
+    expect(appels).toBe(3); // le courant + les deux candidats, une seule fois
+    await fetchRange('01/01/2025', '31/12/2025');
+    await fetchRange('01/01/2024', '31/12/2024');
+    expect(appels).toBe(5); // ensuite : un appel par plage, sans balayage
+  });
+
+  it('une session expirée (401) ou une panne réseau ne déclenche pas de bascule', async () => {
+    for (const refus of [{ ok: false, status: 401, reason: 'HTTP 401' }, { ok: false, status: 0, reason: 'réseau' }]) {
+      let appels = 0;
+      const fetchRange = makeRangeFetcher({
+        candidates: ['/a', '/b'],
+        doFetch: async () => { appels += 1; return refus; },
+      });
+      expect((await fetchRange('01/01/2026', '29/07/2026')).ok).toBe(false);
+      expect(appels).toBe(1); // changer de chemin n'y changerait rien
+    }
+  });
+
+  it('le grouper est transmis tel quel au chemin retenu', async () => {
+    const vus = [];
+    const fetchRange = makeRangeFetcher({
+      candidates: ['/a'],
+      doFetch: async (path, du, au, grouper) => { vus.push(grouper); return vivant(); },
+    });
+    await fetchRange('01/01/2026', '29/07/2026', false);
+    expect(vus).toEqual([false]);
   });
 });

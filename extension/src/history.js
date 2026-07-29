@@ -35,6 +35,48 @@ const pad2 = (n) => String(n).padStart(2, '0');
 export const ddmmyyyy = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
+/** Un chemin « mort » : le service derrière a disparu, pas la session. */
+const CHEMIN_MORT = (status) => status === 404 || status === 410
+  || (typeof status === 'number' && status >= 500);
+
+/**
+ * Fabrique le `fetchRange` de `captureHistory` avec bascule d'endpoint.
+ *
+ * Le 29/07/2026, l'endpoint `reporting/secure/v4/transactions` s'est mis à
+ * répondre 502 en continu, même sur une année vide : DEGIRO l'avait déplacé.
+ * Ici, quand le chemin courant répond « mort » (5xx, 404, 410), les candidats
+ * suivants sont essayés UNE seule fois sur la même plage — le premier qui
+ * répond devient le chemin courant (et `onSwitch` permet de le mémoriser).
+ * Un seul balayage par capture : sans ça, un compte à vingt années d'historique
+ * multiplierait chaque refus par le nombre de candidats.
+ *
+ * Une erreur de session (401) ou de réseau (status 0) ne déclenche PAS de
+ * bascule : changer de chemin n'y changerait rien.
+ *
+ * @param candidates  Chemins à essayer, dans l'ordre de confiance.
+ * @param doFetch     async (path, du, au, grouper) => { ok, rows? } | { ok:false, status?, reason? }
+ * @param onSwitch    Appelé avec le nouveau chemin quand une bascule réussit.
+ */
+export function makeRangeFetcher({ candidates, doFetch, onSwitch = () => {} }) {
+  let courant = 0;
+  let balaye = false;
+  return async (du, au, grouper = true) => {
+    const res = await doFetch(candidates[courant], du, au, grouper);
+    if (res.ok || balaye || candidates.length < 2 || !CHEMIN_MORT(res.status)) return res;
+    balaye = true;
+    for (let i = 0; i < candidates.length; i += 1) {
+      if (i === courant) continue;
+      const alt = await doFetch(candidates[i], du, au, grouper);
+      if (alt.ok) {
+        courant = i;
+        onSwitch(candidates[i]);
+        return alt;
+      }
+    }
+    return res;
+  };
+}
+
 /**
  * Clé de dédoublonnage d'une ligne d'ordre : les plages interrogées peuvent se
  * recouvrir. L'`id` de la transaction passe en premier — deux exécutions
