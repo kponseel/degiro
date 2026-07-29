@@ -44,13 +44,13 @@ const PANNES = [
   },
   {
     symptome: "« Historique des transactions ✗ » (HTTP 502 ou autre)",
-    cause: "Le service de reporting de DEGIRO refuse parfois une demande. L'extension réessaie en découpant, puis s'arrête si DEGIRO refuse tout — le diagnostic affiche alors sa réponse exacte.",
-    remede: "Sans gravité : le portefeuille est capturé quand même. Relance plus tard — tant que l'historique n'est pas complet, la capture suivante retentera tout.",
+    cause: "Le service d'historique de DEGIRO refuse la demande — le plus souvent parce que DEGIRO a déplacé son adresse interne. L'extension essaie alors toute seule les adresses voisines connues.",
+    remede: "Si ça persiste : dans l'onglet DEGIRO, ouvre Activité → Transactions, laisse la liste s'afficher, puis relance la capture. L'extension apprend l'adresse exacte que DEGIRO utilise et s'en souvient. Le portefeuille, lui, est capturé quand même — et tant que l'historique n'est pas complet, la capture suivante retentera tout.",
   },
   {
-    symptome: '« Contrôle du total ✗ » — un écart de quelques euros',
-    cause: 'Le plus souvent un solde en devise (des dollars, typiquement, venant de dividendes américains). Le diagnostic le nomme désormais.',
-    remede: "Rien à faire si le montant correspond à ce solde. Un écart important, lui, mérite d'être signalé.",
+    symptome: '« Contrôle du total ✗ » — un écart de quelques euros ou plus',
+    cause: "Un solde en devise non converti, ou une ligne dont la valeur DEGIRO est elle-même incohérente (opération sur titres mal répercutée, par exemple). Le diagnostic nomme désormais les lignes suspectes (« piste(s) : … »).",
+    remede: "Vérifie la ligne nommée sur le site DEGIRO : si son cours y est aussi bizarre, l'écart vient de DEGIRO, pas de la capture. Le total enregistré ici reste celui affiché par DEGIRO.",
   },
   {
     symptome: "J'ai vidé mes données côté Analyzer, et l'historique ne revient pas",

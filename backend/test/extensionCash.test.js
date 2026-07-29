@@ -69,3 +69,63 @@ describe('liquidités en devises', () => {
     expect(payload.cash_eur).toBeUndefined();
   });
 });
+
+describe('pistes nominatives pour un écart côté titres', () => {
+  // Le 29/07/2026, un écart réel de 1 412,78 € restait un chiffre nu : rien ne
+  // disait QUELLE ligne regarder. Le diagnostic doit nommer les suspects.
+  const majUpdate = (lignes, portf = 3000) => ({
+    portfolio: { value: lignes },
+    totalPortfolio: {
+      value: [
+        { name: 'reportPortfValue', value: portf },
+        { name: 'reportCashBal', value: 0 },
+        { name: 'reportNetliq', value: portf },
+      ],
+    },
+  });
+  const infosEur = [{ data: {
+    111: { isin: 'FR0000121014', symbol: 'MC', name: 'LVMH', productType: 'STOCK', currency: 'EUR' },
+    222: { isin: 'FR00140182K6', symbol: 'WLN', name: 'Worldline', productType: 'STOCK', currency: 'EUR' },
+  } }];
+
+  it("nomme l'action en euros dont la valeur DEGIRO contredit cours × quantité", () => {
+    const { diagnostics } = buildPayload({
+      update: majUpdate([
+        ligne({ id: '111', positionType: 'PRODUCT', size: 2, price: 500, value: 1000 }),
+        // Worldline : 100 × 2,80 € devrait valoir 280 €, DEGIRO annonce 1 692 €.
+        ligne({ id: '222', positionType: 'PRODUCT', size: 100, price: 2.8, value: 1692.78 }),
+      ]),
+      products: infosEur, transactions: null, captureId: 'c3', capturedAt: '2026-07-29T13:00:00Z',
+    });
+    expect(diagnostics.suspects).toHaveLength(1);
+    expect(diagnostics.suspects[0]).toContain('Worldline');
+    expect(diagnostics.suspects[0]).toContain('280');
+  });
+
+  it('nomme une valeur reçue dans une autre devise que l’euro', () => {
+    const { diagnostics } = buildPayload({
+      update: majUpdate([
+        ligne({ id: '111', positionType: 'PRODUCT', size: 2, price: 500, value: { USD: 1140 } }),
+      ]),
+      products: infosEur, transactions: null, captureId: 'c4', capturedAt: '2026-07-29T13:00:00Z',
+    });
+    expect(diagnostics.suspects.some((s) => s.includes('USD'))).toBe(true);
+  });
+
+  it('nomme une ligne valorisée mais sans quantité, exclue de notre somme', () => {
+    const { diagnostics } = buildPayload({
+      update: majUpdate([
+        ligne({ id: '222', positionType: 'PRODUCT', value: 1412.78 }),
+      ]),
+      products: infosEur, transactions: null, captureId: 'c5', capturedAt: '2026-07-29T13:00:00Z',
+    });
+    expect(diagnostics.suspects).toHaveLength(1);
+    expect(diagnostics.suspects[0]).toContain('Worldline');
+    expect(diagnostics.suspects[0]).toContain('sans quantité');
+  });
+
+  it('aucune piste quand tout est cohérent — pas de faux soupçons', () => {
+    const { diagnostics } = capture();
+    expect(diagnostics.suspects).toEqual([]);
+  });
+});

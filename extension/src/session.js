@@ -20,6 +20,12 @@ export const PATTERNS = [
   { key: 'sessionId', re: /;jsessionid=([A-Za-z0-9._-]{8,})/i },
   { key: 'intAccount', re: /\/v5\/update\/(\d{3,})/ },
   { key: 'intAccount', re: /[?&]intAccount=(\d{3,})/ },
+  // Chemin de l'historique des ordres tel que l'application DEGIRO l'appelle
+  // elle-même. Le 29/07/2026, notre chemin `reporting/secure/v4` s'est mis à
+  // répondre 502 en continu : l'endpoint avait bougé. Plutôt que de deviner la
+  // nouvelle adresse, on lit celle que DEGIRO utilise — même méthode que pour
+  // le sessionId.
+  { key: 'txPath', re: /(\/[a-z][a-z-]*\/secure\/v\d+\/transactions)(?=[?/]|$)/ },
 ];
 
 /**
@@ -63,11 +69,23 @@ export const urls = {
   // Historique des ordres (achats/ventes), agrégé par ordre — la seule source des
   // positions fermées et des plus-values réalisées. `fromDate`/`toDate` au format
   // JJ/MM/AAAA attendu par DEGIRO ; on remonte très loin pour tout capturer.
-  transactions: (intAccount, sessionId, fromDate, toDate, groupByOrder = true) =>
-    'https://trader.degiro.nl/reporting/secure/v4/transactions'
+  // `path` est remplaçable : quand DEGIRO déplace l'endpoint, on suit le chemin
+  // relevé dans les appels de l'application elle-même (motif `txPath`).
+  transactions: (intAccount, sessionId, fromDate, toDate, groupByOrder = true, path = TX_PATH_DEFAUT) =>
+    `https://trader.degiro.nl${path}`
     + `?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
     // `groupTransactionsByOrder` agrège les exécutions partielles en un ordre.
     // Paramètre facultatif : certaines instances le refusent, d'où le repli.
     + (groupByOrder ? '&groupTransactionsByOrder=true' : '')
     + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
 };
+
+/** Chemin historique « connu » de l'endpoint des transactions. */
+export const TX_PATH_DEFAUT = '/reporting/secure/v4/transactions';
+
+/** Versions voisines à essayer quand le chemin courant est mort (5xx/404). */
+export const TX_PATHS_CONNUS = [
+  TX_PATH_DEFAUT,
+  '/reporting/secure/v5/transactions',
+  '/reporting/secure/v6/transactions',
+];

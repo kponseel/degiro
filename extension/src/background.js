@@ -11,8 +11,8 @@
 import {
   buildPayload, parsePortfolio, parseTransactions, productIds, transactionProductIds, chunk,
 } from './degiro.js';
-import { isComplete, intAccountFromClient, urls } from './session.js';
-import { captureHistory } from './history.js';
+import { isComplete, intAccountFromClient, urls, TX_PATHS_CONNUS } from './session.js';
+import { captureHistory, makeRangeFetcher } from './history.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
 const isDegiro = (tab) => String(tab?.url || '').startsWith('https://trader.degiro.nl/');
@@ -42,19 +42,38 @@ async function fetchTransactions(tabId, creds) {
   // Mémoire par compte DEGIRO ET par jeton Analyzer : régénérer un jeton force
   // une nouvelle découverte complète. C'est le remède documenté quand les
   // données ont été vidées côté Analyzer — l'extension ne peut pas le détecter.
-  const { token } = await chrome.storage.local.get('token');
+  const { token, txPath: memorise } = await chrome.storage.local.get(['token', 'txPath']);
   const cle = `txHistory_${creds.intAccount}_${String(token || '').slice(0, 12)}`;
   const state = (await chrome.storage.local.get(cle))[cle] || null;
 
-  const fetchRange = async (du, au, grouper = true) => {
+  // Chemins candidats vers l'historique, par ordre de confiance : celui que
+  // l'application DEGIRO utilise ELLE-MÊME (relevé par inject.js quand
+  // l'utilisateur visite sa page Transactions), celui qui a marché la dernière
+  // fois, puis les versions connues. Motif : le 29/07/2026, v4 s'est mis à
+  // répondre 502 en continu — l'endpoint avait bougé.
+  const candidates = [...new Set(
+    [creds.txPath, memorise, ...TX_PATHS_CONNUS].filter(Boolean),
+  )];
+
+  let cheminRetenu = false;
+  const doFetch = async (path, du, au, grouper) => {
     const res = await ask(tabId, {
       type: 'FETCH',
-      url: urls.transactions(creds.intAccount, creds.sessionId, du, au, grouper),
+      url: urls.transactions(creds.intAccount, creds.sessionId, du, au, grouper, path),
     }).catch((e) => ({ ok: false, status: 0, error: String(e.message || e) }));
-    if (res?.ok && res.json) return { ok: true, rows: parseTransactions(res.json) };
+    if (res?.ok && res.json) {
+      // Premier succès de la capture : ce chemin est le bon, on s'en souvient
+      // pour les captures futures (même sans page Transactions ouverte).
+      if (!cheminRetenu) {
+        cheminRetenu = true;
+        if (path !== memorise) chrome.storage.local.set({ txPath: path }).catch(() => {});
+      }
+      return { ok: true, rows: parseTransactions(res.json) };
+    }
     const corps = String(res?.text || res?.error || '').trim().slice(0, 120);
-    return { ok: false, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };
+    return { ok: false, status: res?.status, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };
   };
+  const fetchRange = makeRangeFetcher({ candidates, doFetch });
 
   const out = await captureHistory({ today: new Date(), state, fetchRange });
   // La mémoire n'est PAS écrite ici : tant que l'envoi à Analyzer n'a pas
@@ -183,11 +202,15 @@ async function capture() {
     // s'il vient d'une position mal lue ou d'un solde mal compté.
     const detail = `titres ${diagnostics.positionsTotal} € (DEGIRO ${diagnostics.degiroPositions ?? '?'} €)`
       + `, liquidités ${diagnostics.cash ?? '?'} € (DEGIRO ${diagnostics.degiroCash ?? '?'} €, source : ${diagnostics.cashSource})`;
+    // Les lignes suspectes sont nommées : un écart qui désigne son origine se
+    // vérifie en dix secondes sur le site DEGIRO, un écart nu jamais.
+    const pistes = (diagnostics.suspects || []).slice(0, 3).join(' ; ');
     step(report, 'Contrôle du total', consistent,
       consistent
         ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
         : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €) — ${detail}`
-          + (devises ? ` — devises non converties : ${devises}` : ''));
+          + (devises ? ` — devises non converties : ${devises}` : '')
+          + (pistes ? ` — piste(s) : ${pistes}` : ''));
   }
 
   if (!payload.positions.length) {
