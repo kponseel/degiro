@@ -39,7 +39,7 @@ async function findTab() {
 const ask = (tabId, message) => chrome.tabs.sendMessage(tabId, message);
 
 /** Une requête DEGIRO passée par l'onglet, erreurs de messagerie comprises. */
-const fetchViaTab = (tabId, url) => ask(tabId, { type: 'FETCH', url })
+const fetchViaTab = (tabId, url, extra = null) => ask(tabId, { type: 'FETCH', url, ...(extra || {}) })
   .catch((e) => ({ ok: false, status: 0, error: String(e.message || e) }));
 
 /**
@@ -56,15 +56,19 @@ const fetchViaTab = (tabId, url) => ask(tabId, { type: 'FETCH', url })
  * étant un paramètre.
  */
 function makeDegiroFetch(tabId, creds) {
-  let renouvele = false;
-  return async function degiroFetch(construireUrl) {
-    const res = await fetchViaTab(tabId, construireUrl(creds.sessionId));
-    if (res?.status !== 401 || renouvele) return res;
-    renouvele = true;
+  // Tentatives de renouvellement, pas « renouvellement effectué » : marquer la
+  // tentative comme consommée alors que la configuration n'a rien renvoyé (panne
+  // passagère) brûlait l'unique reprise sans rien réparer. Deux essais au plus,
+  // pour ne pas marteler des dizaines de fenêtres avec une session morte.
+  let essais = 0;
+  return async function degiroFetch(construireUrl, extra = null) {
+    const res = await fetchViaTab(tabId, construireUrl(creds.sessionId), extra);
+    if (res?.status !== 401 || essais >= 2) return res;
+    essais += 1;
     const frais = await rafraichirSession(tabId);
     if (!frais || frais === creds.sessionId) return res;
     creds.sessionId = frais;
-    return fetchViaTab(tabId, construireUrl(frais));
+    return fetchViaTab(tabId, construireUrl(frais), extra);
   };
 }
 
@@ -288,12 +292,13 @@ async function capture() {
   ])];
   const lots = [];
   for (const batch of chunk(ids, 100)) {
-    const res = await ask(tab.id, {
-      type: 'FETCH',
-      url: urls.productsInfo(creds.intAccount, creds.sessionId),
-      method: 'POST',
-      body: batch,
-    }).catch(() => null);
+    // Par degiroFetch comme les autres : c'était le seul appel DEGIRO privé de
+    // reprise sur 401, et son échec laisse les positions sans ISIN — donc une
+    // capture vide, alors que la session pouvait simplement être renouvelée.
+    const res = await degiroFetch(
+      (sid) => urls.productsInfo(creds.intAccount, sid),
+      { method: 'POST', body: batch },
+    );
     if (res?.ok && res.json) lots.push(res.json);
   }
   const resolved = lots.reduce((n, l) => n + Object.keys(l?.data || {}).length, 0);

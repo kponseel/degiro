@@ -292,6 +292,36 @@ describe('doublons entre relevé importé et relevé capturé', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('l’ISIN du jumeau importé est RÉCUPÉRÉ, pas perdu avec lui', async () => {
+    // L'identifiant DEGIRO fait foi, mais la ligne importée peut être mieux
+    // renseignée. Détruire l'ISIN au motif qu'on a un meilleur identifiant
+    // détacherait le dividende de son titre.
+    await saveTransactions(mapAccount(parseCsv(RELEVE).rows), 1);
+    const sansIsin = VIA_EXTENSION().map((m) => ({ ...m, isin: null }));
+    await saveTransactions(reclasse(sansIsin), 1);
+
+    const [rows] = await getPool().query(
+      "SELECT external_id, isin FROM transactions WHERE account_id = 1 AND type = 'dividend'",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].external_id.startsWith('dgx-cash-')).toBe(true); // identifiant DEGIRO retenu
+    expect(rows[0].isin).toBe('US0000000001'); // …et l'ISIN de l'import conservé
+  });
+
+  it('rien n’est supprimé quand l’écriture des remplaçantes échoue', async () => {
+    // La suppression intervient APRÈS l'insertion : sinon un échec d'écriture
+    // laisserait l'utilisateur avec MOINS de données qu'au départ.
+    await saveTransactions(mapAccount(parseCsv(RELEVE).rows), 1);
+    const [avant] = await getPool().query('SELECT COUNT(*) AS n FROM transactions WHERE account_id = 1');
+
+    // Un mouvement dont le type viole l'énumération de la colonne : l'INSERT casse.
+    const casse = VIA_EXTENSION().map((m) => ({ ...m, type: 'type_inexistant_qui_casse' }));
+    await expect(saveTransactions(casse, 1)).rejects.toThrow();
+
+    const [apres] = await getPool().query('SELECT COUNT(*) AS n FROM transactions WHERE account_id = 1');
+    expect(apres[0].n).toBe(avant[0].n); // les lignes importées sont intactes
+  });
+
   it('ne confond pas deux mouvements de titres différents au même montant', async () => {
     const csv = [
       'Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id',

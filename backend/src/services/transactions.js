@@ -37,13 +37,18 @@ const isinCompatible = (a, b) => a == null || b == null || a === b;
 /**
  * Arbitre entre mouvements entrants et mouvements déjà stockés.
  *
- * @returns {Promise<{ rows: Array, cleaned: number }>} `rows` = ce qu'il reste à
- *          écrire (les doublons reconstruits entrants sont retirés), `cleaned` =
- *          nombre de jumeaux reconstruits supprimés en base.
+ * Ne SUPPRIME rien : elle renvoie un plan. La suppression n'est exécutée qu'après
+ * l'insertion réussie (`appliquerPlanCash`) — supprimer avant, c'est risquer de
+ * détruire les lignes importées puis d'échouer à écrire leurs remplaçantes, et de
+ * laisser l'utilisateur avec MOINS de données qu'au départ.
+ *
+ * @returns {Promise<{ rows: Array, aSupprimer: string[] }>} `rows` = ce qu'il
+ *          faut écrire (doublons reconstruits entrants retirés, ISIN récupéré des
+ *          jumeaux), `aSupprimer` = identifiants à retirer après écriture.
  */
 async function resoudreJumeauxCash(pool, accountId, txs) {
   const mouvements = txs.filter(estMouvement);
-  if (!mouvements.length) return { rows: txs, cleaned: 0 };
+  if (!mouvements.length) return { rows: txs, aSupprimer: [] };
 
   const dates = mouvements.map((t) => String(t.tx_date).slice(0, 10)).sort();
   // Une seule lecture, bornée à la période couverte : comparer en mémoire évite
@@ -66,6 +71,8 @@ async function resoudreJumeauxCash(pool, accountId, txs) {
 
   const aSupprimer = new Set();
   const aIgnorer = new Set();
+  // ISIN récupérés d'un jumeau mieux renseigné, par identifiant entrant.
+  const isinRecupere = new Map();
   // Appariement UN POUR UN : un mouvement entrant ne neutralise qu'un seul
   // jumeau. Sans ce compteur, deux frais identiques le même jour côté import
   // (que `disambiguateIds` a bien conservés tous les deux) disparaissaient tous
@@ -84,21 +91,36 @@ async function resoudreJumeauxCash(pool, accountId, txs) {
     consommes.add(jumeau.external_id);
     // L'identifiant DEGIRO fait foi : soit le reconstruit stocké disparaît, soit
     // le reconstruit entrant n'est pas écrit (réimport après une capture).
-    if (entrantAutoritaire) aSupprimer.add(jumeau.external_id);
-    else aIgnorer.add(t.external_id);
+    if (entrantAutoritaire) {
+      aSupprimer.add(jumeau.external_id);
+      // Mais l'identifiant qui fait foi ne rend pas la LIGNE meilleure en tout :
+      // le relevé importé porte parfois l'ISIN que la capture n'a pas pu résoudre
+      // (panne de products/info). Le garder évite qu'un dividende cesse d'être
+      // rattaché à son titre au motif qu'on a trouvé un meilleur identifiant.
+      if ((t.isin ?? null) === null && jumeau.isin) isinRecupere.set(t.external_id, jumeau.isin);
+    } else {
+      aIgnorer.add(t.external_id);
+    }
   }
 
+  const rows = aIgnorer.size || isinRecupere.size
+    ? txs.filter((t) => !aIgnorer.has(t.external_id))
+      .map((t) => (isinRecupere.has(t.external_id) ? { ...t, isin: isinRecupere.get(t.external_id) } : t))
+    : txs;
+  return { rows, aSupprimer: [...aSupprimer] };
+}
+
+/** Retire les jumeaux devenus inutiles — APRÈS que leurs remplaçantes soient écrites. */
+async function appliquerPlanCash(pool, accountId, aSupprimer) {
   let cleaned = 0;
-  const ids = [...aSupprimer];
-  for (let i = 0; i < ids.length; i += 500) {
+  for (let i = 0; i < aSupprimer.length; i += 500) {
     const [res] = await pool.query(
       'DELETE FROM transactions WHERE account_id = ? AND external_id IN (?)',
-      [accountId, ids.slice(i, i + 500)],
+      [accountId, aSupprimer.slice(i, i + 500)],
     );
     cleaned += res.affectedRows;
   }
-
-  return { rows: aIgnorer.size ? txs.filter((t) => !aIgnorer.has(t.external_id)) : txs, cleaned };
+  return cleaned;
 }
 
 /**
@@ -137,11 +159,15 @@ export async function saveTransactions(recues, accountId = 1) {
   const pool = getPool();
   const received = recues.length;
 
-  // Arbitrage des jumeaux du relevé de compte AVANT toute écriture : un
-  // mouvement déjà connu sous son identifiant DEGIRO ne doit pas être ré-inséré
-  // sous une empreinte reconstruite, et réciproquement.
-  const { rows: txs, cleaned: nettoyesCash } = await resoudreJumeauxCash(pool, accountId, recues);
-  if (!txs.length) return { received, inserted: 0, completed: 0, cleaned: nettoyesCash };
+  // Arbitrage des jumeaux du relevé de compte : on établit le plan AVANT
+  // d'écrire (il faut savoir quelles lignes entrantes ne pas insérer), mais la
+  // suppression n'intervient qu'APRÈS l'insertion réussie.
+  const { rows: txs, aSupprimer } = await resoudreJumeauxCash(pool, accountId, recues);
+  if (!txs.length) {
+    // Rien à écrire : les entrants étaient tous des doublons déjà connus sous un
+    // meilleur identifiant. Il n'y a donc rien à supprimer non plus.
+    return { received, inserted: 0, completed: 0, cleaned: 0 };
+  }
 
   // On relève l'état AVANT d'écrire. `affectedRows` ne permet pas de distinguer
   // les trois cas qui nous intéressent — inséré, complété, déjà à jour : avec
@@ -197,7 +223,9 @@ export async function saveTransactions(recues, accountId = 1) {
   const avecUuid = txs.filter(
     (t) => !/^(tx|acc|dgx)-/.test(t.external_id) && t.isin && t.qty != null && t.tx_date,
   );
-  let cleaned = nettoyesCash;
+  // Les remplaçantes sont écrites : les jumeaux du relevé peuvent maintenant
+  // partir sans risque de laisser un trou.
+  let cleaned = await appliquerPlanCash(pool, accountId, aSupprimer);
   for (let i = 0; i < avecUuid.length; i += 500) {
     const lot = avecUuid.slice(i, i + 500);
     const tuples = lot.map((t) => [t.type, t.isin, String(t.tx_date).slice(0, 10), t.qty]);
