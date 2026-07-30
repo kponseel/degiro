@@ -124,6 +124,22 @@ describe('pistes nominatives pour un écart côté titres', () => {
     expect(diagnostics.suspects[0]).toContain('sans quantité');
   });
 
+  it('nomme une position détenue dont la valeur n’a pas pu être lue', () => {
+    // Le point aveugle : les trois autres contrôles exigent une valeur pour se
+    // déclencher. Une position sans valeur comptait donc 0 € dans notre somme
+    // et creusait l'écart sans que rien ne la désigne.
+    const { diagnostics } = buildPayload({
+      update: majUpdate([
+        ligne({ id: '111', positionType: 'PRODUCT', size: 2, price: 500, value: 1000 }),
+        ligne({ id: '222', positionType: 'PRODUCT', size: 100, price: 33 }), // pas de `value`
+      ]),
+      products: infosEur, transactions: null, captureId: 'c6', capturedAt: '2026-07-30T15:41:00Z',
+    });
+    expect(diagnostics.valued).toBe(1);
+    expect(diagnostics.held).toBe(2);
+    expect(diagnostics.suspects.some((s) => s.includes('Worldline') && s.includes('aucune valeur'))).toBe(true);
+  });
+
   it('aucune piste quand tout est cohérent — pas de faux soupçons', () => {
     const { diagnostics } = capture();
     expect(diagnostics.suspects).toEqual([]);
