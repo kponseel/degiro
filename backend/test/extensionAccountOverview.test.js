@@ -258,6 +258,36 @@ describe('robustesse du format et signal en cas de dérive', () => {
   });
 });
 
+describe('lignes sans montant : normales, pas illisibles', () => {
+  it('une ligne sans montant est ignorée sans alerter ni bloquer la mémoire', async () => {
+    // Constaté en réel : 1 745 lignes sur un relevé. L'import Account.csv les
+    // écarte lui aussi depuis toujours. Les compter comme un format cassé
+    // condamnait l'extension à relire vingt fenêtres à chaque capture.
+    const out = await captureCash({
+      from: new Date(2026, 6, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => ({ ok: true, rows: [
+        mouvement({ id: 1, change: 1000 }),
+        mouvement({ id: 2, change: null }),
+        mouvement({ id: 3, change: undefined }),
+      ] }),
+    });
+    expect(out.rows).toHaveLength(1);
+    expect(out.sansMontant).toBe(2);
+    expect(out.illisibles).toBe(0);
+    expect(out.complete).toBe(true); // la mémoire peut être posée
+    expect(out.detail).toContain('sans montant');
+    expect(out.detail).not.toContain('illisibles');
+  });
+
+  it('un montant présent mais illisible alerte toujours', () => {
+    // La distinction qui compte : « pas de montant » ≠ « un montant que je ne
+    // sais pas lire ».
+    const rows = mapCashMovements([mouvement({ change: { montant: 12 } })]);
+    expect(rows).toHaveLength(0);
+  });
+});
+
 describe('classification : une seule table, côté serveur', () => {
   it('l’extension n’embarque aucune table — le serveur tranche depuis le libellé', () => {
     // Le type émis par l'extension est volontairement provisoire.

@@ -157,13 +157,21 @@ async function fetchCashMovements(tabId, creds, degiroFetch, debutConnu) {
     const res = await degiroFetch(
       (sid) => urls.accountOverview(creds.intAccount, sid, du, au, path),
     );
-    const mouvements = res?.json?.data?.cashMovements ?? res?.json?.cashMovements;
-    if (res?.ok && Array.isArray(mouvements)) {
+    // Une enveloppe JSON bien formée vaut succès, MÊME sans liste de mouvements :
+    // une période sans le moindre mouvement — les premières années d'un compte —
+    // ne renvoie pas de `cashMovements`. La compter comme un refus empêchait à
+    // jamais la mémoire de couverture de se poser, et faisait relire tout le
+    // relevé à chaque capture (constaté : « 2 période(s) refusée(s) — HTTP 200 »).
+    const json = res?.ok && res.json && typeof res.json === 'object' && !Array.isArray(res.json)
+      ? res.json : null;
+    if (json) {
+      const enveloppe = json.data && typeof json.data === 'object' ? json.data : json;
+      const mouvements = enveloppe.cashMovements;
       if (!cheminRetenu) {
         cheminRetenu = true;
         if (path !== memorise) chrome.storage.local.set({ cashPath: path }).catch(() => {});
       }
-      return { ok: true, rows: mouvements };
+      return { ok: true, rows: Array.isArray(mouvements) ? mouvements : [] };
     }
     const corps = String(res?.text || res?.error || '').trim().slice(0, 120);
     return { ok: false, status: res?.status, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };

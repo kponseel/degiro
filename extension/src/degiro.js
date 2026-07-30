@@ -369,6 +369,16 @@ export function buildPayload({
   // opérations sur titres mal répercutées).
   const suspects = [];
   const nomDe = (row) => index[row.productId]?.name || `produit ${row.productId}`;
+
+  // `portfolioValueCorrection` : DEGIRO l'applique à certains produits pour
+  // arriver à son total, nous ne l'ajoutons pas à `value`. Quand un écart
+  // subsiste sans qu'aucune ligne ne paraisse fautive, c'est le premier chiffre
+  // à comparer — s'il vaut l'écart, la cause est trouvée d'un coup d'œil.
+  const corrections = round2([...products, ...closed]
+    .reduce((s, r) => s + (amount(r.portfolioValueCorrection) ?? 0), 0));
+  if (Math.abs(corrections) > 1) {
+    suspects.push(`corrections de valeur DEGIRO non appliquées : ${corrections} € au total`);
+  }
   for (const row of unsized) {
     const v = amount(row.value);
     if (v) suspects.push(`${nomDe(row)} : valorisée ${round2(v)} € mais sans quantité — hors de notre somme`);

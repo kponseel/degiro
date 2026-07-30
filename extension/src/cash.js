@@ -62,6 +62,24 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const estJambeOrdre = (row) => EXCLUS.test(String(row?.type ?? ''));
 
 /**
+ * Le relevé contient des lignes SANS montant — repères de solde, contreparties
+ * d'écritures. L'import `Account.csv` les écarte depuis toujours (`amount !==
+ * null`) : ce n'est pas une anomalie, et les compter comme illisibles faisait
+ * passer un relevé parfaitement lu pour un format cassé (1 745 lignes sur un
+ * relevé réel), ce qui bloquait la mémoire de couverture — donc vingt fenêtres
+ * relues à chaque capture, pour rien.
+ */
+const porteUnMontant = (row) => row?.change !== undefined && row?.change !== null && row?.change !== '';
+
+/**
+ * Vraie anomalie de format : la ligne annonce un montant, ou une date, que le
+ * mapping ne sait pas lire. C'est le seul cas qui doit alerter et retenir la
+ * mémoire.
+ */
+const estIllisible = (row) => !estJambeOrdre(row) && porteUnMontant(row)
+  && (num(row.change) === undefined || !(cashDate(row?.date) || cashDate(row?.valueDate)));
+
+/**
  * Découpe [from, to] en fenêtres de `maxDays` jours au plus.
  * `from`/`to` sont des `Date`; la dernière fenêtre s'arrête à `to`.
  */
@@ -227,20 +245,27 @@ export async function captureCash({ from, to, fetchRange }) {
   }
 
   const mouvements = mapCashMovements(rows);
-  // Lignes que DEGIRO a bien renvoyées, qui ne sont pas des jambes d'ordre, et
-  // que le mapping n'a pourtant pas su lire : un format qui a changé. Sans ce
-  // compte, une réponse HTTP 200 dont TOUTES les lignes seraient illisibles
-  // passait pour une couverture complète — la mémoire était posée, et le relevé
-  // ne serait plus jamais relu. Un silence, là où il faut un signal.
-  const candidats = rows.filter((r) => !estJambeOrdre(r)).length;
-  const illisibles = Math.max(0, candidats - mouvements.length);
+  // Un format qui change ferait tomber les lignes en silence : une réponse
+  // HTTP 200 dont TOUTES les lignes seraient illisibles passerait pour une
+  // couverture complète, la mémoire serait posée, et le relevé ne serait plus
+  // jamais relu. On compte donc les vraies anomalies — pas les lignes sans
+  // montant, qui sont normales.
+  const illisibles = rows.filter(estIllisible).length;
+  const sansMontant = rows.filter((r) => !estJambeOrdre(r) && !porteUnMontant(r)).length;
 
   const complete = failed === 0 && illisibles === 0;
   const parts = [`${mouvements.length} mouvement(s) sur ${ranges.length} période(s)`];
   if (failed) parts.push(`${failed} période(s) refusée(s) — ${refus}`);
+  if (sansMontant) parts.push(`${sansMontant} ligne(s) sans montant ignorées (normal)`);
   if (illisibles) parts.push(`${illisibles} ligne(s) illisibles (format inattendu) — signale-le`);
 
   return {
-    rows: mouvements, failed, illisibles, ranges: ranges.length, detail: parts.join(' ; '), complete,
+    rows: mouvements,
+    failed,
+    illisibles,
+    sansMontant,
+    ranges: ranges.length,
+    detail: parts.join(' ; '),
+    complete,
   };
 }
