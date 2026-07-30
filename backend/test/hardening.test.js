@@ -172,6 +172,59 @@ describe('Données de référence — pas d’écriture inter-locataires', () =>
 
 // ── Erreurs : pas de détail interne exposé ────────────────────────────
 
+describe('jeton d’extension face à un cookie de session', () => {
+  /**
+   * Constaté en production : l'utilisateur capture depuis un navigateur où il
+   * est aussi connecté à l'Analyzer. Le cookie accompagne alors la requête de
+   * l'extension. Si la session l'emporte, le jeton n'est jamais examiné : son
+   * compteur reste à zéro malgré des captures réussies, et — plus grave — la
+   * requête obtient tous les droits de session au lieu de la portée
+   * « ingestion seule ».
+   */
+  async function connecte(email) {
+    const agent = request.agent(app);
+    const link = await agent.post('/api/auth/request-link').send({ email });
+    await agent.post('/api/auth/verify').send({ token: new URL(link.body.devLink).searchParams.get('token') });
+    const { body } = await agent.post('/api/auth/me/tokens').send({ label: 'test2' });
+    return { agent, token: body.token };
+  }
+
+  const capture = (n) => ({
+    schema_version: 1,
+    source: 'extension',
+    capture_id: `cap-cookie-${n}`,
+    captured_at: '2026-07-30T15:41:00Z',
+    positions: [],
+    transactions: [],
+  });
+
+  it('compte l’envoi même quand un cookie de session accompagne la requête', async () => {
+    const { agent, token } = await connecte('cookie-jeton@example.com');
+    const res = await agent.post('/api/ingest')
+      .set({ Authorization: `Bearer ${token}` })
+      .send(capture(1));
+    expect(res.status).toBe(201);
+
+    const [rows] = await getPool().query('SELECT uses, last_used_at FROM extension_tokens');
+    expect(rows[0].uses).toBe(1);
+    expect(rows[0].last_used_at).toBeTruthy();
+  });
+
+  it('applique la portée « ingestion seule » malgré le cookie', async () => {
+    // Sans cela, un jeton d'extension présenté depuis un navigateur connecté
+    // ouvrait toute l'API — la restriction de portée sautait en silence.
+    const { agent, token } = await connecte('portee-jeton@example.com');
+    const res = await agent.get('/api/portfolio').set({ Authorization: `Bearer ${token}` });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/envoi de captures/);
+  });
+
+  it('le cookie seul reste pleinement valable', async () => {
+    const { agent } = await connecte('cookie-seul@example.com');
+    expect((await agent.get('/api/portfolio')).status).toBe(200);
+  });
+});
+
 describe('Erreurs — le client ne reçoit pas l’intérieur du système', () => {
   it('renvoie un message neutre sur une erreur serveur', async () => {
     const failing = createApp();
