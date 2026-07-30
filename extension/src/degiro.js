@@ -383,6 +383,15 @@ export function buildPayload({
     const v = amount(row.value);
     if (v) suspects.push(`${nomDe(row)} : valorisée ${round2(v)} € mais sans quantité — hors de notre somme`);
   }
+  // Position détenue dont la VALEUR n'a pas pu être lue : elle compte pour 0 €
+  // dans notre somme et creuse l'écart d'autant. C'était le point aveugle des
+  // contrôles ci-dessous, qui exigent tous une valeur pour se déclencher — une
+  // ligne sans valeur leur échappait donc par construction.
+  for (const row of products) {
+    if (num(row.size) && amount(row.value) === undefined) {
+      suspects.push(`${nomDe(row)} : aucune valeur lue — compte pour 0 € dans notre total`);
+    }
+  }
   for (const row of [...products, ...closed]) {
     const info = index[row.productId] || {};
     if (row.value && typeof row.value === 'object' && !('EUR' in row.value)) {
@@ -418,6 +427,9 @@ export function buildPayload({
     diagnostics: {
       rows: (update?.portfolio?.value || []).length,
       held: products.length,
+      // Positions détenues dont la valeur a pu être lue : distingue « il manque
+      // une ligne » de « la valorisation ligne à ligne diverge ».
+      valued: products.filter((r) => amount(r.value) !== undefined).length,
       closed: closedSent,
       sent: positions.length,
       transactions: txs.length,

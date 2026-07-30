@@ -342,7 +342,11 @@ async function capture() {
       .map((c) => `${c.value} ${c.currency}`).join(', ');
     // Décomposition titres / liquidités des deux côtés : un écart nu ne dit pas
     // s'il vient d'une position mal lue ou d'un solde mal compté.
+    // Le nombre de positions RÉELLEMENT valorisées : si les 27 le sont et que
+    // l'écart persiste, aucune ligne ne manque — c'est la valorisation ligne à
+    // ligne qui diverge, et c'est une autre enquête que « il manque un titre ».
     const detail = `titres ${diagnostics.positionsTotal} € (DEGIRO ${diagnostics.degiroPositions ?? '?'} €)`
+      + `, ${diagnostics.valued}/${diagnostics.held} position(s) valorisée(s)`
       + `, liquidités ${diagnostics.cash ?? '?'} € (DEGIRO ${diagnostics.degiroCash ?? '?'} €, source : ${diagnostics.cashSource})`;
     // Les lignes suspectes sont nommées : un écart qui désigne son origine se
     // vérifie en dix secondes sur le site DEGIRO, un écart nu jamais.

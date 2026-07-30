@@ -27,22 +27,39 @@ function safeEqual(a, b) {
  */
 export async function requireAuth(req, res, next) {
   try {
-    const user = await getSessionUser(sessionToken(req));
-    if (user) {
-      req.user = user;
-      return next();
-    }
-
     const header = req.get('authorization') || '';
     const match = /^Bearer\s+(.+)$/i.exec(header);
     const provided = match ? match[1].trim() : '';
 
+    // Le jeton d'extension est examiné AVANT le cookie de session.
+    //
+    // L'ordre inverse avait deux conséquences, constatées en production : quand
+    // l'utilisateur est par ailleurs connecté dans le même navigateur, le cookie
+    // accompagne la requête de l'extension, la session l'emporte, et le jeton
+    // n'est jamais regardé. Son compteur d'envois reste donc à zéro malgré des
+    // captures réussies — le seul retour dont dispose l'utilisateur pour savoir
+    // que son extension fonctionne, et pour repérer un jeton qui servirait à son
+    // insu. Surtout, `viaExtension` n'était pas posé : la requête obtenait tous
+    // les droits de la session au lieu de la portée « ingestion seule » que
+    // `restrictExtensionScope` doit lui imposer.
+    //
+    // Règle retenue : une requête qui présente explicitement une identité est
+    // traitée avec CELLE-LÀ, pas avec l'identité ambiante du navigateur.
     if (provided) {
       const extUser = await getExtensionTokenUser(provided);
       if (extUser) {
         req.user = { ...extUser, viaExtension: true };
         return next();
       }
+    }
+
+    const user = await getSessionUser(sessionToken(req));
+    if (user) {
+      req.user = user;
+      return next();
+    }
+
+    if (provided) {
       const expected = config.apiToken;
       if (expected && safeEqual(provided, expected)) {
         req.user = { id: 1, email: config.auth.ownerEmail || null, pseudo: 'moi', viaToken: true };
