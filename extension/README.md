@@ -29,7 +29,7 @@ depuis la session DEGIRO que tu as **déjà ouverte** dans ton navigateur.
 Une capture par jour suffit : l'API ne garde qu'un instantané par jour et par
 source, et rejouer la même capture ne crée pas de doublon.
 
-Chaque capture envoie **deux choses** :
+Chaque capture envoie **trois choses** :
 
 - **l'instantané du portefeuille** — positions détenues, positions **soldées**
   (quantité nulle) et liquidités ;
@@ -38,10 +38,13 @@ Chaque capture envoie **deux choses** :
   des positions fermées. Les ordres sont dédoublonnés par leur identifiant DEGIRO
   et se confondent avec ceux d'un import `Transactions.csv` — importer les deux ne
   double rien.
+- **le relevé de compte** — versements, retraits, **dividendes**, taxes et frais,
+  d'où viennent la performance réelle (*TWR*) et le suivi des dividendes.
 
-> Les **dividendes** (et retenues à la source) ne figurent pas dans l'historique
-> des ordres : pour les intégrer à la vue fiscale, importe le `Account.csv` (relevé
-> de compte) depuis l'Analyzer.
+> Depuis la version 0.5.0, l'export manuel d'un `Account.csv` n'est donc **plus
+> nécessaire** : le relevé est lu en direct. L'import reste possible en secours,
+> et les deux voies se dédoublonnent — un mouvement déjà connu sous son
+> identifiant DEGIRO n'est pas recréé par un import, et réciproquement.
 
 ## Ce qui circule, et ce qui ne circule pas
 

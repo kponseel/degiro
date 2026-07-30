@@ -84,7 +84,10 @@ export default function Extension() {
         </p>
         <p className="muted">
           Elle apporte aussi ce que les exports CSV ne donnent pas facilement : l'<strong>historique
-          complet de tes ordres</strong>, d'où viennent les positions fermées et les plus-values réalisées.
+          complet de tes ordres</strong>, d'où viennent les positions fermées et les plus-values réalisées,
+          et depuis peu ton <strong>relevé de compte</strong> — versements, dividendes, taxes et frais.
+          Autrement dit : <strong>plus aucun fichier à exporter</strong>, même pour la performance réelle
+          (TWR) et les dividendes.
         </p>
         <Banner kind="info">
           Sur ordinateur uniquement (Chrome, Edge ou Brave). Sur téléphone, l'import d'un fichier CSV
@@ -130,7 +133,7 @@ export default function Extension() {
             </li>
             <li>
               <strong>Attends le message vert</strong> — par exemple
-              «&nbsp;Envoyé : 27 positions, 412 transactions, 85&nbsp;946&nbsp;€&nbsp;».
+              «&nbsp;Envoyé : 27 positions, 412 ordres, 6 794 mouvements, 85&nbsp;946&nbsp;€&nbsp;».
               <div className="muted">
                 Un message rouge&nbsp;? Ouvre le panneau <strong>Diagnostic</strong> juste en dessous :
                 la section suivante explique chaque cas.

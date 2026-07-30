@@ -5,7 +5,9 @@ import {
   parseTransactions, toTransaction, transactionProductIds,
 } from '../../extension/src/degiro.js';
 import { readFileSync } from 'node:fs';
-import { sniff, isComplete, intAccountFromClient, urls, PATTERNS } from '../../extension/src/session.js';
+import {
+  sniff, isComplete, intAccountFromClient, sessionIdFromConfig, urls, PATTERNS,
+} from '../../extension/src/session.js';
 import { ingestSchema } from '../src/schemas/ingest.js';
 import { createApp } from '../src/app.js';
 import { closePool } from '../src/db/pool.js';
@@ -476,5 +478,34 @@ describe('Extension — trajet complet jusqu’au portefeuille', () => {
     expect(a.status).toBe(201);
     expect(b.status).toBe(200);
     expect(b.body.deduplicated).toBe(true);
+  });
+});
+
+describe('Extension — session : secours et renouvellement', () => {
+  it('lit le sessionId de la configuration DEGIRO, enveloppée ou non', () => {
+    expect(sessionIdFromConfig({ data: { sessionId: 'ABCDEF123456' } })).toBe('ABCDEF123456');
+    expect(sessionIdFromConfig({ sessionId: 'ABCDEF123456' })).toBe('ABCDEF123456');
+    // Trop court pour être une session : on préfère ne rien retenir.
+    expect(sessionIdFromConfig({ data: { sessionId: 'abc' } })).toBeNull();
+    expect(sessionIdFromConfig({})).toBeNull();
+    expect(sessionIdFromConfig(null)).toBeNull();
+  });
+
+  it("relève le chemin du relevé de compte appelé par l'application DEGIRO", () => {
+    expect(sniff('https://trader.degiro.nl/portfolio-reports/secure/v6/accountoverview?intAccount=1'))
+      .toMatchObject({ cashPath: '/portfolio-reports/secure/v6/accountoverview' });
+    expect(sniff('/reporting/secure/v6/accountoverview?fromDate=01/01/2026'))
+      .toMatchObject({ cashPath: '/reporting/secure/v6/accountoverview' });
+    expect(sniff('https://trader.degiro.nl/reporting/secure/v4/transactions?x=1').cashPath).toBeUndefined();
+  });
+
+  it("construit l'URL du relevé, échappée et sur un chemin de remplacement", () => {
+    const u = urls.accountOverview('123', 'S123456789', '01/01/2026', '29/07/2026');
+    expect(u.startsWith('https://trader.degiro.nl/portfolio-reports/secure/v6/accountoverview?')).toBe(true);
+    expect(u).toContain('fromDate=01%2F01%2F2026');
+    expect(u).toContain('intAccount=123');
+    const alt = urls.accountOverview('123', 'x', 'a', 'b', '/reporting/secure/v6/accountoverview');
+    expect(alt).toContain('/reporting/secure/v6/accountoverview?');
+    expect(urls.config()).toBe('https://trader.degiro.nl/login/secure/config');
   });
 });

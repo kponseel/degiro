@@ -23,6 +23,8 @@
     // Chemin de l'historique des ordres appelé par l'application DEGIRO — relevé
     // ici pour suivre l'endpoint quand DEGIRO le déplace (502 continus sinon).
     ['txPath', /(\/[a-z][a-z-]*\/secure\/v\d+\/transactions)(?=[?/]|$)/],
+    // Idem pour le relevé de compte (dividendes, dépôts, frais).
+    ['cashPath', /(\/[a-z][a-z-]*\/secure\/v\d+\/accountoverview)(?=[?/]|$)/i],
   ];
 
   /**

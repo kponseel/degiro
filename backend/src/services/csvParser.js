@@ -340,7 +340,14 @@ const DESC_RULES = [
   [/change|fx|conversion|valuta/i, 'fx'],
 ];
 
-function classifyDescription(desc) {
+/**
+ * Type d'un mouvement d'après son libellé. Exporté : c'est la SEULE table de
+ * classification du dépôt, et elle sert aux deux sources — l'import Account.csv
+ * et la capture du relevé par l'extension. L'extension n'embarque donc aucune
+ * copie de ces expressions (elle envoie un type provisoire que le serveur
+ * recalcule ici), ce qui rend toute divergence impossible.
+ */
+export function classifyDescription(desc) {
   const d = String(desc || '');
   for (const [re, type] of DESC_RULES) if (re.test(d)) return type;
   return 'other';

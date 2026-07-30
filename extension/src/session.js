@@ -20,6 +20,9 @@ export const PATTERNS = [
   { key: 'sessionId', re: /;jsessionid=([A-Za-z0-9._-]{8,})/i },
   { key: 'intAccount', re: /\/v5\/update\/(\d{3,})/ },
   { key: 'intAccount', re: /[?&]intAccount=(\d{3,})/ },
+  // Relevé de compte (dividendes, dépôts, frais) — même raison que txPath :
+  // suivre l'adresse que l'application DEGIRO appelle plutôt que la deviner.
+  { key: 'cashPath', re: /(\/[a-z][a-z-]*\/secure\/v\d+\/accountoverview)(?=[?/]|$)/i },
   // Chemin de l'historique des ordres tel que l'application DEGIRO l'appelle
   // elle-même. Le 29/07/2026, notre chemin `reporting/secure/v4` s'est mis à
   // répondre 502 en continu : l'endpoint avait bougé. Plutôt que de deviner la
@@ -56,9 +59,26 @@ export function intAccountFromClient(client) {
   return Number.isInteger(value) || /^\d{3,}$/.test(String(value ?? '')) ? String(value) : null;
 }
 
+/**
+ * Lit le `sessionId` de la configuration DEGIRO.
+ *
+ * Voie de secours quand l'application n'a encore lancé aucun appel : le
+ * repérage d'URL n'a alors rien vu, et l'utilisateur se voyait répondre « reste
+ * quelques secondes sur l'onglet ». Cet appel-là répond à la seule force du
+ * cookie de session. (Constaté dans l'extension Zeus, qui n'utilise QUE cette
+ * voie ; on la garde en secours, le repérage donnant en plus `intAccount` et
+ * les chemins vivants.)
+ */
+export function sessionIdFromConfig(config) {
+  const data = config?.data ?? config;
+  const value = data?.sessionId;
+  return typeof value === 'string' && value.length >= 8 ? value : null;
+}
+
 /** URLs de l'API DEGIRO, construites au même endroit pour rester lisibles. */
 export const urls = {
   origin: 'https://trader.degiro.nl',
+  config: () => 'https://trader.degiro.nl/login/secure/config',
   client: (sessionId) => `https://trader.degiro.nl/pa/secure/client?sessionId=${encodeURIComponent(sessionId)}`,
   update: (intAccount, sessionId) =>
     `https://trader.degiro.nl/trading/secure/v5/update/${encodeURIComponent(intAccount)};jsessionid=${encodeURIComponent(sessionId)}`
@@ -77,6 +97,12 @@ export const urls = {
     // `groupTransactionsByOrder` agrège les exécutions partielles en un ordre.
     // Paramètre facultatif : certaines instances le refusent, d'où le repli.
     + (groupByOrder ? '&groupTransactionsByOrder=true' : '')
+    + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
+  // Mouvements de trésorerie sur une plage. DEGIRO plafonne la largeur de plage
+  // (~6 mois) : le découpage vit dans `cash.js`.
+  accountOverview: (intAccount, sessionId, fromDate, toDate, path = CASH_PATH_DEFAUT) =>
+    `https://trader.degiro.nl${path}`
+    + `?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
     + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
 };
 
@@ -98,4 +124,16 @@ export const TX_PATHS_CONNUS = [
   // Ancien chemin d'avant la migration : gardé au cas où une entité DEGIRO le
   // servirait encore.
   '/reporting/secure/v4/transactions',
+];
+
+/**
+ * Relevé de compte : dépôts, retraits, dividendes, taxes et frais — la source
+ * de la performance réelle (TWR) et des dividendes, qui exigeaient jusqu'ici
+ * l'export manuel d'un Account.csv.
+ */
+export const CASH_PATH_DEFAUT = '/portfolio-reports/secure/v6/accountoverview';
+
+export const CASH_PATHS_CONNUS = [
+  CASH_PATH_DEFAUT,
+  '/reporting/secure/v6/accountoverview',
 ];
