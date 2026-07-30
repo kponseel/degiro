@@ -42,8 +42,24 @@ export function cashDate(v) {
   return j ? `${j[1]}-${j[2]}-${j[3]} 00:00:00` : null;
 }
 
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+/**
+ * Nombre tolérant : DEGIRO renvoie aujourd'hui `change` en nombre, mais une API
+ * non documentée peut le passer en chaîne du jour au lendemain. Refuser
+ * « 12.00 » ferait tomber TOUS les mouvements en silence — et le relevé
+ * passerait pour vide au lieu d'illisible.
+ */
+const num = (v) => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number(v.trim().replace(',', '.'));
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+};
 const round2 = (n) => Math.round(n * 100) / 100;
+
+/** Jambe de trésorerie d'un ordre : exclue volontairement, ce n'est pas une perte. */
+const estJambeOrdre = (row) => EXCLUS.test(String(row?.type ?? ''));
 
 /**
  * Découpe [from, to] en fenêtres de `maxDays` jours au plus.
@@ -205,10 +221,20 @@ export async function captureCash({ from, to, fetchRange }) {
   }
 
   const mouvements = mapCashMovements(rows);
-  const complete = failed === 0;
-  const detail = complete
-    ? `${mouvements.length} mouvement(s) sur ${ranges.length} période(s)`
-    : `${mouvements.length} mouvement(s) lu(s), ${failed} période(s) sur ${ranges.length} refusée(s) — ${refus}`;
+  // Lignes que DEGIRO a bien renvoyées, qui ne sont pas des jambes d'ordre, et
+  // que le mapping n'a pourtant pas su lire : un format qui a changé. Sans ce
+  // compte, une réponse HTTP 200 dont TOUTES les lignes seraient illisibles
+  // passait pour une couverture complète — la mémoire était posée, et le relevé
+  // ne serait plus jamais relu. Un silence, là où il faut un signal.
+  const candidats = rows.filter((r) => !estJambeOrdre(r)).length;
+  const illisibles = Math.max(0, candidats - mouvements.length);
 
-  return { rows: mouvements, failed, ranges: ranges.length, detail, complete };
+  const complete = failed === 0 && illisibles === 0;
+  const parts = [`${mouvements.length} mouvement(s) sur ${ranges.length} période(s)`];
+  if (failed) parts.push(`${failed} période(s) refusée(s) — ${refus}`);
+  if (illisibles) parts.push(`${illisibles} ligne(s) illisibles (format inattendu) — signale-le`);
+
+  return {
+    rows: mouvements, failed, illisibles, ranges: ranges.length, detail: parts.join(' ; '), complete,
+  };
 }
