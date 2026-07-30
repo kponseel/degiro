@@ -170,6 +170,41 @@ describe('capture best-effort', () => {
     expect(out.complete).toBe(true);
   });
 
+  it('deux mouvements identiques dans la MÊME fenêtre sont deux mouvements réels', async () => {
+    // Cas massif sur un relevé réel (143 sur 6 794) : deux frais à la même
+    // seconde, même libellé, même montant. Les confondre en perdrait un — et
+    // avec des versements, c'est la TWR qui serait faussée.
+    const jumeaux = [
+      { ...mouvement({ id: null, description: 'Frais de courtage', change: -1 }) },
+      { ...mouvement({ id: null, description: 'Frais de courtage', change: -1 }) },
+    ];
+    let premiere = true;
+    const out = await captureCash({
+      from: new Date(2026, 6, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => {
+        const rows = premiere ? jumeaux : [];
+        premiere = false;
+        return { ok: true, rows };
+      },
+    });
+    expect(out.rows).toHaveLength(2); // les deux survivent
+    expect(new Set(out.rows.map((r) => r.external_id)).size).toBe(2);
+    expect(out.rows.reduce((s, r) => s + r.amount, 0)).toBe(-2);
+  });
+
+  it('mais un mouvement réémis sur la fenêtre SUIVANTE reste dédoublonné', async () => {
+    // Un mouvement dont la date de valeur tombe au lendemain peut être renvoyé
+    // sur les deux bornes : là, c'est bien le même.
+    const m = mouvement();
+    const out = await captureCash({
+      from: new Date(2025, 0, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => ({ ok: true, rows: [m] }), // le même à chaque fenêtre
+    });
+    expect(out.rows).toHaveLength(1);
+  });
+
   it('une fenêtre refusée ne condamne pas les autres, et empêche la mémoire', async () => {
     let n = 0;
     const out = await captureCash({

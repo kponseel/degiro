@@ -210,14 +210,20 @@ export async function captureCash({ from, to, fetchRange }) {
       refus = refus || lot?.reason || 'refus sans motif';
       continue;
     }
+    // Le dédoublonnage ne porte que sur les fenêtres PRÉCÉDENTES : les fenêtres
+    // ne se recouvrent pas, mais un mouvement peut être renvoyé sur ses deux
+    // bornes (date de valeur au lendemain). À l'intérieur d'une même réponse, en
+    // revanche, deux lignes identiques sont deux mouvements RÉELS — deux frais à
+    // la même seconde, par exemple — et les confondre en perdrait un. Ce cas est
+    // massif sur un relevé réel : 143 sur 6 794.
+    const cettesFenetre = [];
     for (const row of lot.rows || []) {
-      // Les fenêtres ne se recouvrent pas, mais un mouvement peut être renvoyé
-      // sur ses deux bornes (date de valeur au lendemain).
       const cle = `${row?.id ?? ''}|${row?.date ?? ''}|${row?.change ?? ''}|${row?.productId ?? ''}|${row?.description ?? ''}`;
       if (vus.has(cle)) continue;
-      vus.add(cle);
+      cettesFenetre.push(cle);
       rows.push(row);
     }
+    for (const cle of cettesFenetre) vus.add(cle);
   }
 
   const mouvements = mapCashMovements(rows);
