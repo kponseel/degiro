@@ -80,12 +80,22 @@ export const urls = {
     + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
 };
 
-/** Chemin historique « connu » de l'endpoint des transactions. */
-export const TX_PATH_DEFAUT = '/reporting/secure/v4/transactions';
+/**
+ * Chemin par défaut de l'endpoint des transactions.
+ *
+ * DEGIRO a MIGRÉ sa famille reporting : l'ancien `reporting/secure/v4` répond
+ * 502 en continu (constaté les 28-29/07/2026, même sur une année vide), et la
+ * bibliothèque communautaire maintenue (degiro-connector 3.0.36) appelle
+ * désormais `portfolio-reports/secure/v4/transactions` — mêmes paramètres
+ * (fromDate/toDate JJ/MM/AAAA, groupTransactionsByOrder, intAccount,
+ * sessionId), même réponse `{ data: [...] }`.
+ */
+export const TX_PATH_DEFAUT = '/portfolio-reports/secure/v4/transactions';
 
-/** Versions voisines à essayer quand le chemin courant est mort (5xx/404). */
+/** Chemins connus, du plus récent au plus ancien — essayés quand le courant est mort (5xx/404). */
 export const TX_PATHS_CONNUS = [
   TX_PATH_DEFAUT,
-  '/reporting/secure/v5/transactions',
-  '/reporting/secure/v6/transactions',
+  // Ancien chemin d'avant la migration : gardé au cas où une entité DEGIRO le
+  // servirait encore.
+  '/reporting/secure/v4/transactions',
 ];
