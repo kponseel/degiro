@@ -11,8 +11,14 @@
 import {
   buildPayload, parsePortfolio, parseTransactions, productIds, transactionProductIds, chunk,
 } from './degiro.js';
-import { isComplete, intAccountFromClient, urls, TX_PATHS_CONNUS } from './session.js';
-import { captureHistory, makeRangeFetcher } from './history.js';
+import {
+  isComplete, intAccountFromClient, sessionIdFromConfig, urls,
+  TX_PATHS_CONNUS, CASH_PATHS_CONNUS,
+} from './session.js';
+import { captureHistory, makeRangeFetcher, HISTORY_FLOOR } from './history.js';
+import {
+  captureCash, cashProductIds, cashWindow, cashNextState, cashFloorFromOrders,
+} from './cash.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
 const isDegiro = (tab) => String(tab?.url || '').startsWith('https://trader.degiro.nl/');
@@ -32,13 +38,53 @@ async function findTab() {
 
 const ask = (tabId, message) => chrome.tabs.sendMessage(tabId, message);
 
+/** Une requête DEGIRO passée par l'onglet, erreurs de messagerie comprises. */
+const fetchViaTab = (tabId, url, extra = null) => ask(tabId, { type: 'FETCH', url, ...(extra || {}) })
+  .catch((e) => ({ ok: false, status: 0, error: String(e.message || e) }));
+
+/**
+ * Appelle DEGIRO en renouvelant la session sur un 401.
+ *
+ * Les sessions DEGIRO sont courtes, et une expiration en plein milieu d'une
+ * capture faisait tout échouer avec « reconnecte-toi » — alors que le cookie du
+ * navigateur, lui, est toujours valable : seul le `sessionId` relevé au passage
+ * avait vieilli. `/login/secure/config` en délivre un frais à la seule force de
+ * ce cookie. Un seul renouvellement par capture : les appels suivants profitent
+ * du jeton neuf, et un second 401 signale autre chose qu'une expiration.
+ *
+ * `construireUrl(sessionId)` : l'URL doit être RECONSTRUITE, le `sessionId` y
+ * étant un paramètre.
+ */
+function makeDegiroFetch(tabId, creds) {
+  // Tentatives de renouvellement, pas « renouvellement effectué » : marquer la
+  // tentative comme consommée alors que la configuration n'a rien renvoyé (panne
+  // passagère) brûlait l'unique reprise sans rien réparer. Deux essais au plus,
+  // pour ne pas marteler des dizaines de fenêtres avec une session morte.
+  let essais = 0;
+  return async function degiroFetch(construireUrl, extra = null) {
+    const res = await fetchViaTab(tabId, construireUrl(creds.sessionId), extra);
+    if (res?.status !== 401 || essais >= 2) return res;
+    essais += 1;
+    const frais = await rafraichirSession(tabId);
+    if (!frais || frais === creds.sessionId) return res;
+    creds.sessionId = frais;
+    return fetchViaTab(tabId, construireUrl(frais), extra);
+  };
+}
+
+/** Demande un `sessionId` frais à DEGIRO (cookie de session seul). */
+async function rafraichirSession(tabId) {
+  const res = await fetchViaTab(tabId, urls.config());
+  return res?.ok ? sessionIdFromConfig(res.json) : null;
+}
+
 /**
  * Récupère l'historique des ordres. Toute la stratégie (découverte de la
  * première année, arrêt sur années vides, balayage, mémoire inter-captures)
  * vit dans `history.js`, testable hors navigateur — ici on ne fait que le
  * branchement au stockage et à l'onglet DEGIRO.
  */
-async function fetchTransactions(tabId, creds) {
+async function fetchTransactions(tabId, creds, degiroFetch) {
   // Mémoire par compte DEGIRO ET par jeton Analyzer : régénérer un jeton force
   // une nouvelle découverte complète. C'est le remède documenté quand les
   // données ont été vidées côté Analyzer — l'extension ne peut pas le détecter.
@@ -57,10 +103,9 @@ async function fetchTransactions(tabId, creds) {
 
   let cheminRetenu = false;
   const doFetch = async (path, du, au, grouper) => {
-    const res = await ask(tabId, {
-      type: 'FETCH',
-      url: urls.transactions(creds.intAccount, creds.sessionId, du, au, grouper, path),
-    }).catch((e) => ({ ok: false, status: 0, error: String(e.message || e) }));
+    const res = await degiroFetch(
+      (sid) => urls.transactions(creds.intAccount, sid, du, au, grouper, path),
+    );
     if (res?.ok && res.json) {
       // Premier succès de la capture : ce chemin est le bon, on s'en souvient
       // pour les captures futures (même sans page Transactions ouverte).
@@ -80,7 +125,62 @@ async function fetchTransactions(tabId, creds) {
   // abouti, ces ordres ne sont enregistrés nulle part. L'écrire trop tôt — un
   // jeton manquant suffit — condamnerait l'historique à ne jamais repartir,
   // chaque capture suivante ne relisant plus que la période récente.
-  return { ...out, storageKey: cle };
+  //
+  // `decouverte` dit si cette lecture a balayé TOUT l'historique ou seulement la
+  // période récente. Sans cette distinction, le plancher du relevé se déduirait
+  // d'une poignée d'ordres du mois dernier et raterait des années de versements.
+  return { ...out, storageKey: cle, decouverte: !state };
+}
+
+/**
+ * Récupère le RELEVÉ DE COMPTE (dépôts, retraits, dividendes, taxes, frais) —
+ * ce qu'il fallait exporter à la main dans un `Account.csv` pour débloquer la
+ * performance réelle (TWR) et les dividendes.
+ *
+ * Même architecture que l'historique des ordres : stratégie pure dans `cash.js`,
+ * mémoire par compte et par jeton, chemin d'endpoint suivi puis mémorisé.
+ *
+ * @param debutConnu 'AAAA-MM-JJ' découvert par l'historique, ou null : évite de
+ *                   balayer des années où le compte n'existait pas.
+ */
+async function fetchCashMovements(tabId, creds, degiroFetch, debutConnu) {
+  const { token, cashPath: memorise } = await chrome.storage.local.get(['token', 'cashPath']);
+  const cle = `cashHistory_${creds.intAccount}_${String(token || '').slice(0, 12)}`;
+  const state = (await chrome.storage.local.get(cle))[cle] || null;
+
+  const candidates = [...new Set(
+    [creds.cashPath, memorise, ...CASH_PATHS_CONNUS].filter(Boolean),
+  )];
+
+  let cheminRetenu = false;
+  const doFetch = async (path, du, au) => {
+    const res = await degiroFetch(
+      (sid) => urls.accountOverview(creds.intAccount, sid, du, au, path),
+    );
+    const mouvements = res?.json?.data?.cashMovements ?? res?.json?.cashMovements;
+    if (res?.ok && Array.isArray(mouvements)) {
+      if (!cheminRetenu) {
+        cheminRetenu = true;
+        if (path !== memorise) chrome.storage.local.set({ cashPath: path }).catch(() => {});
+      }
+      return { ok: true, rows: mouvements };
+    }
+    const corps = String(res?.text || res?.error || '').trim().slice(0, 120);
+    return { ok: false, status: res?.status, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };
+  };
+  const fetchRange = makeRangeFetcher({ candidates, doFetch });
+
+  const today = new Date();
+  const { from, to, since } = cashWindow({
+    today, state, floorSince: debutConnu, floorYear: HISTORY_FLOOR,
+  });
+  const out = await captureCash({ from, to, fetchRange });
+  return {
+    ...out,
+    storageKey: cle,
+    nextState: cashNextState({ complete: out.complete, since, to }),
+    depuis: since,
+  };
 }
 
 /** Un pas de diagnostic : libellé, verdict, détail lisible. */
@@ -120,10 +220,20 @@ async function capture() {
     };
   }
 
-  // Secours : si l'application n'a encore rien appelé, on interroge /pa/secure/client,
-  // qui répond aussi à la seule force du cookie de session.
+  // Secours n°1 : sans `sessionId` relevé — l'application DEGIRO n'a encore
+  // lancé aucun appel depuis l'ouverture de l'onglet — la configuration en
+  // délivre un à la seule force du cookie de session. Sans cela, l'utilisateur
+  // se voyait répondre « reste quelques secondes sur l'onglet » pour une page à
+  // peine chargée, alors que sa session était parfaitement valable.
+  if (!creds.sessionId) {
+    const frais = await rafraichirSession(tab.id);
+    if (frais) creds.sessionId = frais;
+  }
+
+  // Secours n°2 : `intAccount`, que la configuration ne donne pas, vient de
+  // /pa/secure/client — qui répond lui aussi au seul cookie de session.
   if (creds.sessionId && !creds.intAccount) {
-    const client = await ask(tab.id, { type: 'FETCH', url: urls.client(creds.sessionId) });
+    const client = await fetchViaTab(tab.id, urls.client(creds.sessionId));
     const intAccount = client?.ok ? intAccountFromClient(client.json) : null;
     if (intAccount) creds.intAccount = intAccount;
   }
@@ -139,7 +249,11 @@ async function capture() {
     };
   }
 
-  const update = await ask(tab.id, { type: 'FETCH', url: urls.update(creds.intAccount, creds.sessionId) });
+  // Toutes les lectures DEGIRO passent par ici : un 401 en cours de route
+  // renouvelle la session au lieu de faire échouer la capture entière.
+  const degiroFetch = makeDegiroFetch(tab.id, creds);
+
+  const update = await degiroFetch((sid) => urls.update(creds.intAccount, sid));
   if (!step(report, 'Lecture du portefeuille', Boolean(update?.ok && update.json),
     update?.ok ? 'reçu' : `HTTP ${update?.status ?? '?'}${update?.error ? ` — ${update.error}` : ''}`)) {
     return { ok: false, report, error: update?.status === 401 ? 'Session DEGIRO expirée : reconnecte-toi puis réessaie.' : 'DEGIRO a refusé la lecture du portefeuille.' };
@@ -147,27 +261,44 @@ async function capture() {
 
   // Historique complet des ordres — positions fermées et plus-values réalisées.
   // Best-effort : un échec ici n'empêche pas la capture du portefeuille.
-  const tx = await fetchTransactions(tab.id, creds);
+  const tx = await fetchTransactions(tab.id, creds, degiroFetch);
   const txJson = tx.rows.length ? tx.rows : null;
   step(report, 'Historique des transactions', tx.rows.length > 0 || tx.failed === 0, tx.detail);
 
+  // Relevé de compte : dépôts (donc TWR), dividendes, taxes et frais. Best-effort
+  // lui aussi — et l'import manuel d'un Account.csv reste possible en secours.
+  // Plancher de lecture du relevé. Le resserrement sur le premier ordre n'est
+  // légitime QUE si l'historique vient d'être balayé en entier : sur une lecture
+  // incrémentale, les ordres connus se limitent au mois écoulé et le plancher
+  // qu'ils suggèrent raterait des années de versements — définitivement, puisque
+  // la mémoire du relevé serait ensuite posée sur ce début tronqué.
+  const debutHistorique = tx.nextState?.completeSince ?? null;
+  const cash = await fetchCashMovements(
+    tab.id, creds, degiroFetch,
+    tx.decouverte ? cashFloorFromOrders(tx.rows, debutHistorique) : debutHistorique,
+  );
+  step(report, 'Relevé de compte', cash.rows.length > 0 || cash.failed === 0, cash.detail);
+
   // Résolution des identifiants produit en ISIN, par lots de 100. On résout à la
-  // fois les positions (détenues + soldées) et les produits cités par les ordres :
-  // une position fermée n'apparaît plus dans le portefeuille courant.
+  // fois les positions (détenues + soldées), les produits cités par les ordres et
+  // ceux cités par le relevé : une position fermée n'apparaît plus dans le
+  // portefeuille courant, et un dividende sans ISIN n'est rattachable à rien.
   const { products, closed } = parsePortfolio(update.json);
   const ids = [...new Set([
     ...productIds(products),
     ...productIds(closed),
     ...transactionProductIds(parseTransactions(txJson)),
+    ...cashProductIds(cash.rows),
   ])];
   const lots = [];
   for (const batch of chunk(ids, 100)) {
-    const res = await ask(tab.id, {
-      type: 'FETCH',
-      url: urls.productsInfo(creds.intAccount, creds.sessionId),
-      method: 'POST',
-      body: batch,
-    });
+    // Par degiroFetch comme les autres : c'était le seul appel DEGIRO privé de
+    // reprise sur 401, et son échec laisse les positions sans ISIN — donc une
+    // capture vide, alors que la session pouvait simplement être renouvelée.
+    const res = await degiroFetch(
+      (sid) => urls.productsInfo(creds.intAccount, sid),
+      { method: 'POST', body: batch },
+    );
     if (res?.ok && res.json) lots.push(res.json);
   }
   const resolved = lots.reduce((n, l) => n + Object.keys(l?.data || {}).length, 0);
@@ -177,6 +308,7 @@ async function capture() {
     update: update.json,
     products: lots,
     transactions: txJson,
+    cashMovements: cash.rows,
     captureId: crypto.randomUUID(),
     capturedAt: new Date().toISOString(),
   });
@@ -187,8 +319,10 @@ async function capture() {
     + (diagnostics.skipped.length ? ` — ignorées faute d'ISIN : ${diagnostics.skipped.map((s) => s.name || s.productId).join(', ')}` : ''));
 
   if (diagnostics.transactionsRead > 0) {
-    step(report, 'Transactions retenues', diagnostics.transactions > 0,
-      `${diagnostics.transactions} envoyée(s) sur ${diagnostics.transactionsRead} lue(s)`);
+    const ordres = diagnostics.transactions - (diagnostics.cashMovements || 0);
+    step(report, 'Transactions retenues', ordres > 0,
+      `${ordres} ordre(s) envoyé(s) sur ${diagnostics.transactionsRead} lu(s)`
+      + (diagnostics.cashMovements ? `, + ${diagnostics.cashMovements} mouvement(s) du relevé` : ''));
   }
 
   // Contrôle de cohérence : notre somme doit coller au total affiché par DEGIRO.
@@ -225,15 +359,26 @@ async function capture() {
   // couverture peut être posée. Si des ordres ont été écartés faute d'ISIN
   // résolu (panne passagère de products/info), on ne la pose PAS — la capture
   // suivante relira tout, ce qui coûte quelques requêtes mais ne perd rien.
-  const historiqueEntier = diagnostics.transactionsRead === payload.transactions.length;
+  // Le payload porte désormais AUSSI les mouvements du relevé : la comparaison
+  // doit se faire sur les seuls ordres, sans quoi la mémoire ne serait plus
+  // jamais posée.
+  const ordresEnvoyes = diagnostics.transactions - (diagnostics.cashMovements || 0);
+  const historiqueEntier = diagnostics.transactionsRead === ordresEnvoyes;
   if (tx.nextState && tx.storageKey && historiqueEntier) {
     await chrome.storage.local.set({ [tx.storageKey]: tx.nextState }).catch(() => {});
+  }
+  // Mémoire du relevé, indépendante : elle n'est posée que si toutes ses
+  // périodes ont répondu (`cash.complete`), sinon la capture suivante reprend
+  // depuis le même début et rattrape le trou.
+  if (cash.nextState && cash.storageKey) {
+    await chrome.storage.local.set({ [cash.storageKey]: cash.nextState }).catch(() => {});
   }
 
   const summary = {
     at: report.at,
     positions: payload.positions.length,
-    transactions: payload.transactions.length,
+    transactions: ordresEnvoyes,
+    movements: diagnostics.cashMovements || 0,
     total: payload.total_value_eur,
     deduplicated: Boolean(sent.body?.deduplicated),
   };

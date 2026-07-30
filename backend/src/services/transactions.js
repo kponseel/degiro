@@ -1,5 +1,128 @@
 import { getPool } from '../db/pool.js';
 
+// ── Jumeaux du relevé de compte ──────────────────────────────────────
+
+/**
+ * Le même mouvement de trésorerie peut arriver par DEUX voies : l'import
+ * `Account.csv`, qui n'a aucun identifiant et retombe sur un `acc-<empreinte>`
+ * reconstruit, et la capture du relevé par l'extension, qui porte l'identifiant
+ * DEGIRO du mouvement (`dgx-cash-<id>`). Les deux se dédoublonnent chacun avec
+ * eux-mêmes, mais pas entre eux : sans arbitrage, un compte qui a importé son
+ * relevé PUIS capturé (ou l'inverse) compterait ses versements deux fois — et la
+ * performance réelle (TWR), qui se calcule sur ces versements, serait fausse,
+ * les dividendes doublés.
+ *
+ * Arbitrage : l'identifiant DEGIRO fait foi. Il est stable, opaque aux
+ * reformulations de libellé, et ne dépend pas d'une empreinte calculée.
+ */
+const CASH_AUTORITAIRE = /^dgx-cash-/;
+const CASH_RECONSTRUIT = /^acc-/;
+
+/** Un mouvement de trésorerie : sans quantité, avec un montant. */
+const estMouvement = (t) => t.qty == null && t.amount != null && Boolean(t.tx_date);
+
+/**
+ * Signature d'un mouvement, hors identifiant : ce qui le rend reconnaissable
+ * d'une source à l'autre. L'ISIN en est EXCLU volontairement — l'extension ne
+ * peut le renseigner que si la résolution des produits a abouti, et une panne
+ * passagère de `products/info` ne doit pas faire échouer la reconnaissance. Il
+ * est comparé à part, en tolérant qu'un côté l'ignore.
+ */
+const signature = (type, txDate, amount, currency) =>
+  `${type}|${String(txDate).slice(0, 10)}|${Number(amount).toFixed(2)}|${currency ?? ''}`;
+
+/** Deux ISIN se correspondent s'ils sont égaux, ou si l'un des deux est inconnu. */
+const isinCompatible = (a, b) => a == null || b == null || a === b;
+
+/**
+ * Arbitre entre mouvements entrants et mouvements déjà stockés.
+ *
+ * Ne SUPPRIME rien : elle renvoie un plan. La suppression n'est exécutée qu'après
+ * l'insertion réussie (`appliquerPlanCash`) — supprimer avant, c'est risquer de
+ * détruire les lignes importées puis d'échouer à écrire leurs remplaçantes, et de
+ * laisser l'utilisateur avec MOINS de données qu'au départ.
+ *
+ * @returns {Promise<{ rows: Array, aSupprimer: string[] }>} `rows` = ce qu'il
+ *          faut écrire (doublons reconstruits entrants retirés, ISIN récupéré des
+ *          jumeaux), `aSupprimer` = identifiants à retirer après écriture.
+ */
+async function resoudreJumeauxCash(pool, accountId, txs) {
+  const mouvements = txs.filter(estMouvement);
+  if (!mouvements.length) return { rows: txs, aSupprimer: [] };
+
+  const dates = mouvements.map((t) => String(t.tx_date).slice(0, 10)).sort();
+  // Une seule lecture, bornée à la période couverte : comparer en mémoire évite
+  // les pièges des tuples SQL avec des colonnes nullables (devise, ISIN).
+  const [stockes] = await pool.query(
+    `SELECT external_id, type, DATE(tx_date) AS jour, amount, currency, isin
+       FROM transactions
+      WHERE account_id = ? AND qty IS NULL AND amount IS NOT NULL
+        AND tx_date >= ? AND tx_date < DATE_ADD(?, INTERVAL 1 DAY)
+        AND (external_id LIKE 'acc-%' OR external_id LIKE 'dgx-cash-%')`,
+    [accountId, `${dates[0]} 00:00:00`, dates[dates.length - 1]],
+  );
+
+  const parSignature = new Map();
+  for (const r of stockes) {
+    const cle = signature(r.type, r.jour, r.amount, r.currency);
+    if (!parSignature.has(cle)) parSignature.set(cle, []);
+    parSignature.get(cle).push(r);
+  }
+
+  const aSupprimer = new Set();
+  const aIgnorer = new Set();
+  // ISIN récupérés d'un jumeau mieux renseigné, par identifiant entrant.
+  const isinRecupere = new Map();
+  // Appariement UN POUR UN : un mouvement entrant ne neutralise qu'un seul
+  // jumeau. Sans ce compteur, deux frais identiques le même jour côté import
+  // (que `disambiguateIds` a bien conservés tous les deux) disparaissaient tous
+  // les deux dès qu'UN seul équivalent arrivait — une perte silencieuse.
+  const consommes = new Set();
+  for (const t of mouvements) {
+    const voisins = parSignature.get(signature(t.type, t.tx_date, t.amount, t.currency)) || [];
+    const entrantAutoritaire = CASH_AUTORITAIRE.test(t.external_id);
+    const jumeau = voisins.find((r) => r.external_id !== t.external_id // le même, pas un jumeau
+      && !consommes.has(r.external_id)
+      && isinCompatible(t.isin ?? null, r.isin ?? null)
+      // L'entrant porte l'identifiant DEGIRO → son jumeau est un reconstruit.
+      // L'entrant est reconstruit → son jumeau est un identifiant DEGIRO.
+      && (entrantAutoritaire ? CASH_RECONSTRUIT : CASH_AUTORITAIRE).test(r.external_id));
+    if (!jumeau) continue;
+    consommes.add(jumeau.external_id);
+    // L'identifiant DEGIRO fait foi : soit le reconstruit stocké disparaît, soit
+    // le reconstruit entrant n'est pas écrit (réimport après une capture).
+    if (entrantAutoritaire) {
+      aSupprimer.add(jumeau.external_id);
+      // Mais l'identifiant qui fait foi ne rend pas la LIGNE meilleure en tout :
+      // le relevé importé porte parfois l'ISIN que la capture n'a pas pu résoudre
+      // (panne de products/info). Le garder évite qu'un dividende cesse d'être
+      // rattaché à son titre au motif qu'on a trouvé un meilleur identifiant.
+      if ((t.isin ?? null) === null && jumeau.isin) isinRecupere.set(t.external_id, jumeau.isin);
+    } else {
+      aIgnorer.add(t.external_id);
+    }
+  }
+
+  const rows = aIgnorer.size || isinRecupere.size
+    ? txs.filter((t) => !aIgnorer.has(t.external_id))
+      .map((t) => (isinRecupere.has(t.external_id) ? { ...t, isin: isinRecupere.get(t.external_id) } : t))
+    : txs;
+  return { rows, aSupprimer: [...aSupprimer] };
+}
+
+/** Retire les jumeaux devenus inutiles — APRÈS que leurs remplaçantes soient écrites. */
+async function appliquerPlanCash(pool, accountId, aSupprimer) {
+  let cleaned = 0;
+  for (let i = 0; i < aSupprimer.length; i += 500) {
+    const [res] = await pool.query(
+      'DELETE FROM transactions WHERE account_id = ? AND external_id IN (?)',
+      [accountId, aSupprimer.slice(i, i + 500)],
+    );
+    cleaned += res.affectedRows;
+  }
+  return cleaned;
+}
+
 /**
  * Enregistre des mouvements (relevé de compte ou ordres) pour un utilisateur.
  *
@@ -31,9 +154,20 @@ import { getPool } from '../db/pool.js';
  *
  * @returns {Promise<{ received: number, inserted: number, completed: number, cleaned: number }>}
  */
-export async function saveTransactions(txs, accountId = 1) {
-  if (!txs.length) return { received: 0, inserted: 0, completed: 0, cleaned: 0 };
+export async function saveTransactions(recues, accountId = 1) {
+  if (!recues.length) return { received: 0, inserted: 0, completed: 0, cleaned: 0 };
   const pool = getPool();
+  const received = recues.length;
+
+  // Arbitrage des jumeaux du relevé de compte : on établit le plan AVANT
+  // d'écrire (il faut savoir quelles lignes entrantes ne pas insérer), mais la
+  // suppression n'intervient qu'APRÈS l'insertion réussie.
+  const { rows: txs, aSupprimer } = await resoudreJumeauxCash(pool, accountId, recues);
+  if (!txs.length) {
+    // Rien à écrire : les entrants étaient tous des doublons déjà connus sous un
+    // meilleur identifiant. Il n'y a donc rien à supprimer non plus.
+    return { received, inserted: 0, completed: 0, cleaned: 0 };
+  }
 
   // On relève l'état AVANT d'écrire. `affectedRows` ne permet pas de distinguer
   // les trois cas qui nous intéressent — inséré, complété, déjà à jour : avec
@@ -89,7 +223,9 @@ export async function saveTransactions(txs, accountId = 1) {
   const avecUuid = txs.filter(
     (t) => !/^(tx|acc|dgx)-/.test(t.external_id) && t.isin && t.qty != null && t.tx_date,
   );
-  let cleaned = 0;
+  // Les remplaçantes sont écrites : les jumeaux du relevé peuvent maintenant
+  // partir sans risque de laisser un trou.
+  let cleaned = await appliquerPlanCash(pool, accountId, aSupprimer);
   for (let i = 0; i < avecUuid.length; i += 500) {
     const lot = avecUuid.slice(i, i + 500);
     const tuples = lot.map((t) => [t.type, t.isin, String(t.tx_date).slice(0, 10), t.qty]);
@@ -111,5 +247,5 @@ export async function saveTransactions(txs, accountId = 1) {
   const completed = new Set(
     txs.filter((t) => connus.get(t.external_id) === true && t.amount_eur != null).map((t) => t.external_id),
   ).size;
-  return { received: txs.length, inserted, completed, cleaned };
+  return { received, inserted, completed, cleaned };
 }

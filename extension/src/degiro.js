@@ -304,7 +304,9 @@ export const transactionProductIds = (txRows) =>
  * retombe sur notre propre somme sinon — l'écart entre les deux est remonté
  * dans le diagnostic pour repérer tout de suite une lecture qui a dérivé.
  */
-export function buildPayload({ update, products: infoByLot, transactions, captureId, capturedAt }) {
+export function buildPayload({
+  update, products: infoByLot, transactions, cashMovements = [], captureId, capturedAt,
+}) {
   const { products, closed, cashEur, cashOther, unsized } = parsePortfolio(update);
   const index = indexProducts(infoByLot);
 
@@ -329,6 +331,22 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
   for (const row of txRows) {
     const tx = toTransaction(row, index[String(row?.productId ?? '')]);
     if (tx) txs.push(tx);
+  }
+
+  // Mouvements du relevé de compte (déjà normalisés par `cash.js`) : on leur
+  // rattache l'ISIN quand le produit a pu être résolu. Contrairement aux ordres,
+  // un ISIN manquant ne les disqualifie PAS — un versement n'a pas de titre, et
+  // un dividende sans ISIN reste un dividende encaissé.
+  let cashSent = 0;
+  for (const m of cashMovements || []) {
+    const info = m.productId ? index[m.productId] : null;
+    const isin = String(info?.isin || '').trim().toUpperCase();
+    // `productId` ne fait pas partie du contrat d'ingestion : il ne servait qu'à
+    // retrouver l'ISIN, et n'a rien à faire dans le payload envoyé.
+    const mouvement = { ...m, isin: ISIN_RE.test(isin) ? isin : null };
+    delete mouvement.productId;
+    txs.push(mouvement);
+    cashSent += 1;
   }
 
   const totals = parseTotals(update);
@@ -394,6 +412,9 @@ export function buildPayload({ update, products: infoByLot, transactions, captur
       sent: positions.length,
       transactions: txs.length,
       transactionsRead: txRows.length,
+      // Mouvements du relevé compris dans `transactions` : les distinguer permet
+      // au diagnostic de dire ce qui vient des ordres et ce qui vient du relevé.
+      cashMovements: cashSent,
       skipped,
       cashEur,
       // Devises non converties, pour expliquer un éventuel reliquat au lieu de

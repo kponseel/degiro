@@ -133,10 +133,14 @@ els.capture.addEventListener('click', async () => {
     renderReport(res?.report);
     if (res?.ok) {
       const s = res.summary;
-      const tx = s.transactions ? `, ${s.transactions} transaction(s)` : '';
+      const tx = s.transactions ? `, ${s.transactions} ordre(s)` : '';
+      // Les mouvements du relevé (dividendes, versements) sont comptés à part :
+      // ils débloquent la performance réelle et les dividendes, et le dire
+      // montre que l'export manuel d'un Account.csv n'est plus nécessaire.
+      const mv = s.movements ? `, ${s.movements} mouvement(s)` : '';
       show(els.success, s.deduplicated
-        ? `Déjà à jour : ${s.positions} position(s)${tx}, ${s.total} €.`
-        : `Envoyé : ${s.positions} position(s)${tx}, ${s.total} €.`);
+        ? `Déjà à jour : ${s.positions} position(s)${tx}${mv}, ${s.total} €.`
+        : `Envoyé : ${s.positions} position(s)${tx}${mv}, ${s.total} €.`);
       els.last.textContent = 'dernière capture à l’instant';
     } else {
       show(els.error, res?.error || 'Échec de la capture.');
