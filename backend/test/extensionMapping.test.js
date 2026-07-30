@@ -335,11 +335,12 @@ describe('Extension — repérage de la session DEGIRO', () => {
   });
 
   it("construit l'URL de l'historique sur un chemin de remplacement", () => {
-    const u = urls.transactions('123', 'S123456789', '01/01/2026', '29/07/2026', true, '/portfolio-reports/secure/v6/transactions');
-    expect(u.startsWith('https://trader.degiro.nl/portfolio-reports/secure/v6/transactions?')).toBe(true);
+    const u = urls.transactions('123', 'S123456789', '01/01/2026', '29/07/2026', true, '/reporting/secure/v6/transactions');
+    expect(u.startsWith('https://trader.degiro.nl/reporting/secure/v6/transactions?')).toBe(true);
     expect(u).toContain('groupTransactionsByOrder=true');
-    // Sans chemin fourni : la v4 historique.
-    expect(urls.transactions('123', 'S123456789', 'a', 'b')).toContain('/reporting/secure/v4/transactions');
+    // Sans chemin fourni : la famille post-migration (degiro-connector 3.0.36),
+    // l'ancienne `reporting/secure/v4` répondant 502 depuis fin juillet 2026.
+    expect(urls.transactions('123', 'S123456789', 'a', 'b')).toContain('/portfolio-reports/secure/v4/transactions');
   });
 
   it('les motifs dupliqués dans inject.js n’ont pas divergé', () => {
