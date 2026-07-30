@@ -1,4 +1,5 @@
 import { getPool } from '../db/pool.js';
+import { classifyDescription } from './csvParser.js';
 
 // ── Jumeaux du relevé de compte ──────────────────────────────────────
 
@@ -31,6 +32,22 @@ const estMouvement = (t) => t.qty == null && t.amount != null && Boolean(t.tx_da
 const signature = (type, txDate, amount, currency) =>
   `${type}|${String(txDate).slice(0, 10)}|${Number(amount).toFixed(2)}|${currency ?? ''}`;
 
+/**
+ * Type d'un mouvement pour l'APPARIEMENT, recalculé depuis son libellé.
+ *
+ * Le `type` stocké est figé au moment de l'import : aucune écriture ne le
+ * recalcule (il ne figure pas dans le `ON DUPLICATE KEY UPDATE`). Or la table de
+ * classification, elle, évolue — elle a déjà été affinée plusieurs fois. Une
+ * ligne importée sous une ancienne règle porte donc un type périmé, tandis que
+ * l'entrante est classée avec la règle du jour : les signatures divergent, le
+ * jumeau n'est plus reconnu, et le mouvement est compté DEUX fois.
+ *
+ * On compare donc les deux côtés avec la table courante. Le type stocké ne sert
+ * que de repli, quand la ligne n'a pas de libellé exploitable.
+ */
+const typePourAppariement = (type, description) =>
+  (description ? classifyDescription(description) : type);
+
 /** Deux ISIN se correspondent s'ils sont égaux, ou si l'un des deux est inconnu. */
 const isinCompatible = (a, b) => a == null || b == null || a === b;
 
@@ -54,7 +71,7 @@ async function resoudreJumeauxCash(pool, accountId, txs) {
   // Une seule lecture, bornée à la période couverte : comparer en mémoire évite
   // les pièges des tuples SQL avec des colonnes nullables (devise, ISIN).
   const [stockes] = await pool.query(
-    `SELECT external_id, type, DATE(tx_date) AS jour, amount, currency, isin
+    `SELECT external_id, type, description, DATE(tx_date) AS jour, amount, currency, isin
        FROM transactions
       WHERE account_id = ? AND qty IS NULL AND amount IS NOT NULL
         AND tx_date >= ? AND tx_date < DATE_ADD(?, INTERVAL 1 DAY)
@@ -64,7 +81,7 @@ async function resoudreJumeauxCash(pool, accountId, txs) {
 
   const parSignature = new Map();
   for (const r of stockes) {
-    const cle = signature(r.type, r.jour, r.amount, r.currency);
+    const cle = signature(typePourAppariement(r.type, r.description), r.jour, r.amount, r.currency);
     if (!parSignature.has(cle)) parSignature.set(cle, []);
     parSignature.get(cle).push(r);
   }
@@ -79,7 +96,9 @@ async function resoudreJumeauxCash(pool, accountId, txs) {
   // les deux dès qu'UN seul équivalent arrivait — une perte silencieuse.
   const consommes = new Set();
   for (const t of mouvements) {
-    const voisins = parSignature.get(signature(t.type, t.tx_date, t.amount, t.currency)) || [];
+    const voisins = parSignature.get(
+      signature(typePourAppariement(t.type, t.description), t.tx_date, t.amount, t.currency),
+    ) || [];
     const entrantAutoritaire = CASH_AUTORITAIRE.test(t.external_id);
     const jumeau = voisins.find((r) => r.external_id !== t.external_id // le même, pas un jumeau
       && !consommes.has(r.external_id)

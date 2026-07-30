@@ -170,6 +170,41 @@ describe('capture best-effort', () => {
     expect(out.complete).toBe(true);
   });
 
+  it('deux mouvements identiques dans la MÊME fenêtre sont deux mouvements réels', async () => {
+    // Cas massif sur un relevé réel (143 sur 6 794) : deux frais à la même
+    // seconde, même libellé, même montant. Les confondre en perdrait un — et
+    // avec des versements, c'est la TWR qui serait faussée.
+    const jumeaux = [
+      { ...mouvement({ id: null, description: 'Frais de courtage', change: -1 }) },
+      { ...mouvement({ id: null, description: 'Frais de courtage', change: -1 }) },
+    ];
+    let premiere = true;
+    const out = await captureCash({
+      from: new Date(2026, 6, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => {
+        const rows = premiere ? jumeaux : [];
+        premiere = false;
+        return { ok: true, rows };
+      },
+    });
+    expect(out.rows).toHaveLength(2); // les deux survivent
+    expect(new Set(out.rows.map((r) => r.external_id)).size).toBe(2);
+    expect(out.rows.reduce((s, r) => s + r.amount, 0)).toBe(-2);
+  });
+
+  it('mais un mouvement réémis sur la fenêtre SUIVANTE reste dédoublonné', async () => {
+    // Un mouvement dont la date de valeur tombe au lendemain peut être renvoyé
+    // sur les deux bornes : là, c'est bien le même.
+    const m = mouvement();
+    const out = await captureCash({
+      from: new Date(2025, 0, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => ({ ok: true, rows: [m] }), // le même à chaque fenêtre
+    });
+    expect(out.rows).toHaveLength(1);
+  });
+
   it('une fenêtre refusée ne condamne pas les autres, et empêche la mémoire', async () => {
     let n = 0;
     const out = await captureCash({
@@ -184,6 +219,42 @@ describe('capture best-effort', () => {
     expect(out.failed).toBe(1);
     expect(out.complete).toBe(false);
     expect(out.detail).toContain('HTTP 502');
+  });
+});
+
+describe('robustesse du format et signal en cas de dérive', () => {
+  it('accepte un montant en chaîne — DEGIRO peut changer de format du jour au lendemain', () => {
+    const [m] = mapCashMovements([mouvement({ change: '1000.00' })]);
+    expect(m.amount).toBe(1000);
+    const [v] = mapCashMovements([mouvement({ change: '12,50' })]);
+    expect(v.amount).toBe(12.5);
+  });
+
+  it('des lignes illisibles empêchent la mémoire au lieu de passer pour un relevé vide', async () => {
+    // Le pire scénario : HTTP 200, des lignes renvoyées, mais un format que le
+    // mapping ne sait plus lire. Déclarer la couverture complète couperait le
+    // relevé DÉFINITIVEMENT, sans le moindre signal.
+    const illisible = { ...mouvement(), change: { montant: 1000 } }; // ni nombre ni chaîne
+    const out = await captureCash({
+      from: new Date(2026, 6, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => ({ ok: true, rows: [illisible] }),
+    });
+    expect(out.rows).toHaveLength(0);
+    expect(out.illisibles).toBe(1);
+    expect(out.complete).toBe(false); // la capture suivante retentera
+    expect(out.detail).toContain('illisibles');
+  });
+
+  it('les jambes d’ordre exclues ne comptent PAS comme illisibles', async () => {
+    const out = await captureCash({
+      from: new Date(2026, 6, 1),
+      to: new Date(2026, 6, 29),
+      fetchRange: async () => ({ ok: true, rows: [mouvement({ type: 'TRANSACTION' })] }),
+    });
+    expect(out.rows).toHaveLength(0);
+    expect(out.illisibles).toBe(0);
+    expect(out.complete).toBe(true); // exclusion volontaire, pas une dérive
   });
 });
 
@@ -365,6 +436,33 @@ describe('doublons entre relevé importé et relevé capturé', () => {
     );
     expect(rows[0].n).toBe(2); // le second frais a survécu
     expect(Number(rows[0].total)).toBe(-2);
+  });
+
+  it('reconnaît le jumeau même si le type stocké est périmé', async () => {
+    // Le type d'une ligne importée est figé ; la table de classification, elle,
+    // évolue. Si l'appariement se fiait au type stocké, le jumeau ne serait plus
+    // reconnu et le versement compté DEUX fois — donc la TWR faussée.
+    await saveTransactions([{
+      tx_date: '2026-07-29 13:00:00',
+      type: 'other', // classement obsolète : aujourd'hui ce libellé donne 'deposit'
+      isin: null,
+      description: 'Versement de fonds',
+      qty: null,
+      amount: 1000,
+      currency: 'EUR',
+      amount_eur: 1000,
+      external_id: 'acc-type-perime',
+    }], 1);
+
+    const entrant = mapCashMovements([mouvement({ id: 555, description: 'Versement de fonds', change: 1000 })])
+      .map((m) => ({ ...m, isin: null, productId: undefined }));
+    const res = await saveTransactions(reclasse(entrant), 1);
+    expect(res.cleaned).toBe(1); // le jumeau au type périmé est bien reconnu
+
+    const [rows] = await getPool().query(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE account_id = 1 AND type = 'deposit'",
+    );
+    expect(Number(rows[0].total)).toBe(1000); // et non 2000
   });
 
   it('ne touche pas aux ordres : seuls les mouvements sans quantité sont arbitrés', async () => {
