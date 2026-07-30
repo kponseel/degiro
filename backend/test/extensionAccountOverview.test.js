@@ -312,6 +312,31 @@ describe('doublons entre relevé importé et relevé capturé', () => {
     expect(rows.find((r) => r.isin === 'US0000000002').external_id.startsWith('acc-')).toBe(true);
   });
 
+  it('apparie UN POUR UN : un entrant ne peut pas effacer deux jumeaux', async () => {
+    // Deux frais identiques le même jour existent (relevé réel : 143 cas). Ils
+    // sont bien conservés tous les deux à l'import. Si l'extension n'en remonte
+    // qu'un, l'autre doit SURVIVRE — sinon la perte est silencieuse.
+    const csv = [
+      'Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id',
+      '29-07-2026,13:00,29-07-2026,,,"Frais de courtage",,EUR,"-1,00",EUR,"100,00",',
+      '29-07-2026,13:00,29-07-2026,,,"Frais de courtage",,EUR,"-1,00",EUR,"99,00",',
+    ].join('\n');
+    const importes = mapAccount(parseCsv(csv).rows);
+    expect(importes).toHaveLength(2); // les deux sont bien distingués à l'import
+    await saveTransactions(importes, 1);
+
+    const un = mapCashMovements([mouvement({ id: 444, description: 'Frais de courtage', change: -1 })])
+      .map((m) => ({ ...m, isin: null, productId: undefined }));
+    const res = await saveTransactions(reclasse(un), 1);
+    expect(res.cleaned).toBe(1); // un seul jumeau retiré, pas les deux
+
+    const [rows] = await getPool().query(
+      "SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS n FROM transactions WHERE account_id = 1 AND type = 'fee'",
+    );
+    expect(rows[0].n).toBe(2); // le second frais a survécu
+    expect(Number(rows[0].total)).toBe(-2);
+  });
+
   it('ne touche pas aux ordres : seuls les mouvements sans quantité sont arbitrés', async () => {
     await saveTransactions([{
       tx_date: '2026-07-29 13:00:00', type: 'buy', isin: 'US0000000001', description: 'Achat',

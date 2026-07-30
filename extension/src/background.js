@@ -121,7 +121,11 @@ async function fetchTransactions(tabId, creds, degiroFetch) {
   // abouti, ces ordres ne sont enregistrés nulle part. L'écrire trop tôt — un
   // jeton manquant suffit — condamnerait l'historique à ne jamais repartir,
   // chaque capture suivante ne relisant plus que la période récente.
-  return { ...out, storageKey: cle };
+  //
+  // `decouverte` dit si cette lecture a balayé TOUT l'historique ou seulement la
+  // période récente. Sans cette distinction, le plancher du relevé se déduirait
+  // d'une poignée d'ordres du mois dernier et raterait des années de versements.
+  return { ...out, storageKey: cle, decouverte: !state };
 }
 
 /**
@@ -259,9 +263,15 @@ async function capture() {
 
   // Relevé de compte : dépôts (donc TWR), dividendes, taxes et frais. Best-effort
   // lui aussi — et l'import manuel d'un Account.csv reste possible en secours.
+  // Plancher de lecture du relevé. Le resserrement sur le premier ordre n'est
+  // légitime QUE si l'historique vient d'être balayé en entier : sur une lecture
+  // incrémentale, les ordres connus se limitent au mois écoulé et le plancher
+  // qu'ils suggèrent raterait des années de versements — définitivement, puisque
+  // la mémoire du relevé serait ensuite posée sur ce début tronqué.
+  const debutHistorique = tx.nextState?.completeSince ?? null;
   const cash = await fetchCashMovements(
     tab.id, creds, degiroFetch,
-    cashFloorFromOrders(tx.rows, tx.nextState?.completeSince ?? null),
+    tx.decouverte ? cashFloorFromOrders(tx.rows, debutHistorique) : debutHistorique,
   );
   step(report, 'Relevé de compte', cash.rows.length > 0 || cash.failed === 0, cash.detail);
 

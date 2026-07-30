@@ -66,21 +66,26 @@ async function resoudreJumeauxCash(pool, accountId, txs) {
 
   const aSupprimer = new Set();
   const aIgnorer = new Set();
+  // Appariement UN POUR UN : un mouvement entrant ne neutralise qu'un seul
+  // jumeau. Sans ce compteur, deux frais identiques le même jour côté import
+  // (que `disambiguateIds` a bien conservés tous les deux) disparaissaient tous
+  // les deux dès qu'UN seul équivalent arrivait — une perte silencieuse.
+  const consommes = new Set();
   for (const t of mouvements) {
-    const voisins = parSignature.get(signature(t.type, t.tx_date, t.amount, t.currency));
-    if (!voisins) continue;
+    const voisins = parSignature.get(signature(t.type, t.tx_date, t.amount, t.currency)) || [];
     const entrantAutoritaire = CASH_AUTORITAIRE.test(t.external_id);
-    for (const r of voisins) {
-      if (r.external_id === t.external_id) continue; // le même mouvement, pas un jumeau
-      if (!isinCompatible(t.isin ?? null, r.isin ?? null)) continue;
-      // L'entrant porte l'identifiant DEGIRO et le stocké est reconstruit :
-      // le reconstruit disparaît.
-      if (entrantAutoritaire && CASH_RECONSTRUIT.test(r.external_id)) aSupprimer.add(r.external_id);
-      // L'inverse : ne pas ré-créer un jumeau reconstruit d'un mouvement déjà
-      // connu sous son identifiant DEGIRO (réimport d'un Account.csv après une
-      // capture).
-      if (!entrantAutoritaire && CASH_AUTORITAIRE.test(r.external_id)) aIgnorer.add(t.external_id);
-    }
+    const jumeau = voisins.find((r) => r.external_id !== t.external_id // le même, pas un jumeau
+      && !consommes.has(r.external_id)
+      && isinCompatible(t.isin ?? null, r.isin ?? null)
+      // L'entrant porte l'identifiant DEGIRO → son jumeau est un reconstruit.
+      // L'entrant est reconstruit → son jumeau est un identifiant DEGIRO.
+      && (entrantAutoritaire ? CASH_RECONSTRUIT : CASH_AUTORITAIRE).test(r.external_id));
+    if (!jumeau) continue;
+    consommes.add(jumeau.external_id);
+    // L'identifiant DEGIRO fait foi : soit le reconstruit stocké disparaît, soit
+    // le reconstruit entrant n'est pas écrit (réimport après une capture).
+    if (entrantAutoritaire) aSupprimer.add(jumeau.external_id);
+    else aIgnorer.add(t.external_id);
   }
 
   let cleaned = 0;
