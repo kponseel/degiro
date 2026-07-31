@@ -351,12 +351,20 @@ async function capture() {
     // Les lignes suspectes sont nommées : un écart qui désigne son origine se
     // vérifie en dix secondes sur le site DEGIRO, un écart nu jamais.
     const pistes = (diagnostics.suspects || []).slice(0, 3).join(' ; ');
+    // Ventilation par devise : sur une devise étrangère, « valeur » et
+    // « cours × quantité » doivent différer du taux de change. S'ils sont égaux,
+    // la valeur reçue est locale et comptée à tort comme des euros.
+    const devisesDetail = (diagnostics.parDevise || [])
+      .map((d) => `${d.devise} ${d.lignes} ligne(s) ${d.valeur} €`
+        + (d.local === null ? '' : ` (cours×qté ${d.local})`))
+      .join(' ; ');
     step(report, 'Contrôle du total', consistent,
       consistent
         ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
         : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €) — ${detail}`
           + (devises ? ` — devises non converties : ${devises}` : '')
-          + (pistes ? ` — piste(s) : ${pistes}` : ''));
+          + (pistes ? ` — piste(s) : ${pistes}` : '')
+          + (devisesDetail ? ` — par devise : ${devisesDetail}` : ''));
   }
 
   if (!payload.positions.length) {

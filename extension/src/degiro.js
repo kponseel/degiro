@@ -357,6 +357,29 @@ export function buildPayload({
   const cash = totals.cash ?? cashEur;
   const cashSource = totals.cash !== undefined ? 'DEGIRO (converti)' : 'lignes en euros';
   const positionsTotal = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0));
+
+  // Répartition par devise de cotation : ce que nous sommons (`value`) face à
+  // `cours × quantité`, la valeur exprimée dans la devise du titre.
+  //
+  // Sur une ligne convertie par DEGIRO, le second vaut le premier multiplié par
+  // le taux de change. S'ils sont ÉGAUX sur une devise étrangère, c'est que la
+  // valeur reçue est LOCALE et que nous la comptons comme des euros — ce qui
+  // fausserait le total sans qu'aucun contrôle actuel ne s'en aperçoive, tous
+  // se limitant aux lignes en euros. C'est la mesure qui tranche un écart dont
+  // aucune ligne ne semble responsable.
+  const parDevise = [...products.reduce((acc, row) => {
+    const devise = String(index[row.productId]?.currency || '?').toUpperCase();
+    const e = acc.get(devise) || { devise, lignes: 0, valeur: 0, local: 0, localConnu: true };
+    const prix = num(row.price);
+    const qte = num(row.size);
+    e.lignes += 1;
+    e.valeur += amount(row.value) ?? 0;
+    if (prix === undefined || qte === undefined) e.localConnu = false;
+    else e.local += prix * qte;
+    return acc.set(devise, e);
+  }, new Map()).values()].map((e) => ({
+    ...e, valeur: round2(e.valeur), local: e.localConnu ? round2(e.local) : null,
+  }));
   const summed = round2(positionsTotal + (cash ?? 0));
 
   // ── Pistes pour un écart côté titres ─────────────────────────────────
@@ -455,6 +478,8 @@ export function buildPayload({
       totalGap: totals.netLiq === undefined ? null : round2(totals.netLiq - summed),
       // Lignes qui peuvent expliquer un écart côté titres, nommées.
       suspects,
+      // Ventilation par devise : tranche un écart qu'aucune ligne n'explique.
+      parDevise,
     },
   };
 }

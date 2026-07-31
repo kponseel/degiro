@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DEGIRO Analyzer — capture",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Envoie votre portefeuille DEGIRO vers votre instance DEGIRO Analyzer, depuis votre session déjà ouverte.",
   "permissions": ["storage"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
