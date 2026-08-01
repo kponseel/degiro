@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { getSnapshots, getPerformance, getBenchmark, getAnalytics } from '../lib/api.js';
 import { fmtEur, fmtPct, fmtDate, fmtDateShort, fmtNum, plural } from '../lib/format.js';
 import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
 import RealizedPanel from '../components/RealizedPanel.jsx';
+import PerfCharts from '../components/PerfCharts.jsx';
 import Dividends from './Dividends.jsx';
 
 const TT = { background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--ink)' };
@@ -112,7 +113,6 @@ export default function History({ onGoImport }) {
   const risk = analytics?.risk || null;
   const conc = analytics?.concentration || null;
   const attr = analytics?.attribution || null;
-  const hasHistory = data.length >= 2;
 
   const benchAvailable = bench && bench.available;
   const benchName = bench?.name || 'Benchmark';
@@ -124,6 +124,7 @@ export default function History({ onGoImport }) {
   const totalPl = attr?.totals?.pl_eur ?? null;
   const totalPlPct = attr?.totals?.pl_pct ?? null;
   const realized = analytics?.realized || null;
+  const capital = perf?.capital || null;
 
   return (
     <>
@@ -132,10 +133,25 @@ export default function History({ onGoImport }) {
         <p>Ta performance réelle, sa décomposition par titre, et les mesures de risque de ton portefeuille.</p>
       </div>
 
-      {/* KPIs principaux */}
+      {/* KPIs principaux.
+          Le capital investi et le bénéfice passent devant : ce sont les deux
+          chiffres qui répondent à « est-ce que je gagne de l'argent ? ». La
+          valeur seule ne le dit pas — elle monte aussi quand on verse. */}
       <div className="grid stat-row">
         <Stat label="Valeur actuelle" value={fmtEur(last)} sub={`au ${data[data.length - 1].date}`} />
-        <Stat label="+/- value latente" value={signEur(totalPl)} sub={totalPlPct != null ? signPct(totalPlPct) : 'apports inclus'} tone={tone(totalPl)} />
+        {capital && capital.invested != null && capital.coverage !== 'none' ? (
+          <>
+            <Stat label="Capital investi" value={fmtEur(capital.invested)} sub={`${plural(capital.flows, 'versement')} depuis le ${fmtDate(capital.firstFlow)}`} />
+            <Stat
+              label="Bénéfice"
+              value={signEur(capital.pnl)}
+              sub={capital.pnlPct != null ? `${signPct(capital.pnlPct)} du capital` : 'valeur − capital investi'}
+              tone={tone(capital.pnl)}
+            />
+          </>
+        ) : (
+          <Stat label="+/- value latente" value={signEur(totalPl)} sub={totalPlPct != null ? signPct(totalPlPct) : 'apports inclus'} tone={tone(totalPl)} />
+        )}
         <Stat
           label="Performance (TWR)"
           value={twr != null ? signPct(twr) : '—'}
@@ -147,6 +163,12 @@ export default function History({ onGoImport }) {
         ) : (
           <Stat label="Variation de valeur" value={signEur(change)} sub="apports inclus" tone={tone(change)} />
         )}
+      </div>
+
+      {/* Graphiques d'évolution : valeur vs capital, bénéfice, rendement
+          mensuel, drawdown, composition. */}
+      <div style={{ marginTop: 16 }}>
+        <PerfCharts snapshots={rows} perf={perf} />
       </div>
 
       {/* Gains / pertes réalisés + vue fiscale */}
@@ -218,36 +240,6 @@ export default function History({ onGoImport }) {
           </Card>
         </div>
       )}
-
-      {/* Courbe de valeur */}
-      <div style={{ marginTop: 16 }}>
-        <Card title="Valeur totale du portefeuille">
-          {hasHistory ? (
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gv" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} />
-                      <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--line-soft)" vertical={false} />
-                  <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
-                  <YAxis tick={axisTick} tickLine={false} axisLine={false} width={70}
-                    tickFormatter={(v) => new Intl.NumberFormat('fr-FR', { notation: 'compact' }).format(v)} />
-                  <Tooltip formatter={(v) => [fmtEur(v), 'Valeur']} contentStyle={TT} labelStyle={{ color: 'var(--ink-soft)' }} />
-                  <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#gv)" isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="muted" style={{ padding: '24px 0', textAlign: 'center' }}>
-              La courbe se construit à chaque capture — reviens après un second import.
-            </div>
-          )}
-        </Card>
-      </div>
 
       <div style={{ margin: '16px 0' }}>
         <Banner kind="info">
