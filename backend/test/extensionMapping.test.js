@@ -279,6 +279,85 @@ describe('Extension — payload envoyé à l’API', () => {
   });
 });
 
+/**
+ * Le fonds de trésorerie, reproduit avec les chiffres d'un compte réel.
+ *
+ * DEGIRO découpe le même patrimoine de deux façons incompatibles : son interface
+ * montre « Portfolio » (titres, fonds EXCLU) et « EUR » (liquidités, fonds
+ * INCLUS) ; son API expose `reportPortfValue` (fonds INCLUS) et `reportCashBal`
+ * (fonds EXCLU). Nous lisions les titres comme l'interface et les liquidités
+ * comme l'API : le fonds tombait entre les deux chaises.
+ */
+describe('Extension — fonds de trésorerie compté deux fois différemment', () => {
+  const fondsUpdate = {
+    portfolio: {
+      name: 'portfolio',
+      value: [
+        row('331868', { id: '331868', positionType: 'PRODUCT', size: 100, price: 500, value: 50000 }),
+        row('1153605', { id: '1153605', positionType: 'PRODUCT', size: 1, price: 27203.29, value: 27203.29 }),
+        // Les deux lignes de trésorerie de l'interface : le fonds et le solde
+        // bancaire. Leur somme est ce que DEGIRO affiche sous « EUR ».
+        row('EUR', { id: 'EUR', positionType: 'CASH', value: 2426.8 }),
+        row('FLATEX_EUR', { id: 'FLATEX_EUR', positionType: 'CASH', value: 7604.92 }),
+      ],
+    },
+    totalPortfolio: {
+      name: 'totalPortfolio',
+      value: [
+        { name: 'reportPortfValue', value: 79630.09 }, // titres + fonds
+        { name: 'reportCashBal', value: 7604.92 }, // solde bancaire seul
+        { name: 'reportNetliq', value: 87235.01 },
+      ],
+    },
+  };
+  const build = (u = fondsUpdate) => buildPayload({
+    update: u, products: productsInfo, captureId: 'x', capturedAt: '2026-08-01T16:10:52Z',
+  });
+
+  it('compte le fonds dans les liquidités, comme l’interface DEGIRO', () => {
+    const { payload, diagnostics } = build();
+    // Nos titres restent ceux de l'écran « Portfolio »…
+    expect(diagnostics.positionsTotal).toBe(77203.29);
+    // …et les liquidités valent enfin l'écran « EUR », fonds compris.
+    // Avant correction : 7 604,92 €, soit 2 426,80 € évaporés.
+    expect(payload.cash_eur).toBe(10031.72);
+    expect(payload.total_value_eur).toBe(87235.01);
+    expect(diagnostics.cashSource).toBe('DEGIRO (total − titres)');
+  });
+
+  it('nomme le fonds au lieu de laisser un écart inexpliqué', () => {
+    const { diagnostics } = build();
+    expect(diagnostics.fondsTresorerie).toBe(2426.8);
+    // L'écart de 2 426,80 € qui résistait à toutes les explications a disparu.
+    expect(diagnostics.totalGap).toBe(0);
+  });
+
+  it('garde un contrôle du total qui n’est pas une tautologie', () => {
+    // Les liquidités se déduisent désormais du total DEGIRO. Si le contrôle les
+    // reprenait, il comparerait ce total à lui-même — c'est précisément ce qui
+    // annonçait « liquidités exactes au centime » pendant que 2 400 €
+    // manquaient. Une position illisible doit donc rester BRUYANTE.
+    const amputé = structuredClone(fondsUpdate);
+    amputé.portfolio.value[1].value = amputé.portfolio.value[1].value
+      .filter((f) => f.name !== 'value');
+    const { diagnostics } = build(amputé);
+    expect(diagnostics.totalGap).toBe(27203.29);
+    expect(diagnostics.suspects.some((s) => /aucune valeur lue/.test(s))).toBe(true);
+  });
+
+  it('annule le contrôle plutôt que de le fausser sans ligne en euros', () => {
+    const sansCash = structuredClone(fondsUpdate);
+    sansCash.portfolio.value = sansCash.portfolio.value.slice(0, 2);
+    const { payload, diagnostics } = build(sansCash);
+    // Pas de seconde lecture disponible → aucun écart annoncé…
+    expect(diagnostics.totalGap).toBeNull();
+    // …mais le total et les liquidités restent ceux de DEGIRO.
+    expect(payload.total_value_eur).toBe(87235.01);
+    expect(payload.cash_eur).toBe(10031.72);
+    expect(diagnostics.fondsTresorerie).toBeNull();
+  });
+});
+
 describe('Extension — repérage de la session DEGIRO', () => {
   it('lit sessionId et intAccount dans les URLs de l’application', () => {
     expect(sniff('https://trader.degiro.nl/trading/secure/v5/update/12345678;jsessionid=ABCDEF123456?portfolio=0'))
