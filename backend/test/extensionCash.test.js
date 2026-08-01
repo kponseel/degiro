@@ -39,10 +39,31 @@ describe('liquidités en devises', () => {
   it("s'appuie sur le solde total converti par DEGIRO, pas sur les seules lignes en euros", () => {
     // Le défaut : ne sommer que l'euro laissait 105,89 € de côté et faisait
     // apparaître un écart avec le total DEGIRO, sans dire d'où il venait.
-    const { payload, diagnostics } = capture();
+    const { payload } = capture();
     expect(payload.cash_eur).toBe(605.89);
-    expect(diagnostics.computedTotal).toBe(1605.89);
-    expect(diagnostics.totalGap).toBe(0);
+    expect(payload.total_value_eur).toBe(1605.89);
+  });
+
+  it('reconnaît le reliquat de change au lieu de le prendre pour une erreur', () => {
+    // Notre somme indépendante ne PEUT pas inclure les 115 $ : cette réponse ne
+    // porte aucun taux de change. Le contrôle affiche donc bien un reliquat…
+    const { diagnostics } = capture();
+    expect(diagnostics.computedTotal).toBe(1500); // 1000 de titres + 500 € lus
+    expect(diagnostics.totalGap).toBe(105.89);
+    // …mais il tient dans les 115 $ non convertis : ce n'est pas un défaut de
+    // lecture. L'annoncer comme tel enverrait chercher un bug inexistant.
+    expect(diagnostics.gapExplique).toBe(true);
+  });
+
+  it('ne laisse pas un solde en devise couvrir une vraie erreur de lecture', () => {
+    // Le plafond reste une borne : 115 $ n'excusent pas 4 000 € manquants.
+    const titreMalLu = structuredClone(update);
+    titreMalLu.totalPortfolio.value.find((f) => f.name === 'reportNetliq').value = 5605.89;
+    const { diagnostics } = buildPayload({
+      update: titreMalLu, products: infos, transactions: null, captureId: 'c3', capturedAt: '2026-07-28T08:00:00Z',
+    });
+    expect(diagnostics.totalGap).toBe(4105.89);
+    expect(diagnostics.gapExplique).toBe(false);
   });
 
   it('le diagnostic nomme les devises restées de côté', () => {

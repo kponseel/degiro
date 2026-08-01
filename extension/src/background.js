@@ -333,9 +333,32 @@ async function capture() {
       + (diagnostics.cashMovements ? `, + ${diagnostics.cashMovements} mouvement(s) du relevé` : ''));
   }
 
+  // Le fonds de trésorerie tombe dans un angle mort du vocabulaire DEGIRO : son
+  // API le compte dans les TITRES (`reportPortfValue`), son interface l'affiche
+  // dans les LIQUIDITÉS (« EUR »). Le nommer explique d'un seul coup pourquoi
+  // notre ligne « titres » est plus basse que celle de DEGIRO — faute de quoi
+  // l'écart se redécouvre à l'œil à chaque capture, et se cherche là où il n'est
+  // pas. Affiché dans les deux cas : c'est aussi vrai quand tout concorde.
+  const fonds = Math.abs(diagnostics.fondsTresorerie || 0) > 1
+    ? ` — dont fonds de trésorerie ${diagnostics.fondsTresorerie} €, que DEGIRO range dans ses titres et affiche dans ses liquidités`
+    : '';
+
+  // Sans ligne de trésorerie en euros, `buildPayload` annule le contrôle plutôt
+  // que de le fausser. On le dit au lieu de faire disparaître l'étape : une
+  // vérification absente doit se voir, sinon elle passe pour une vérification
+  // réussie.
+  if (diagnostics.totalGap === null && diagnostics.degiroTotal !== undefined) {
+    step(report, 'Contrôle du total', true,
+      `${diagnostics.degiroTotal} € selon DEGIRO — recoupement indépendant impossible,`
+      + ' aucune ligne de trésorerie en euros lue');
+  }
+
   // Contrôle de cohérence : notre somme doit coller au total affiché par DEGIRO.
   if (diagnostics.totalGap !== null) {
-    const consistent = Math.abs(diagnostics.totalGap) <= 1;
+    // `gapExplique` : le reliquat tient dans les soldes en devises que nous ne
+    // savons pas convertir. Ce n'est pas une erreur de lecture, et l'annoncer
+    // comme telle enverrait chercher un bug là où il n'y en a pas.
+    const consistent = Math.abs(diagnostics.totalGap) <= 1 || diagnostics.gapExplique;
     // Les devises non converties sont la cause la plus fréquente d'un reliquat :
     // le dire évite de faire chercher une lecture fautive là où il n'y en a pas.
     const devises = (diagnostics.cashOther || [])
@@ -347,7 +370,7 @@ async function capture() {
     // ligne qui diverge, et c'est une autre enquête que « il manque un titre ».
     const detail = `titres ${diagnostics.positionsTotal} € (DEGIRO ${diagnostics.degiroPositions ?? '?'} €)`
       + `, ${diagnostics.valued}/${diagnostics.held} position(s) valorisée(s)`
-      + `, liquidités ${diagnostics.cash ?? '?'} € (DEGIRO ${diagnostics.degiroCash ?? '?'} €, source : ${diagnostics.cashSource})`;
+      + `, liquidités ${diagnostics.cash ?? '?'} € (source : ${diagnostics.cashSource})`;
     // Les lignes suspectes sont nommées : un écart qui désigne son origine se
     // vérifie en dix secondes sur le site DEGIRO, un écart nu jamais.
     const pistes = (diagnostics.suspects || []).slice(0, 3).join(' ; ');
@@ -359,12 +382,16 @@ async function capture() {
         + (d.local === null ? '' : ` (cours×qté ${d.local})`))
       .join(' ; ');
     step(report, 'Contrôle du total', consistent,
-      consistent
+      (consistent
         ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
+          + (diagnostics.gapExplique && devises
+            ? `, au reliquat de ${diagnostics.totalGap} € près — les soldes en ${devises} que DEGIRO convertit et nous non`
+            : '')
         : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €) — ${detail}`
           + (devises ? ` — devises non converties : ${devises}` : '')
           + (pistes ? ` — piste(s) : ${pistes}` : '')
-          + (devisesDetail ? ` — par devise : ${devisesDetail}` : ''));
+          + (devisesDetail ? ` — par devise : ${devisesDetail}` : ''))
+      + fonds);
   }
 
   if (!payload.positions.length) {
