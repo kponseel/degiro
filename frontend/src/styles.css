@@ -633,10 +633,16 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 /* ── Sous-navigation d'une page (Performance) ─────────── */
 /* Défilable plutôt que repliée : quatre onglets sur deux lignes mangeraient
    l'écran de téléphone qu'on cherche justement à libérer. */
+/* Le dégradé sur le bord droit signale qu il reste des onglets a decouvrir.
+   Sans lui, sur 360-414 px, « Dividendes » est purement invisible et rien
+   n indique qu il faut faire glisser : l onglet passe pour inexistant.
+   `mask-image` s efface tout seul en fin de course, contrairement a un
+   pseudo-element fixe qui masquerait le dernier onglet une fois atteint. */
 .subtabs {
   display: flex; gap: 4px; margin-bottom: 16px; padding-bottom: 2px;
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid var(--line-soft);
+  scroll-snap-type: x proximity;
 }
 .subtabs::-webkit-scrollbar { display: none; }
 .subtab {
@@ -653,6 +659,23 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   background: var(--card-2); color: var(--ink-faint); font-variant-numeric: tabular-nums;
 }
 .subtab.on .subtab-count { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* ── Commande segmentee (choix UNIQUE) ────────────────────── */
+/* Les chips espacees se lisaient comme des bascules independantes : on croyait
+   pouvoir cumuler « Moins-values » et « Non calculees ». Des segments jointifs
+   disent, sans legende, qu un seul choix est possible a la fois. */
+.segmented {
+  display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line);
+  border-radius: 9px; overflow: hidden; background: var(--card-2);
+}
+.seg {
+  padding: 6px 13px; border: none; background: transparent; color: var(--ink-soft);
+  font: inherit; font-size: 12.5px; font-weight: 620; cursor: pointer; white-space: nowrap;
+  border-right: 1px solid var(--line);
+}
+.seg:last-child { border-right: none; }
+.seg:hover { color: var(--ink); background: var(--line-soft); }
+.seg.on { background: var(--accent); color: var(--fill-ink); }
 
 /* ── Recherche dans un tableau ────────────────────────── */
 .search-input { position: relative; display: flex; flex: 1 1 200px; min-width: 150px; }
@@ -869,6 +892,13 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   table.data th, table.data td,
   table.data.compact th, table.data.compact td { padding: 10px 8px; font-size: 13.5px; }
   table.data .col-opt { display: none; }
+  /* Le dégradé sur le bord droit signale qu'il reste des onglets à découvrir.
+     Sans lui, sous 414 px, « Dividendes » est purement invisible et rien ne dit
+     qu'il faut faire glisser : l'onglet passe pour inexistant. `mask-image`
+     s'efface de lui-même en fin de course, là où un dégradé posé en
+     pseudo-élément masquerait le dernier onglet une fois atteint. */
+  .subtabs { mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%); }
+  .subtab { scroll-snap-align: start; }
   /* Un nom de titre ne se coupe pas (`white-space: nowrap`) : dans le détail
      des ventes, « Vanguard FTSE All-World · coût ? » poussait hors écran la
      colonne de plus/moins-value — précisément celle qu'on vient lire, et

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { getSnapshots, getPerformance, getBenchmark, getAnalytics } from '../lib/api.js';
 import { fmtEur, fmtPct, fmtDate, fmtDateShort, fmtNum, plural } from '../lib/format.js';
@@ -64,15 +64,17 @@ function AttributionTable({ rows, hasDividends }) {
   const { sorted, sort, toggle } = useSort(filtrees, { key: 'pl_eur', dir: 'desc' }, {
     name: (r) => r.name || r.isin,
   });
-  const pg = usePagination(sorted, { taille: 25, cle: `${texte}|${sens}` });
+  // Le tri entre dans la clé : rester en page 2 après avoir réordonné la liste
+  // affiche les lignes 26-50 d'un classement que l'on vient de changer.
+  const pg = usePagination(sorted, { taille: 25, cle: `${texte}|${sens}|${sort.key}|${sort.dir}` });
 
   return (
     <>
       <div className="filter-bar">
         <SearchInput value={texte} onChange={setTexte} placeholder="Rechercher un titre, un secteur…" />
-        <div className="chip-row">
+        <div className="segmented" role="group" aria-label="Sens de la performance">
           {SENS.map((s) => (
-            <button key={s.key} type="button" className={`chip filter ${sens === s.key ? 'on' : ''}`}
+            <button key={s.key} type="button" className={`seg ${sens === s.key ? 'on' : ''}`}
               aria-pressed={sens === s.key} onClick={() => setSens(s.key)}>{s.label}</button>
           ))}
         </div>
@@ -123,14 +125,35 @@ function AttributionTable({ rows, hasDividends }) {
   );
 }
 
-export default function History({ onGoImport }) {
+export default function History({ onGoImport, route }) {
   const [rows, setRows] = useState(null);
   const [perf, setPerf] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [benchKey, setBenchKey] = useState('world');
   const [bench, setBench] = useState(null);
   const [error, setError] = useState(null);
-  const [onglet, setOnglet] = useState('evolution');
+  const ongletInitial = route === 'dividends' ? 'dividendes' : 'evolution';
+  const [onglet, setOnglet] = useState(ongletInitial);
+
+  /**
+   * Onglets DÉJÀ VISITÉS. Une fois monté, un panneau ne redescend plus : il est
+   * simplement masqué.
+   *
+   * Rendre conditionnellement (`onglet === 'titres' && …`) démontait le panneau
+   * quitté, et son état partait avec lui. Régler un filtre sur « Réalisé »,
+   * jeter un œil à une courbe, revenir : tout était revenu à zéro — filtres,
+   * tri, recherche, page. C'était la première cause de « les filtres ne
+   * marchent pas ».
+   *
+   * Monter au premier affichage seulement, et pas d'emblée : `ResponsiveContainer`
+   * mesure son parent au montage, et un parent masqué a une largeur nulle — les
+   * graphiques naîtraient vides sur un lien direct vers un autre onglet.
+   */
+  const [vus, setVus] = useState(() => new Set([ongletInitial]));
+  const changerOnglet = useCallback((id) => {
+    setOnglet(id);
+    setVus((prec) => (prec.has(id) ? prec : new Set(prec).add(id)));
+  }, []);
 
   useEffect(() => {
     getSnapshots().then((d) => setRows(d.snapshots)).catch((e) => setError(e.message));
@@ -138,9 +161,30 @@ export default function History({ onGoImport }) {
     getAnalytics().then(setAnalytics).catch(() => setAnalytics(null));
   }, []);
 
+  // La LISTE des indices est mémorisée à part de la réponse courante.
+  //
+  // Elle vient du serveur avec les cours, et le chargement remettait tout à
+  // `null` : au clic sur « S&P 500 », les quatre boutons disparaissaient pour
+  // laisser un unique bouton grisé « MSCI World » — le bouton qu'on venait de
+  // presser s'effaçait sous le doigt. Combiné à une source de cours injoignable,
+  // qui laisse la courbe inchangée, le sélecteur passait pour mort.
+  const [indices, setIndices] = useState(null);
+  const [chargeBench, setChargeBench] = useState(true);
+
   useEffect(() => {
-    setBench(null);
-    getBenchmark(benchKey).then(setBench).catch(() => setBench({ available: false, reason: 'error' }));
+    let vivant = true;
+    setChargeBench(true);
+    getBenchmark(benchKey)
+      .then((b) => {
+        if (!vivant) return;
+        setBench(b);
+        if (b?.benchmarks?.length) setIndices(b.benchmarks);
+      })
+      .catch(() => { if (vivant) setBench({ available: false, reason: 'error' }); })
+      .finally(() => { if (vivant) setChargeBench(false); });
+    // Une réponse lente arrivant après un second clic écrasait la plus récente :
+    // l'écran affichait alors l'indice précédent, bouton actif à l'appui.
+    return () => { vivant = false; };
   }, [benchKey]);
 
   if (error) return <Banner kind="err">Erreur : {error}</Banner>;
@@ -233,10 +277,10 @@ export default function History({ onGoImport }) {
           dividendes imposait de traverser tout l'historique des ventes, et les
           graphiques se retrouvaient enterrés sous les tableaux. Le bandeau de
           chiffres ci-dessus reste hors des onglets, comme point fixe. */}
-      <SubTabs value={onglet} onChange={setOnglet} items={onglets} label="Sections de la performance" />
+      <SubTabs value={onglet} onChange={changerOnglet} items={onglets} label="Sections de la performance" />
 
-      {onglet === 'evolution' && (
-      <SubPanel id="evolution">
+      {vus.has('evolution') && (
+      <SubPanel id="evolution" cache={onglet !== 'evolution'}>
       <div>
         <PerfCharts snapshots={rows} perf={perf} />
       </div>
@@ -279,12 +323,25 @@ export default function History({ onGoImport }) {
 
       {compareSeries.length >= 2 && (
         <Card title="Performance cumulée — portefeuille vs indice">
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            {(bench?.benchmarks || [{ key: 'world', name: 'MSCI World' }]).map((b) => (
-              <button key={b.key} className={`btn ${benchKey === b.key ? '' : 'ghost'}`} style={{ padding: '5px 12px', fontSize: 13 }} onClick={() => setBenchKey(b.key)}>
+          {/* La liste vient de `indices`, conservée d'une réponse à l'autre :
+              elle ne doit pas dépendre de la requête en cours. `aria-pressed`
+              dit lequel est actif — la seule couleur ne le disait à personne
+              d'autre qu'un œil valide. */}
+          <div className="chip-row" style={{ marginBottom: 14 }} role="group" aria-label="Indice de référence">
+            {(indices || [{ key: 'world', name: 'MSCI World' }]).map((b) => (
+              <button
+                key={b.key}
+                type="button"
+                className={`btn ${benchKey === b.key ? '' : 'ghost'}`}
+                style={{ padding: '5px 12px', fontSize: 13 }}
+                aria-pressed={benchKey === b.key}
+                onClick={() => setBenchKey(b.key)}
+              >
                 {b.name}
+                {chargeBench && benchKey === b.key && <span className="sr-only"> — chargement en cours</span>}
               </button>
             ))}
+            {chargeBench && <span className="muted" style={{ fontSize: 12.5, alignSelf: 'center' }}>chargement…</span>}
           </div>
 
           {bench && !bench.available && (
@@ -321,8 +378,8 @@ export default function History({ onGoImport }) {
       </SubPanel>
       )}
 
-      {onglet === 'titres' && (
-      <SubPanel id="titres">
+      {vus.has('titres') && (
+      <SubPanel id="titres" cache={onglet !== 'titres'}>
       {/* Concentration */}
       {conc && conc.lines > 0 && (
         <div>
@@ -360,8 +417,8 @@ export default function History({ onGoImport }) {
       </SubPanel>
       )}
 
-      {onglet === 'realise' && (
-      <SubPanel id="realise">
+      {vus.has('realise') && (
+      <SubPanel id="realise" cache={onglet !== 'realise'}>
         {realized
           ? <RealizedPanel realized={realized} latentPl={totalPl} />
           : (
@@ -373,8 +430,8 @@ export default function History({ onGoImport }) {
       </SubPanel>
       )}
 
-      {onglet === 'dividendes' && (
-      <SubPanel id="dividendes">
+      {vus.has('dividendes') && (
+      <SubPanel id="dividendes" cache={onglet !== 'dividendes'}>
         <Dividends onGoImport={onGoImport} />
       </SubPanel>
       )}
