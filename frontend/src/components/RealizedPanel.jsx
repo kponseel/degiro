@@ -23,7 +23,7 @@ const monthLabel = (m) => `${MONTHS[Number(m.slice(5, 7))]} ${m.slice(0, 4)}`;
  * pas puisqu'elles s'affichent en tirets un peu partout.
  */
 export const RESULTATS = [
-  { key: 'tous', label: 'Toutes' },
+  { key: 'tous', label: 'Toutes les ventes' },
   { key: 'gains', label: 'Plus-values', test: (e) => e.gain_eur > 0 },
   { key: 'pertes', label: 'Moins-values', test: (e) => e.gain_eur < 0 },
   { key: 'inconnues', label: 'Non calculées', test: (e) => e.gain_eur == null },
@@ -211,9 +211,9 @@ export default function RealizedPanel({ realized, latentPl = null }) {
                 suivait sous des écrans de défilement. */}
             <div className="filter-bar" style={{ marginTop: 18 }}>
               <SearchInput value={texte} onChange={setTexte} placeholder="Rechercher un titre vendu…" />
-              <div className="chip-row">
+              <div className="segmented" role="group" aria-label="Résultat de la vente">
                 {RESULTATS.map((r) => (
-                  <button key={r.key} type="button" className={`chip filter ${resultat === r.key ? 'on' : ''}`}
+                  <button key={r.key} type="button" className={`seg ${resultat === r.key ? 'on' : ''}`}
                     aria-pressed={resultat === r.key} onClick={() => setResultat(r.key)}>{r.label}</button>
                 ))}
               </div>

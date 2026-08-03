@@ -419,6 +419,11 @@ export default function App() {
           onLogout={handleLogout}
           onGoImport={() => go('import')}
           onGoExtension={() => go('import')}
+          // Route d'origine, AVANT résolution des alias : `#dividends` renvoie
+          // certes vers Performance, mais la page doit encore savoir qu'il faut
+          // ouvrir l'onglet Dividendes — sans quoi le lien conservé « pour ne
+          // casser aucun marque-page » aboutit sur un écran sans dividendes.
+          route={route}
           onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
           onReplayTour={replayTour}
           theme={theme}

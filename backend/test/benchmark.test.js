@@ -1,3 +1,4 @@
+import { parseStooqCsv, parseYahooChart, BENCHMARKS } from '../src/services/benchmark.js';
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
@@ -79,5 +80,72 @@ describe('GET /api/benchmark', () => {
   it('exige une authentification', async () => {
     const res = await request(app).get('/api/benchmark');
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * Sources de cours : c'est leur silence qui rendait le comparatif inutilisable.
+ *
+ * Une source unique qui échoue crée une boucle morte — le cache ne peut jamais
+ * s'amorcer, donc le comparatif reste indisponible à jamais, avec pour toute
+ * explication « source publique injoignable ».
+ */
+describe('Analyse des sources de cours', () => {
+  it('lit le CSV de Stooq', () => {
+    const csv = 'Date,Open,High,Low,Close,Volume\n2026-01-02,100,101,99,100.5,1000\n2026-01-03,100.5,102,100,101.25,900';
+    expect(parseStooqCsv(csv)).toEqual([
+      { date: '2026-01-02', close: 100.5 },
+      { date: '2026-01-03', close: 101.25 },
+    ]);
+  });
+
+  it('ne prend pas une page d’erreur pour des cours', () => {
+    // Stooq sert une page HTML quand le quota est dépassé : sans en-tête `Date`
+    // elle était silencieusement lue comme « aucun cours ».
+    expect(parseStooqCsv('<html>Exceeded the daily hits limit</html>')).toEqual([]);
+    expect(parseStooqCsv('')).toEqual([]);
+    expect(parseStooqCsv(null)).toEqual([]);
+  });
+
+  it('lit la réponse chart de Yahoo', () => {
+    const json = {
+      chart: { result: [{ timestamp: [1767312000, 1767398400], indicators: { quote: [{ close: [88.4, 89.1] }] } }] },
+    };
+    expect(parseYahooChart(json)).toEqual([
+      { date: '2026-01-02', close: 88.4 },
+      { date: '2026-01-03', close: 89.1 },
+    ]);
+  });
+
+  it('écarte les trous de Yahoo au lieu de les coter à zéro', () => {
+    // Un jour férié local arrive en `null`. Converti en 0, il ferait plonger la
+    // courbe de l'indice à −100 % puis remonter : un krach purement fictif.
+    const json = {
+      chart: { result: [{ timestamp: [1767312000, 1767398400, 1767484800], indicators: { quote: [{ close: [88.4, null, 89.1] }] } }] },
+    };
+    expect(parseYahooChart(json).map((p) => p.close)).toEqual([88.4, 89.1]);
+  });
+
+  it('survit à une réponse Yahoo vide ou difforme', () => {
+    expect(parseYahooChart({})).toEqual([]);
+    expect(parseYahooChart(null)).toEqual([]);
+    expect(parseYahooChart({ chart: { result: [{ timestamp: [1] }] } })).toEqual([]);
+  });
+});
+
+describe('Choix des indices de référence', () => {
+  it('propose deux sources pour chaque indice', () => {
+    for (const [cle, conf] of Object.entries(BENCHMARKS)) {
+      expect(conf.stooq, `${cle} sans ticker Stooq`).toBeTruthy();
+      expect(conf.yahoo, `${cle} sans ticker Yahoo`).toBeTruthy();
+    }
+  });
+
+  it('n’expose que des références en euros', () => {
+    // Un indice en dollars comparé à un TWR en euros embarque tout le mouvement
+    // de change dans l'écart affiché : plusieurs points de bruit.
+    for (const [cle, conf] of Object.entries(BENCHMARKS)) {
+      expect(conf.ccy, `${cle} n'est pas en EUR`).toBe('EUR');
+    }
   });
 });

@@ -81,10 +81,18 @@ export function SubTabs({ value, onChange, items, label = 'Sections' }) {
   );
 }
 
-/** Panneau associé à un onglet de `SubTabs`. */
-export function SubPanel({ id, children }) {
+/**
+ * Panneau associé à un onglet de `SubTabs`.
+ *
+ * `cache` MASQUE au lieu de démonter : l'appelant garde ainsi ses panneaux
+ * montés, et avec eux les filtres, tris, pages et recherches que l'utilisateur
+ * vient de régler. L'attribut `hidden` les retire aussi de l'ordre de tabulation
+ * et des lecteurs d'écran — un simple `display: none` en CSS ne suffirait pas à
+ * empêcher le clavier d'entrer dans un panneau invisible.
+ */
+export function SubPanel({ id, children, cache = false }) {
   return (
-    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`subtab-${id}`}>
+    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`subtab-${id}`} hidden={cache}>
       {children}
     </div>
   );
