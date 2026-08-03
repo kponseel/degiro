@@ -36,6 +36,17 @@ function amount(v) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/** Médiane : la moyenne se laisserait déplacer par la valeur aberrante qu'on cherche. */
+export function mediane(xs) {
+  const t = [...xs].filter(Number.isFinite).sort((a, b) => a - b);
+  if (!t.length) return null;
+  const m = t.length >> 1;
+  return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2;
+}
+
+/** En dessous, la médiane d'une devise ne prouve rien : deux lignes se valent. */
+export const MIN_COHORTE = 3;
+
 /**
  * Sépare les lignes du portefeuille : titres détenus, positions **soldées** et
  * liquidités.
@@ -389,28 +400,78 @@ export function buildPayload({
   const fondsTresorerie = cashEur !== undefined && totals.cash !== undefined
     ? round2(cashEur - totals.cash) : null;
 
-  // Répartition par devise de cotation : ce que nous sommons (`value`) face à
-  // `cours × quantité`, la valeur exprimée dans la devise du titre.
-  //
-  // Sur une ligne convertie par DEGIRO, le second vaut le premier multiplié par
-  // le taux de change. S'ils sont ÉGAUX sur une devise étrangère, c'est que la
-  // valeur reçue est LOCALE et que nous la comptons comme des euros — ce qui
-  // fausserait le total sans qu'aucun contrôle actuel ne s'en aperçoive, tous
-  // se limitant aux lignes en euros. C'est la mesure qui tranche un écart dont
-  // aucune ligne ne semble responsable.
-  const parDevise = [...products.reduce((acc, row) => {
+  /**
+   * Détail par devise de cotation, LIGNE À LIGNE.
+   *
+   * Chaque position porte deux expressions de la même chose : `value`, déjà
+   * convertie en euros par DEGIRO, et `cours × quantité`, exprimé dans la devise
+   * du titre. Leur rapport est le taux de change appliqué à cette ligne.
+   *
+   * Or à un instant donné il n'existe qu'UN taux par devise. Toutes les lignes
+   * d'une même devise doivent donc afficher le même rapport. Ce n'est pas une
+   * somme à recouper — c'est une invariance à vérifier, et elle vaut ligne par
+   * ligne, donc elle DÉSIGNE la fautive au lieu de rendre un écart global.
+   *
+   * La référence est la MÉDIANE des rapports observés, pas leur moyenne : une
+   * ligne aberrante ne peut pas déplacer la médiane et se blanchir elle-même.
+   * En euros elle vaut 1 par définition. Sous trois lignes, la médiane ne prouve
+   * rien : la devise est déclarée non contrôlée plutôt que réputée saine.
+   */
+  const suspectsDevise = [];
+  const cohortes = new Map();
+  for (const row of products) {
     const devise = String(index[row.productId]?.currency || '?').toUpperCase();
-    const e = acc.get(devise) || { devise, lignes: 0, valeur: 0, local: 0, localConnu: true };
     const prix = num(row.price);
     const qte = num(row.size);
-    e.lignes += 1;
-    e.valeur += amount(row.value) ?? 0;
-    if (prix === undefined || qte === undefined) e.localConnu = false;
-    else e.local += prix * qte;
-    return acc.set(devise, e);
-  }, new Map()).values()].map((e) => ({
-    ...e, valeur: round2(e.valeur), local: e.localConnu ? round2(e.local) : null,
-  }));
+    const e = cohortes.get(devise) || { devise, lignes: [] };
+    e.lignes.push({
+      nom: index[row.productId]?.name || `produit ${row.productId}`,
+      valeur: amount(row.value),
+      local: prix === undefined || qte === undefined ? undefined : prix * qte,
+    });
+    cohortes.set(devise, e);
+  }
+
+  const parDevise = [...cohortes.values()].map(({ devise, lignes }) => {
+    const mesurables = lignes.filter((l) => l.valeur !== undefined && l.local > 0);
+    const taux = devise === 'EUR' ? 1 : mediane(mesurables.map((l) => l.valeur / l.local));
+    const controlee = devise === 'EUR' ? mesurables.length > 0 : mesurables.length >= MIN_COHORTE;
+    let dispersion = 0;
+    const ecarts = [];
+    if (taux) {
+      for (const l of mesurables) {
+        const r = l.valeur / l.local;
+        const derive = Math.abs(r / taux - 1);
+        if (derive > dispersion) dispersion = derive;
+        const attendu = l.local * taux;
+        // Deux seuils, tous deux nécessaires : un écart relatif significatif
+        // (0,5 %) pour ne pas signaler l'arrondi au centime, et un écart absolu
+        // d'au moins 1 € pour ne pas nommer une ligne dont la correction ne
+        // changerait rien au total.
+        if (derive > 0.005 && Math.abs(l.valeur - attendu) >= 1) {
+          ecarts.push({ nom: l.nom, valeur: round2(l.valeur), attendu: round2(attendu), ecart: round2(l.valeur - attendu) });
+        }
+      }
+    }
+    const localConnu = lignes.every((l) => l.local !== undefined);
+    return {
+      devise,
+      lignes: lignes.length,
+      valeur: round2(lignes.reduce((s2, l) => s2 + (l.valeur ?? 0), 0)),
+      local: localConnu ? round2(lignes.reduce((s2, l) => s2 + l.local, 0)) : null,
+      taux: taux ? Math.round(taux * 1e6) / 1e6 : null,
+      dispersion: Math.round(dispersion * 1e6) / 1e6,
+      controlee,
+      // Triés par impact décroissant : la première ligne est celle à regarder.
+      ecarts: ecarts.sort((a, b) => Math.abs(b.ecart) - Math.abs(a.ecart)).slice(0, 5),
+    };
+  });
+  for (const d of parDevise) {
+    for (const e of d.ecarts) {
+      suspectsDevise.push(`${e.nom} : ${e.valeur} € au lieu de ${e.attendu} € au taux ${d.devise} des autres lignes (${e.ecart > 0 ? '+' : ''}${e.ecart} €)`);
+    }
+  }
+
   // Contrôle de cohérence : NOS deux lectures indépendantes (titres lus ligne à
   // ligne + trésorerie lue ligne à ligne) face au total de DEGIRO. Comparer
   // `cash` — désormais déduit de ce total — l'aurait rendu tautologique : c'est
@@ -438,6 +499,18 @@ export function buildPayload({
    * blanc-seing : un titre mal lu de 20 000 € ne passera pas pour du change sur
    * 115 $ de dividendes.
    */
+  /**
+   * Titres que DEGIRO compte et que nous ne retrouvons sur aucune ligne.
+   *
+   * `reportPortfValue` inclut le fonds de trésorerie ; une fois celui-ci retiré,
+   * il ne reste que des titres, et notre somme ligne à ligne devrait l'égaler.
+   * Ce qui manque encore n'est plus explicable par le fonds — et sans ce chiffre
+   * nommé, l'écart restait un total nu qu'aucune piste ne rattachait à rien.
+   */
+  const titresDegiro = totals.positions !== undefined && fondsTresorerie !== null
+    ? round2(totals.positions - fondsTresorerie) : null;
+  const titresManquants = titresDegiro === null ? null : round2(titresDegiro - positionsTotal);
+
   const plafondDevises = round2(cashOther.reduce((s, c) => s + Math.abs(c.value), 0) * 2);
   const gapExplique = totalGap !== null && totalGap > 0 && totalGap <= plafondDevises;
 
@@ -493,6 +566,22 @@ export function buildPayload({
     }
   }
 
+  // L'invariance de change arrive EN DERNIER, et c'est délibéré.
+  //
+  // Une même ligne peut être attrapée par deux règles : « valeur reçue en USD,
+  // pas en euros » dit précisément ce qui cloche, là où « 1 140 € au lieu de
+  // 1 000 € au taux EUR des autres lignes » ne fait que le constater. La
+  // déduplication qui suit garde la PREMIÈRE mention — les règles spécifiques
+  // doivent donc passer avant la règle générale, sans quoi le message le plus
+  // utile serait celui qu'on écarte.
+  const vus = new Set();
+  const pistes = [...suspects, ...suspectsDevise].filter((texte) => {
+    const nom = String(texte).split(' : ')[0];
+    if (vus.has(nom)) return false;
+    vus.add(nom);
+    return true;
+  });
+
   const payload = {
     schema_version: 1,
     source: 'extension',
@@ -538,12 +627,15 @@ export function buildPayload({
       // …sauf s'il tient dans les soldes en devises que nous ne convertissons pas.
       gapExplique,
       // Lignes qui peuvent expliquer un écart côté titres, nommées.
-      suspects,
+      suspects: pistes,
       // Ventilation par devise : tranche un écart qu'aucune ligne n'explique.
       parDevise,
       // Fonds de trésorerie : compté en titres par l'API, en liquidités par
       // l'interface DEGIRO. Explique l'essentiel des écarts constatés.
       fondsTresorerie,
+      // Titres selon DEGIRO une fois le fonds retiré, et ce qui nous en manque.
+      titresDegiro,
+      titresManquants,
     },
   };
 }
