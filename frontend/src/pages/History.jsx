@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LineChart, Line, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { getSnapshots, getPerformance, getBenchmark, getAnalytics } from '../lib/api.js';
 import { fmtEur, fmtPct, fmtDate, fmtDateShort, fmtNum, plural } from '../lib/format.js';
-import { Spinner, Card, Stat, Banner, Empty } from '../components/ui.jsx';
+import {
+  Spinner, Card, Stat, Banner, Empty, SubTabs, SubPanel, SearchInput, Pager,
+} from '../components/ui.jsx';
 import { useSort } from '../lib/useSort.js';
+import { usePagination } from '../lib/usePagination.js';
 import SortHeader from '../components/SortHeader.jsx';
 import RealizedPanel from '../components/RealizedPanel.jsx';
 import PerfCharts from '../components/PerfCharts.jsx';
@@ -31,42 +34,92 @@ function ContribBar({ value }) {
 }
 
 // ── Détail par titre ─────────────────────────────────────────────────
+/**
+ * Filtres du tableau par titre : recherche libre et sens de la performance.
+ *
+ * Sur vingt-sept lignes, « montre-moi seulement ce qui perd » se faisait à l'œil
+ * en parcourant une colonne. Le tri ne remplace pas le filtre : il rapproche les
+ * perdants, il ne fait pas disparaître les autres.
+ */
+const SENS = [
+  { key: 'tous', label: 'Toutes' },
+  { key: 'gagnants', label: 'En gain', test: (r) => r.pl_eur > 0 },
+  { key: 'perdants', label: 'En perte', test: (r) => r.pl_eur < 0 },
+];
+
+export function filtrerTitres(rows, { texte = '', sens = 'tous' } = {}) {
+  const q = texte.trim().toLowerCase();
+  const regle = SENS.find((s) => s.key === sens)?.test;
+  return (rows || []).filter((r) => {
+    if (regle && !regle(r)) return false;
+    if (!q) return true;
+    return `${r.name || ''} ${r.isin || ''} ${r.sector || ''}`.toLowerCase().includes(q);
+  });
+}
+
 function AttributionTable({ rows, hasDividends }) {
-  const { sorted, sort, toggle } = useSort(rows, { key: 'pl_eur', dir: 'desc' }, {
+  const [texte, setTexte] = useState('');
+  const [sens, setSens] = useState('tous');
+  const filtrees = useMemo(() => filtrerTitres(rows, { texte, sens }), [rows, texte, sens]);
+  const { sorted, sort, toggle } = useSort(filtrees, { key: 'pl_eur', dir: 'desc' }, {
     name: (r) => r.name || r.isin,
   });
+  const pg = usePagination(sorted, { taille: 25, cle: `${texte}|${sens}` });
+
   return (
-    <div className="table-wrap">
-      <table className="data compact">
-        <thead>
-          <tr>
-            <SortHeader label="Titre" colKey="name" sort={sort} onToggle={toggle} align="left" />
-            <SortHeader label="Poids" colKey="weight" sort={sort} onToggle={toggle} />
-            <SortHeader label="Valeur" colKey="value_eur" sort={sort} onToggle={toggle} />
-            <SortHeader label="+/- €" colKey="pl_eur" sort={sort} onToggle={toggle} />
-            <SortHeader label="+/- %" colKey="pl_pct" sort={sort} onToggle={toggle} />
-            <SortHeader label="Contribution" colKey="contribution" sort={sort} onToggle={toggle} />
-            {hasDividends && <SortHeader label="Dividendes" colKey="dividends_eur" sort={sort} onToggle={toggle} />}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((r) => (
-            <tr key={r.isin}>
-              <td>
-                <span className="sym">{r.name}</span>
-                {r.sector && <span className="muted sm"> · {r.sector}</span>}
-              </td>
-              <td>{fmtPct(r.weight)}</td>
-              <td className="sym">{fmtEur(r.value_eur)}</td>
-              <td className={tone(r.pl_eur)}>{signEur(r.pl_eur)}</td>
-              <td className={tone(r.pl_pct)}>{signPct(r.pl_pct)}</td>
-              <td><ContribBar value={r.contribution} /></td>
-              {hasDividends && <td className={r.dividends_eur ? 'pos' : 'muted'}>{r.dividends_eur ? fmtEur(r.dividends_eur) : '—'}</td>}
-            </tr>
+    <>
+      <div className="filter-bar">
+        <SearchInput value={texte} onChange={setTexte} placeholder="Rechercher un titre, un secteur…" />
+        <div className="chip-row">
+          {SENS.map((s) => (
+            <button key={s.key} type="button" className={`chip filter ${sens === s.key ? 'on' : ''}`}
+              aria-pressed={sens === s.key} onClick={() => setSens(s.key)}>{s.label}</button>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </div>
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="muted" style={{ margin: '18px 0' }}>Aucun titre ne correspond à ce filtre.</p>
+      ) : (
+        <>
+          <div className="table-wrap">
+            <table className="data compact">
+              <thead>
+                <tr>
+                  <SortHeader label="Titre" colKey="name" sort={sort} onToggle={toggle} align="left" />
+                  <SortHeader label="Poids" colKey="weight" sort={sort} onToggle={toggle} cls="col-opt" />
+                  <SortHeader label="Valeur" colKey="value_eur" sort={sort} onToggle={toggle} />
+                  <SortHeader label="+/- €" colKey="pl_eur" sort={sort} onToggle={toggle} />
+                  <SortHeader label="+/- %" colKey="pl_pct" sort={sort} onToggle={toggle} cls="col-opt" />
+                  <SortHeader label="Contribution" colKey="contribution" sort={sort} onToggle={toggle} cls="col-opt" />
+                  {hasDividends && <SortHeader label="Dividendes" colKey="dividends_eur" sort={sort} onToggle={toggle} cls="col-opt" />}
+                </tr>
+              </thead>
+              <tbody>
+                {pg.lignes.map((r) => (
+                  <tr key={r.isin}>
+                    <td>
+                      <span className="sym">{r.name}</span>
+                      {r.sector && <span className="muted sm"> · {r.sector}</span>}
+                    </td>
+                    <td className="col-opt">{fmtPct(r.weight)}</td>
+                    <td className="sym">{fmtEur(r.value_eur)}</td>
+                    <td className={tone(r.pl_eur)}>{signEur(r.pl_eur)}</td>
+                    <td className={`col-opt ${tone(r.pl_pct)}`}>{signPct(r.pl_pct)}</td>
+                    <td className="col-opt"><ContribBar value={r.contribution} /></td>
+                    {hasDividends && <td className={`col-opt ${r.dividends_eur ? 'pos' : 'muted'}`}>{r.dividends_eur ? fmtEur(r.dividends_eur) : '—'}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pager
+            page={pg.page} pages={pg.pages} total={pg.total} debut={pg.debut} taille={pg.taille}
+            onPage={pg.setPage} onTaille={pg.setTaille} libelle="titre"
+          />
+        </>
+      )}
+    </>
   );
 }
 
@@ -77,6 +130,7 @@ export default function History({ onGoImport }) {
   const [benchKey, setBenchKey] = useState('world');
   const [bench, setBench] = useState(null);
   const [error, setError] = useState(null);
+  const [onglet, setOnglet] = useState('evolution');
 
   useEffect(() => {
     getSnapshots().then((d) => setRows(d.snapshots)).catch((e) => setError(e.message));
@@ -126,6 +180,15 @@ export default function History({ onGoImport }) {
   const realized = analytics?.realized || null;
   const capital = perf?.capital || null;
 
+  // Les compteurs annoncent le volume avant le clic : savoir qu'il y a 143
+  // ventes derrière l'onglet évite d'y entrer pour le découvrir.
+  const onglets = [
+    { id: 'evolution', label: 'Évolution' },
+    { id: 'titres', label: 'Par titre', count: attr?.rows?.length || null },
+    { id: 'realise', label: 'Réalisé & fiscal', count: realized?.totals?.sales || null },
+    { id: 'dividendes', label: 'Dividendes' },
+  ];
+
   return (
     <>
       <div className="page-head">
@@ -165,18 +228,18 @@ export default function History({ onGoImport }) {
         )}
       </div>
 
-      {/* Graphiques d'évolution : valeur vs capital, bénéfice, rendement
-          mensuel, drawdown, composition. */}
-      <div style={{ marginTop: 16 }}>
+      {/* Sections en onglets.
+          Empilées, elles faisaient plusieurs milliers de pixels : atteindre les
+          dividendes imposait de traverser tout l'historique des ventes, et les
+          graphiques se retrouvaient enterrés sous les tableaux. Le bandeau de
+          chiffres ci-dessus reste hors des onglets, comme point fixe. */}
+      <SubTabs value={onglet} onChange={setOnglet} items={onglets} label="Sections de la performance" />
+
+      {onglet === 'evolution' && (
+      <SubPanel id="evolution">
+      <div>
         <PerfCharts snapshots={rows} perf={perf} />
       </div>
-
-      {/* Gains / pertes réalisés + vue fiscale */}
-      {realized && (
-        <div style={{ marginTop: 16 }}>
-          <RealizedPanel realized={realized} latentPl={totalPl} />
-        </div>
-      )}
 
       {/* Mesures de risque */}
       {risk ? (
@@ -206,9 +269,63 @@ export default function History({ onGoImport }) {
         </div>
       )}
 
+      <div style={{ margin: '16px 0' }}>
+        <Banner kind="info">
+          Le <strong>TWR</strong> mesure ta performance réelle en neutralisant tes dépôts/retraits.
+          Pour qu'il soit exact, importe ton <strong>Account.csv</strong>.{' '}
+          {perf && perf.flows ? `${plural(perf.flows, 'flux externe', 'flux externes')} pris en compte.` : 'Aucun flux externe détecté — le TWR égale la variation de valeur.'}
+        </Banner>
+      </div>
+
+      {compareSeries.length >= 2 && (
+        <Card title="Performance cumulée — portefeuille vs indice">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            {(bench?.benchmarks || [{ key: 'world', name: 'MSCI World' }]).map((b) => (
+              <button key={b.key} className={`btn ${benchKey === b.key ? '' : 'ghost'}`} style={{ padding: '5px 12px', fontSize: 13 }} onClick={() => setBenchKey(b.key)}>
+                {b.name}
+              </button>
+            ))}
+          </div>
+
+          {bench && !bench.available && (
+            <div style={{ marginBottom: 14 }}>
+              <Banner kind="info">
+                {bench.reason === 'insufficient_history'
+                  ? 'Le comparatif s\u2019affichera dès deux jours d\u2019historique.'
+                  : 'Cours de l\u2019indice momentanément indisponibles (source publique injoignable). La courbe du portefeuille reste affichée.'}
+              </Banner>
+            </div>
+          )}
+
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <LineChart data={compareSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid stroke="var(--line-soft)" vertical={false} />
+                <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
+                <YAxis tick={axisTick} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => `${v.toFixed(0)} %`} />
+                <Tooltip formatter={(v, n) => [v == null ? '—' : `${Number(v).toFixed(2)} %`, n]} contentStyle={TT} labelStyle={{ color: 'var(--ink-soft)' }} />
+                <Legend wrapperStyle={{ fontSize: 13 }} />
+                <Line type="monotone" dataKey="twr" name="Portefeuille (TWR)" stroke="var(--c1)" strokeWidth={2.4} dot={false} isAnimationActive={false} />
+                {benchAvailable && (
+                  <Line type="monotone" dataKey="benchmark" name={benchName} stroke="var(--c2)" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="sub muted" style={{ marginTop: 12, fontSize: 12.5 }}>
+            Comparaison équitable : le TWR neutralise tes apports, l'indice est un « buy &amp; hold » sur la même période.
+            Cours : Stooq (clôtures, à titre indicatif).
+          </div>
+        </Card>
+      )}
+      </SubPanel>
+      )}
+
+      {onglet === 'titres' && (
+      <SubPanel id="titres">
       {/* Concentration */}
       {conc && conc.lines > 0 && (
-        <div style={{ marginTop: 16 }}>
+        <div>
           <Card title="Concentration & diversification">
             <div className="grid stat-row">
               <Stat label="Plus grosse ligne" value={fmtPct(conc.top1)} sub="poids du n°1" tone={conc.top1 > 0.25 ? 'neg' : ''} />
@@ -240,61 +357,27 @@ export default function History({ onGoImport }) {
           </Card>
         </div>
       )}
-
-      <div style={{ margin: '16px 0' }}>
-        <Banner kind="info">
-          Le <strong>TWR</strong> mesure ta performance réelle en neutralisant tes dépôts/retraits.
-          Pour qu'il soit exact, importe ton <strong>Account.csv</strong>.{' '}
-          {perf && perf.flows ? `${plural(perf.flows, 'flux externe', 'flux externes')} pris en compte.` : 'Aucun flux externe détecté — le TWR égale la variation de valeur.'}
-        </Banner>
-      </div>
-
-      {compareSeries.length >= 2 && (
-        <Card title="Performance cumulée — portefeuille vs indice">
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            {(bench?.benchmarks || [{ key: 'world', name: 'MSCI World' }]).map((b) => (
-              <button key={b.key} className={`btn ${benchKey === b.key ? '' : 'ghost'}`} style={{ padding: '5px 12px', fontSize: 13 }} onClick={() => setBenchKey(b.key)}>
-                {b.name}
-              </button>
-            ))}
-          </div>
-
-          {bench && !bench.available && (
-            <div style={{ marginBottom: 14 }}>
-              <Banner kind="info">
-                {bench.reason === 'insufficient_history'
-                  ? 'Le comparatif s’affichera dès deux jours d’historique.'
-                  : 'Cours de l’indice momentanément indisponibles (source publique injoignable). La courbe du portefeuille reste affichée.'}
-              </Banner>
-            </div>
-          )}
-
-          <div style={{ width: '100%', height: 280 }}>
-            <ResponsiveContainer>
-              <LineChart data={compareSeries} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                <CartesianGrid stroke="var(--line-soft)" vertical={false} />
-                <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={24} />
-                <YAxis tick={axisTick} tickLine={false} axisLine={false} width={56} tickFormatter={(v) => `${v.toFixed(0)} %`} />
-                <Tooltip formatter={(v, n) => [v == null ? '—' : `${Number(v).toFixed(2)} %`, n]} contentStyle={TT} labelStyle={{ color: 'var(--ink-soft)' }} />
-                <Legend wrapperStyle={{ fontSize: 13 }} />
-                <Line type="monotone" dataKey="twr" name="Portefeuille (TWR)" stroke="var(--c1)" strokeWidth={2.4} dot={false} isAnimationActive={false} />
-                {benchAvailable && (
-                  <Line type="monotone" dataKey="benchmark" name={benchName} stroke="var(--c2)" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} />
-                )}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="sub muted" style={{ marginTop: 12, fontSize: 12.5 }}>
-            Comparaison équitable : le TWR neutralise tes apports, l'indice est un « buy &amp; hold » sur la même période.
-            Cours : Stooq (clôtures, à titre indicatif).
-          </div>
-        </Card>
+      </SubPanel>
       )}
 
-      {/* Les dividendes vivent ici, en bas de la page Performance : ils font
-          partie du rendement, mais ne méritaient pas un onglet à eux seuls. */}
-      <div className="card-title" style={{ margin: '22px 2px 12px' }}>Dividendes</div>
-      <Dividends onGoImport={onGoImport} />
+      {onglet === 'realise' && (
+      <SubPanel id="realise">
+        {realized
+          ? <RealizedPanel realized={realized} latentPl={totalPl} />
+          : (
+            <Banner kind="info">
+              Importe ton <strong>Transactions.csv</strong> et ton <strong>Account.csv</strong> pour
+              voir tes plus-values réalisées et ta vue fiscale.
+            </Banner>
+          )}
+      </SubPanel>
+      )}
+
+      {onglet === 'dividendes' && (
+      <SubPanel id="dividendes">
+        <Dividends onGoImport={onGoImport} />
+      </SubPanel>
+      )}
     </>
   );
 }
