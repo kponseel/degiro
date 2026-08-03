@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Card, Stat, Banner } from './ui.jsx';
+import {
+  Card, Stat, Banner, SearchInput, Pager,
+} from './ui.jsx';
 import { fmtEur, fmtDate, fmtNum, plural } from '../lib/format.js';
+import { usePagination } from '../lib/usePagination.js';
 import {
   filterByPeriod, periodSummary, byYear, monthsIn, totalReturn, explainUnknown,
 } from '../lib/realized.js';
@@ -11,6 +14,32 @@ const MONTHS = ['', 'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', '
 const monthLabel = (m) => `${MONTHS[Number(m.slice(5, 7))]} ${m.slice(0, 4)}`;
 
 /**
+ * Filtres du détail des ventes, au-delà de la période.
+ *
+ * Filtrer par année ne suffit pas sur un historique de plusieurs centaines de
+ * cessions : on cherche un titre précis, ou l'on veut isoler ses moins-values
+ * avant une déclaration. « Non calculées » sort les ventes dont le prix de
+ * revient manque — celles qu'il faut aller corriger, et qu'un tri ne rassemble
+ * pas puisqu'elles s'affichent en tirets un peu partout.
+ */
+export const RESULTATS = [
+  { key: 'tous', label: 'Toutes' },
+  { key: 'gains', label: 'Plus-values', test: (e) => e.gain_eur > 0 },
+  { key: 'pertes', label: 'Moins-values', test: (e) => e.gain_eur < 0 },
+  { key: 'inconnues', label: 'Non calculées', test: (e) => e.gain_eur == null },
+];
+
+export function filtrerVentes(events, { texte = '', resultat = 'tous' } = {}) {
+  const q = texte.trim().toLowerCase();
+  const regle = RESULTATS.find((r) => r.key === resultat)?.test;
+  return (events || []).filter((e) => {
+    if (regle && !regle(e)) return false;
+    if (!q) return true;
+    return `${e.name || ''} ${e.isin || ''}`.toLowerCase().includes(q);
+  });
+}
+
+/**
  * Vue « Gains, pertes & fiscalité » : plus-values réalisées sur positions
  * fermées + dividendes, filtrables par année/mois, en chiffres bruts.
  * `latentPl` (P/L latent des positions ouvertes) alimente le retour total.
@@ -18,6 +47,8 @@ const monthLabel = (m) => `${MONTHS[Number(m.slice(5, 7))]} ${m.slice(0, 4)}`;
 export default function RealizedPanel({ realized, latentPl = null }) {
   const [year, setYear] = useState(null);
   const [month, setMonth] = useState(null);
+  const [texte, setTexte] = useState('');
+  const [resultat, setResultat] = useState('tous');
 
   const events = realized?.events || [];
   const dividends = realized?.dividends || [];
@@ -35,9 +66,11 @@ export default function RealizedPanel({ realized, latentPl = null }) {
   const ret = useMemo(() => totalReturn({ latentPl, realizedNet: allNet, dividends: allDivs }), [latentPl, allNet, allDivs]);
 
   const salesRows = useMemo(
-    () => [...evFiltered].sort((a, b) => String(b.date).localeCompare(String(a.date))),
-    [evFiltered],
+    () => filtrerVentes(evFiltered, { texte, resultat })
+      .sort((a, b) => String(b.date).localeCompare(String(a.date))),
+    [evFiltered, texte, resultat],
   );
+  const pg = usePagination(salesRows, { taille: 25, cle: `${year}|${month}|${texte}|${resultat}` });
 
   const nothing = events.length === 0 && dividends.length === 0;
 
@@ -140,9 +173,9 @@ export default function RealizedPanel({ realized, latentPl = null }) {
                     <tr>
                       <th style={{ textAlign: 'left' }}>Année</th>
                       <th>Ventes</th>
-                      <th>Calculées</th>
-                      <th>Plus-values</th>
-                      <th>Moins-values</th>
+                      <th className="col-opt">Calculées</th>
+                      <th className="col-opt">Plus-values</th>
+                      <th className="col-opt">Moins-values</th>
                       <th>Net réalisé</th>
                     </tr>
                   </thead>
@@ -157,11 +190,11 @@ export default function RealizedPanel({ realized, latentPl = null }) {
                         <td>{r.sales}</td>
                         {/* Sans cette colonne, une année entière à « — » ne
                             distinguait pas un calcul impossible d'un gain nul. */}
-                        <td className={r.unknown ? 'warn' : 'muted'}>
+                        <td className={`col-opt ${r.unknown ? 'warn' : 'muted'}`}>
                           {r.computed} / {r.sales}
                         </td>
-                        <td className={r.gains ? 'pos' : 'muted'}>{r.gains ? signEur(r.gains) : '—'}</td>
-                        <td className={r.losses ? 'neg' : 'muted'}>{r.losses ? signEur(r.losses) : '—'}</td>
+                        <td className={`col-opt ${r.gains ? 'pos' : 'muted'}`}>{r.gains ? signEur(r.gains) : '—'}</td>
+                        <td className={`col-opt ${r.losses ? 'neg' : 'muted'}`}>{r.losses ? signEur(r.losses) : '—'}</td>
                         <td className={tone(r.net)} style={{ fontWeight: 650 }}>
                           {r.computed === 0 ? <span className="muted">—</span> : signEur(r.net)}
                         </td>
@@ -172,39 +205,62 @@ export default function RealizedPanel({ realized, latentPl = null }) {
               </div>
             )}
 
-            {/* Détail des ventes de la période */}
-            {salesRows.length > 0 ? (
-              <div className="table-wrap" style={{ marginTop: 16 }}>
-                <table className="data compact">
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left' }}>Date</th>
-                      <th style={{ textAlign: 'left' }}>Titre</th>
-                      <th>Qté</th>
-                      <th>Produit</th>
-                      <th>Coût de revient</th>
-                      <th>+/- value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesRows.map((e, i) => (
-                      <tr key={`${e.isin}-${e.date}-${i}`}>
-                        <td style={{ textAlign: 'left' }}>{fmtDate(e.date)}</td>
-                        <td style={{ textAlign: 'left' }}>
-                          <span className="sym">{e.name}</span>
-                          {e.costUnknown && <span className="muted sm" title="Coût d'achat inconnu (achat antérieur à ton historique importé)"> · coût ?</span>}
-                        </td>
-                        <td>{fmtNum(e.qty, e.qty % 1 ? 4 : 0)}</td>
-                        <td className="sym">{e.proceeds_eur == null ? '—' : fmtEur(e.proceeds_eur)}</td>
-                        <td className="sym">{e.cost_eur == null ? <span className="muted">?</span> : fmtEur(e.cost_eur)}</td>
-                        <td className={tone(e.gain_eur)}>{e.gain_eur == null ? <span className="muted">—</span> : signEur(e.gain_eur)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Détail des ventes.
+                Paginé : rendu d'un bloc, l'historique complet des cessions
+                faisait plusieurs milliers de pixels et enterrait tout ce qui le
+                suivait sous des écrans de défilement. */}
+            <div className="filter-bar" style={{ marginTop: 18 }}>
+              <SearchInput value={texte} onChange={setTexte} placeholder="Rechercher un titre vendu…" />
+              <div className="chip-row">
+                {RESULTATS.map((r) => (
+                  <button key={r.key} type="button" className={`chip filter ${resultat === r.key ? 'on' : ''}`}
+                    aria-pressed={resultat === r.key} onClick={() => setResultat(r.key)}>{r.label}</button>
+                ))}
               </div>
+            </div>
+
+            {salesRows.length > 0 ? (
+              <>
+                <div className="table-wrap">
+                  <table className="data compact">
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left' }}>Date</th>
+                        <th style={{ textAlign: 'left' }}>Titre</th>
+                        <th className="col-opt">Qté</th>
+                        <th className="col-opt">Produit</th>
+                        <th className="col-opt">Coût de revient</th>
+                        <th>+/- value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pg.lignes.map((e, i) => (
+                        <tr key={`${e.isin}-${e.date}-${pg.debut + i}`}>
+                          <td style={{ textAlign: 'left' }}>{fmtDate(e.date)}</td>
+                          <td className="col-titre" style={{ textAlign: 'left' }}>
+                            <span className="sym">{e.name}</span>
+                            {e.costUnknown && <span className="muted sm" title="Coût d'achat inconnu (achat antérieur à ton historique importé)"> · coût ?</span>}
+                          </td>
+                          <td className="col-opt">{fmtNum(e.qty, e.qty % 1 ? 4 : 0)}</td>
+                          <td className="sym col-opt">{e.proceeds_eur == null ? '—' : fmtEur(e.proceeds_eur)}</td>
+                          <td className="sym col-opt">{e.cost_eur == null ? <span className="muted">?</span> : fmtEur(e.cost_eur)}</td>
+                          <td className={tone(e.gain_eur)}>{e.gain_eur == null ? <span className="muted">—</span> : signEur(e.gain_eur)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pager
+                  page={pg.page} pages={pg.pages} total={pg.total} debut={pg.debut} taille={pg.taille}
+                  onPage={pg.setPage} onTaille={pg.setTaille} libelle="vente"
+                />
+              </>
             ) : (
-              <p className="muted" style={{ marginTop: 16 }}>Aucune vente sur cette période.</p>
+              <p className="muted" style={{ marginTop: 16 }}>
+                {texte || resultat !== 'tous'
+                  ? 'Aucune vente ne correspond à ces filtres.'
+                  : 'Aucune vente sur cette période.'}
+              </p>
             )}
 
             {/* Explication motif par motif. L'ancien message imputait toujours la
