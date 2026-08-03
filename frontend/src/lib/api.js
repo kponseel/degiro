@@ -94,6 +94,7 @@ export const updateIsinRef = (isin, patch) => jsonPost(`/api/isin-ref/${isin}`, 
 export const enrichNow = () => api('/api/enrich', { method: 'POST' });
 export const getLookthrough = () => api('/api/lookthrough');
 export const getEtfHoldings = () => api('/api/etf-holdings');
+export const getExtensionVersion = () => api('/api/extension/version');
 export const getBenchmark = (symbol) => api(`/api/benchmark${qs({ symbol })}`);
 export const getNews = (symbol, refresh) => api(`/api/news${qs({ symbol, refresh: refresh ? 1 : undefined })}`);
 

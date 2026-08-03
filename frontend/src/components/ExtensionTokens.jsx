@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { listExtTokens, createExtToken, revokeExtToken } from '../lib/api.js';
+import {
+  listExtTokens, createExtToken, revokeExtToken, getExtensionVersion,
+} from '../lib/api.js';
 import { Card, Banner } from './ui.jsx';
 import { fmtDate, fmtNum } from '../lib/format.js';
 
@@ -17,6 +19,11 @@ export default function ExtensionTokens() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  // Version publiée, affichée à côté du bouton ET portée par le nom du fichier.
+  // Sans elle, rien ne permet de savoir si l'extension installée est à jour :
+  // le zip s'appelait pareil à chaque version, et deux mises à jour de suite
+  // ont été rechargées sans effet parce qu'on croyait l'avoir déjà fait.
+  const [version, setVersion] = useState(null);
 
   // L'adresse que l'extension réclame : l'origine d'où cette page est servie.
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -25,6 +32,9 @@ export default function ExtensionTokens() {
     listExtTokens().then((d) => setTokens(d.tokens || [])).catch((e) => setError(e.body?.error || e.message));
   }
   useEffect(load, []);
+  // Best-effort : sans version lue, le bouton garde son libellé d'origine — un
+  // numéro absent vaut mieux qu'un téléchargement rendu indisponible.
+  useEffect(() => { getExtensionVersion().then((d) => setVersion(d?.version || null)).catch(() => {}); }, []);
 
   async function create() {
     setBusy(true); setError(null);
@@ -74,7 +84,16 @@ export default function ExtensionTokens() {
         <p className="muted" style={{ margin: '2px 0 10px' }}>
           Sur ordinateur (Chrome / Edge / Brave). Pas disponible sur mobile — sur téléphone, importe plutôt un CSV.
         </p>
-        <a className="btn" href="/api/extension/download" download>⬇ Télécharger l'extension (.zip)</a>
+        <a className="btn" href="/api/extension/download" download>
+          ⬇ Télécharger l'extension{version ? ` ${version}` : ''} (.zip)
+        </a>
+        {version && (
+          <p className="muted" style={{ margin: '8px 0 0', fontSize: 12.5 }}>
+            Le fichier s'appelle <code>degiro-analyzer-extension-{version}.zip</code>. Après
+            installation, <code>chrome://extensions</code> doit afficher <strong>{version}</strong> —
+            si le numéro diffère, c'est l'ancienne version qui tourne encore.
+          </p>
+        )}
 
         <details className="ext-help" open>
           <summary>Instructions d'installation (Windows / Mac)</summary>

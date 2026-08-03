@@ -3,6 +3,8 @@ import request from 'supertest';
 import { crc32, buildZip } from '../src/services/zip.js';
 import { createApp } from '../src/app.js';
 import { closePool } from '../src/db/pool.js';
+import { readFileSync } from 'node:fs';
+import { versionDuManifeste } from '../src/routes/extension.js';
 
 const app = createApp();
 afterAll(async () => { await closePool(); });
@@ -79,7 +81,9 @@ describe('GET /api/extension/download', () => {
     });
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('zip');
-    expect(res.headers['content-disposition']).toContain('degiro-analyzer-extension.zip');
+    // Le nom porte désormais la version : c'est la seule trace qui survit au
+    // téléchargement, et elle distingue deux zips dans un dossier.
+    expect(res.headers['content-disposition']).toMatch(/degiro-analyzer-extension-[\d.]+\.zip/);
 
     const files = readStoreZip(res.body);
     const names = Object.keys(files);
@@ -89,5 +93,50 @@ describe('GET /api/extension/download', () => {
     // Le manifeste extrait doit être un JSON MV3 valide.
     const manifest = JSON.parse(files['degiro-analyzer/manifest.json'].data.toString('utf8'));
     expect(manifest.manifest_version).toBe(3);
+  });
+});
+
+/**
+ * Le numéro de version dans le NOM du fichier.
+ *
+ * Toutes les versions s'appelaient `degiro-analyzer-extension.zip` : trois zips
+ * dans le dossier Téléchargements étaient indiscernables, et l'on rechargeait
+ * sans le savoir la version qu'on croyait remplacer. C'est arrivé deux fois de
+ * suite sur un vrai correctif.
+ */
+describe('Nom de l’archive de l’extension', () => {
+  it('lit la version du manifeste', () => {
+    expect(versionDuManifeste('{"version":"0.5.5","name":"x"}')).toBe('0.5.5');
+    expect(versionDuManifeste('{"version":"1.0"}')).toBe('1.0');
+  });
+
+  it('refuse ce qui n’a rien à faire dans un en-tête HTTP', () => {
+    // Le nom finit dans `Content-Disposition` : un guillemet ou un retour à la
+    // ligne y ouvrirait une injection d'en-tête.
+    expect(versionDuManifeste('{"version":"1.0\\" ; drop"}')).toBeNull();
+    expect(versionDuManifeste('{"version":"1.0\\nX-Evil: 1"}')).toBeNull();
+    expect(versionDuManifeste('{"version":"../../etc/passwd"}')).toBeNull();
+  });
+
+  it('rend null plutôt que de casser le téléchargement', () => {
+    expect(versionDuManifeste('pas du json')).toBeNull();
+    expect(versionDuManifeste('{}')).toBeNull();
+    expect(versionDuManifeste('')).toBeNull();
+  });
+
+  it('sert le zip sous un nom qui porte la version, et l’annonce', async () => {
+    const version = JSON.parse(
+      readFileSync(new URL('../../extension/manifest.json', import.meta.url), 'utf8'),
+    ).version;
+
+    const v = await request(app).get('/api/extension/version');
+    expect(v.status).toBe(200);
+    expect(v.body.version).toBe(version);
+
+    const dl = await request(app).get('/api/extension/download');
+    expect(dl.status).toBe(200);
+    expect(dl.headers['content-disposition']).toBe(
+      `attachment; filename="degiro-analyzer-extension-${version}.zip"`,
+    );
   });
 });
