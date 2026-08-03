@@ -353,6 +353,29 @@ async function capture() {
       + ' aucune ligne de trésorerie en euros lue');
   }
 
+  // Détail par devise, en étape à part.
+  //
+  // Entassé dans la ligne du contrôle du total, il était illisible — et il
+  // n'apparaissait qu'en cas d'écart, alors que c'est justement le chiffre qu'on
+  // veut pouvoir vérifier quand tout semble aller. Le taux affiché est la
+  // médiane des lignes de la devise ; la dispersion dit si elles s'accordent.
+  if ((diagnostics.parDevise || []).length) {
+    const parDevise = diagnostics.parDevise.map((d) => {
+      const bloc = [`${d.devise} — ${d.lignes} ligne(s), ${d.valeur} €`];
+      if (d.local !== null) bloc.push(`cours×qté ${d.local}`);
+      if (d.taux !== null) bloc.push(`taux ${d.taux}`);
+      if (!d.controlee) bloc.push('trop peu de lignes pour contrôler le taux');
+      else bloc.push(`dispersion ${(d.dispersion * 100).toFixed(3)} %`);
+      return bloc.join(', ');
+    }).join(' | ');
+    // Une dispersion nulle sur toutes les devises = toutes les lignes d'une même
+    // devise partagent le même taux. Aucune ligne n'est donc mal convertie, et
+    // un écart résiduel vient d'ailleurs.
+    const accord = diagnostics.parDevise.every((d) => !d.controlee || d.dispersion <= 0.005);
+    step(report, 'Détail par devise', accord, parDevise
+      + (accord ? '' : ' — au moins une ligne est convertie à un taux différent des autres, voir les pistes ci-dessous'));
+  }
+
   // Contrôle de cohérence : notre somme doit coller au total affiché par DEGIRO.
   if (diagnostics.totalGap !== null) {
     // `gapExplique` : le reliquat tient dans les soldes en devises que nous ne
@@ -368,19 +391,25 @@ async function capture() {
     // Le nombre de positions RÉELLEMENT valorisées : si les 27 le sont et que
     // l'écart persiste, aucune ligne ne manque — c'est la valorisation ligne à
     // ligne qui diverge, et c'est une autre enquête que « il manque un titre ».
-    const detail = `titres ${diagnostics.positionsTotal} € (DEGIRO ${diagnostics.degiroPositions ?? '?'} €)`
+    // Le manque est rapporté aux TITRES seuls, fonds de trésorerie déduit : dire
+    // « DEGIRO 79 993 € » alors que ce chiffre englobe le fonds envoyait chercher
+    // 2 878 € là où il n'en manquait que 468.
+    const manque = diagnostics.titresManquants;
+    const detail = `titres ${diagnostics.positionsTotal} €`
+      + (diagnostics.titresDegiro != null ? ` (DEGIRO ${diagnostics.titresDegiro} € hors fonds de trésorerie)` : '')
       + `, ${diagnostics.valued}/${diagnostics.held} position(s) valorisée(s)`
-      + `, liquidités ${diagnostics.cash ?? '?'} € (source : ${diagnostics.cashSource})`;
+      + `, liquidités ${diagnostics.cash ?? '?'} € (source : ${diagnostics.cashSource}`
+      + (diagnostics.cashEur != null ? `, nos lignes en euros : ${diagnostics.cashEur} €` : '') + ')'
+      + (manque != null && Math.abs(manque) > 1
+        ? ` — ${Math.abs(manque)} € de titres que DEGIRO compte et que nous ne trouvons sur aucune ligne`
+        : '');
     // Les lignes suspectes sont nommées : un écart qui désigne son origine se
     // vérifie en dix secondes sur le site DEGIRO, un écart nu jamais.
     const pistes = (diagnostics.suspects || []).slice(0, 3).join(' ; ');
     // Ventilation par devise : sur une devise étrangère, « valeur » et
     // « cours × quantité » doivent différer du taux de change. S'ils sont égaux,
     // la valeur reçue est locale et comptée à tort comme des euros.
-    const devisesDetail = (diagnostics.parDevise || [])
-      .map((d) => `${d.devise} ${d.lignes} ligne(s) ${d.valeur} €`
-        + (d.local === null ? '' : ` (cours×qté ${d.local})`))
-      .join(' ; ');
+    const devisesDetail = '';
     step(report, 'Contrôle du total', consistent,
       (consistent
         ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
