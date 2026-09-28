@@ -33,18 +33,11 @@ async function heldStocks(accountId) {
 
 /**
  * Titres à afficher sur la page Actus.
- *
- * `items` et `available` subsistent — vide et `true` — parce que d'autres écrans
- * les lisent encore : les retirer d'un coup casserait leur affichage sans rien
- * apporter. Ils disparaîtront quand ces écrans auront basculé sur les liens.
- *
- * @returns {Promise<{ available: boolean, stocks: Array, items: Array }>}
+ * @returns {Promise<{ stocks: Array<{ isin, name, ticker, sector }> }>}
  */
 export async function computeNews(accountId) {
   const rows = await heldStocks(accountId);
   return {
-    available: true,
-    items: [],
     stocks: rows.map((s) => ({
       isin: s.isin,
       name: s.name,

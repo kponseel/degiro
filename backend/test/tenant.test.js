@@ -55,7 +55,7 @@ describe('Isolation multi-tenant', () => {
     expect(bPort.body.snapshot.total_value_eur).toBe(2000);
   });
 
-  it('les séries et l’exposition sont cloisonnées', async () => {
+  it('l’exposition est cloisonnée', async () => {
     const alice = await register('alice@example.com', 'Alice');
     const bob = await register('bob@example.com', 'Bob');
 
@@ -63,11 +63,9 @@ describe('Isolation multi-tenant', () => {
     // Bob n'a aucune donnée.
     const aExp = await alice.get('/api/exposure');
     const bExp = await bob.get('/api/exposure');
-    const bSnaps = await bob.get('/api/snapshots');
 
     expect(aExp.body.currency.length).toBeGreaterThan(0);
     expect(bExp.body.currency).toEqual([]);
-    expect(bSnaps.body.snapshots).toEqual([]);
   });
 
   it("une inscription ne reçoit JAMAIS l'id 1 (réservé au propriétaire)", async () => {

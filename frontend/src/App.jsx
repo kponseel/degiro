@@ -5,11 +5,10 @@ import Onboarding from './components/Onboarding.jsx';
 import WelcomeTour from './components/WelcomeTour.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import { useHashRoute } from './lib/useHashRoute.js';
-import { IconOverview, IconExposure, IconHistory, IconSettings, IconAI, IconAdmin, IconNews, IconHelp, IconTheme, IconExtension } from './components/icons.jsx';
+import { IconOverview, IconExposure, IconSettings, IconAI, IconAdmin, IconNews, IconHelp, IconTheme, IconExtension } from './components/icons.jsx';
 import { readTheme, resolveTheme, nextTheme, saveTheme, systemPrefersDark } from './lib/theme.js';
 import Overview from './pages/Overview.jsx';
 import Exposure from './pages/Exposure.jsx';
-import History from './pages/History.jsx';
 import News from './pages/News.jsx';
 import AiPrompts from './pages/AiPrompts.jsx';
 import Settings from './pages/Settings.jsx';
@@ -22,10 +21,6 @@ import Admin from './pages/Admin.jsx';
 const PAGES = [
   { id: 'overview', label: "Vue d'ensemble", short: 'Portefeuille', icon: IconOverview, Comp: Overview },
   { id: 'exposure', label: 'Exposition', short: 'Exposition', icon: IconExposure, Comp: Exposure },
-  // Cette page s'est longtemps appelée « Historique » dans le menu, « Performance »
-  // sur l'onglet compact et dans son propre titre. Trois noms pour un écran : on ne
-  // pouvait ni s'y référer à l'oral, ni la retrouver dans l'aide. Un seul nom.
-  { id: 'history', label: 'Performance', short: 'Performance', icon: IconHistory, Comp: History },
   { id: 'news', label: 'Actus', short: 'Actus', icon: IconNews, Comp: News },
   { id: 'ai', label: 'Prompts IA', short: 'Prompts IA', icon: IconAI, Comp: AiPrompts },
   // `highlight` : mise en avant visuelle. Tout ce qui fait ENTRER des données —
@@ -305,10 +300,12 @@ export default function App() {
     );
   }
 
-  // Anciennes routes toujours servies pour ne casser aucun lien ou marque-page :
-  // les dividendes vivent dans Performance, et la page extension a fusionné avec
-  // l'import dans « Import / Extension » (le popup de l'extension y renvoie).
-  const resolue = route === 'dividends' ? 'history' : route === 'extension' ? 'import' : route;
+  // Anciennes routes toujours servies pour ne casser aucun lien ou marque-page.
+  // `history` et `dividends` (page Performance, supprimée) retombent sur la vue
+  // d'ensemble ; la page extension a fusionné avec l'import dans
+  // « Import / Extension » (le popup de l'extension y renvoie).
+  const ALIAS = { dividends: 'overview', history: 'overview', extension: 'import' };
+  const resolue = ALIAS[route] || route;
   const current = pages.find((p) => p.id === resolue) || pages[0];
   const Comp = current.Comp;
 
@@ -344,9 +341,9 @@ export default function App() {
             return (
               <button
                 key={p.id}
-                className={`tab ${route === p.id ? 'active' : ''} ${p.highlight ? 'tab-highlight' : ''}`}
+                className={`tab ${resolue === p.id ? 'active' : ''} ${p.highlight ? 'tab-highlight' : ''}`}
                 onClick={() => go(p.id)}
-                aria-current={route === p.id ? 'page' : undefined}
+                aria-current={resolue === p.id ? 'page' : undefined}
               >
                 <Icon /> <span>{p.short}</span>
               </button>
@@ -397,7 +394,7 @@ export default function App() {
             return (
               <button
                 key={p.id}
-                className={`${route === p.id ? 'active' : ''} ${p.highlight ? 'nav-highlight' : ''}`}
+                className={`${resolue === p.id ? 'active' : ''} ${p.highlight ? 'nav-highlight' : ''}`}
                 onClick={() => go(p.id)}
               >
                 <Icon /> {p.short}
@@ -419,11 +416,6 @@ export default function App() {
           onLogout={handleLogout}
           onGoImport={() => go('import')}
           onGoExtension={() => go('import')}
-          // Route d'origine, AVANT résolution des alias : `#dividends` renvoie
-          // certes vers Performance, mais la page doit encore savoir qu'il faut
-          // ouvrir l'onglet Dividendes — sans quoi le lien conservé « pour ne
-          // casser aucun marque-page » aboutit sur un écran sans dividendes.
-          route={route}
           onGoOverview={() => { go('overview'); setReloadKey((k) => k + 1); }}
           onReplayTour={replayTour}
           theme={theme}

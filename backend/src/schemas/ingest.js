@@ -5,12 +5,6 @@ import { z } from 'zod';
 const money = z.number().finite().min(-1e14).max(1e14);
 const quantity = z.number().finite().min(-1e12).max(1e12);
 
-/** Date acceptée par la colonne DATETIME, et réellement analysable. */
-const sqlDate = z.string().refine(
-  (s) => /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?/.test(s) && !Number.isNaN(Date.parse(s.replace(' ', 'T'))),
-  { message: 'date invalide (attendu AAAA-MM-JJ [HH:MM:SS])' },
-);
-
 const position = z.object({
   isin: z.string().length(12),
   symbol: z.string().max(20).optional(),
@@ -26,24 +20,6 @@ const position = z.object({
   pl_day_eur: money.optional(),
 });
 
-// Ordres et mouvements — mêmes types que la table `transactions`. L'extension
-// n'envoie aujourd'hui que des 'buy'/'sell', mais le contrat accepte l'ensemble
-// pour couvrir une future capture du relevé de compte (dividendes, taxes…).
-const transaction = z.object({
-  tx_date: sqlDate,
-  type: z.enum([
-    'deposit', 'withdrawal', 'buy', 'sell', 'dividend', 'tax',
-    'transaction_tax', 'fee', 'fx', 'split', 'isin_change', 'other',
-  ]),
-  isin: z.string().length(12).nullable().optional(),
-  description: z.string().max(255).nullable().optional(),
-  qty: quantity.nullable().optional(),
-  amount: money.nullable().optional(),
-  currency: z.string().max(3).nullable().optional(),
-  amount_eur: money.nullable().optional(),
-  external_id: z.string().min(1).max(64),
-});
-
 export const ingestSchema = z.object({
   schema_version: z.number().int().positive().default(1),
   source: z.enum(['extension', 'csv']),
@@ -55,5 +31,9 @@ export const ingestSchema = z.object({
   cash_eur: money.optional(),
   raw_json: z.unknown().optional(),
   positions: z.array(position).default([]),
-  transactions: z.array(transaction).default([]),
+  // Envoyé par les extensions antérieures à la 0.6, et ignoré : l'application
+  // n'analyse plus que le portefeuille ouvert. Accepté sans validation pour
+  // qu'un ordre mal formé dans un historique inutile ne fasse pas échouer la
+  // capture des positions — puis retiré du résultat.
+  transactions: z.unknown().optional().transform(() => undefined),
 });

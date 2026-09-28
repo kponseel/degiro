@@ -13,20 +13,14 @@ import authRouter from './routes/auth.js';
 import ingestRouter from './routes/ingest.js';
 import ingestCsvRouter from './routes/ingestCsv.js';
 import portfolioRouter from './routes/portfolio.js';
-import snapshotsRouter from './routes/snapshots.js';
 import exposureRouter from './routes/exposure.js';
 import enrichRouter from './routes/enrich.js';
 import isinRefRouter from './routes/isinRef.js';
-import dividendsRouter from './routes/dividends.js';
-import performanceRouter from './routes/performance.js';
 import etfHoldingsRouter from './routes/etfHoldings.js';
 import lookthroughRouter from './routes/lookthrough.js';
-import benchmarkRouter from './routes/benchmark.js';
 import adminRouter from './routes/admin.js';
 import newsRouter from './routes/news.js';
-import aiRouter from './routes/ai.js';
 import extensionRouter from './routes/extension.js';
-import analyticsRouter from './routes/analytics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, '../../frontend/dist');
@@ -67,8 +61,8 @@ export function createApp() {
       }),
     },
   }));
-  // L'ingestion par l'extension embarque l'historique complet des transactions :
-  // une limite trop basse rejetterait les gros comptes (plusieurs années d'ordres).
+  // Une extension antérieure à la 0.6 embarque encore tout son historique d'ordres
+  // (ignoré côté serveur) : une limite trop basse ferait échouer sa capture.
   app.use(express.json({ limit: '5mb' }));
   app.use(cookieParser());
 
@@ -107,19 +101,13 @@ export function createApp() {
   app.use('/api/ingest/csv', ingestCsvRouter);
   app.use('/api/ingest', ingestRouter);
   app.use('/api/portfolio', portfolioRouter);
-  app.use('/api/snapshots', snapshotsRouter);
   app.use('/api/exposure', exposureRouter);
   app.use('/api/enrich', enrichRouter);
   app.use('/api/isin-ref', isinRefRouter);
-  app.use('/api/dividends', dividendsRouter);
-  app.use('/api/performance', performanceRouter);
   app.use('/api/etf-holdings', etfHoldingsRouter);
   app.use('/api/lookthrough', lookthroughRouter);
-  app.use('/api/benchmark', benchmarkRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/news', newsRouter);
-  app.use('/api/ai', aiRouter);
-  app.use('/api/analytics', analyticsRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {

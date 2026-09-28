@@ -16,12 +16,12 @@ const STEPS = [
       <>
         <p>
           DEGIRO t'affiche ce que tu possèdes. Ici, tu vois ce que ça <strong>signifie</strong> :
-          ta répartition réelle, ta performance réelle, et ce que ton portefeuille te rapporte.
+          ta répartition réelle, tes concentrations cachées, et un regard extérieur sur tes titres.
         </p>
         <ul className="tour-list">
           <li><strong>Ta vraie répartition</strong> — y compris les titres cachés <em>à l'intérieur</em> de tes ETF.</li>
-          <li><strong>Ta performance réelle</strong> — celle qui ne se laisse pas flatter par tes versements.</li>
-          <li><strong>Tes dividendes</strong> — ce qui est tombé, et ce que ça représente.</li>
+          <li><strong>Tes +/− values</strong> — titre par titre, en euros et en pourcentage.</li>
+          <li><strong>Des prompts IA prêts à coller</strong> — pour faire analyser un titre, plusieurs, ou tout le portefeuille.</li>
         </ul>
       </>
     ),
@@ -32,8 +32,8 @@ const STEPS = [
       <ul className="tour-list">
         <li><strong>Portefeuille</strong> — tes positions et leurs +/− values. Clique une ligne : tout son détail s'ouvre.</li>
         <li><strong>Exposition</strong> — secteurs, pays, devises. L'onglet <em>vraie exposition</em> éclate tes ETF en leurs titres : c'est là qu'on découvre qu'on détient trois fois la même entreprise.</li>
-        <li><strong>Performance</strong> — ta courbe, ton TWR face à un indice, tes plus-values réalisées et tes dividendes.</li>
-        <li><strong>Actus</strong> — l'actualité de tes titres, avec les raccourcis vers Yahoo Finance et Finviz.</li>
+        <li><strong>Actus</strong> — des raccourcis vers l'actualité et les pages finance de chacun de tes titres.</li>
+        <li><strong>Prompts IA</strong> — choisis des titres (ou tout le portefeuille) et un objectif, puis copie le prompt.</li>
       </ul>
     ),
   },

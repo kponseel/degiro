@@ -3,7 +3,7 @@ import Uploader from './Uploader.jsx';
 
 /**
  * Parcours de bienvenue d'un compte sans données : guide l'utilisateur pour
- * attacher son premier portefeuille (et, en option, son relevé de compte).
+ * attacher son premier portefeuille.
  * @param onFinished          appelé après le premier import de portefeuille réussi
  * @param onSkip              « Explorer d'abord » — entre dans l'app sans importer
  * @param onInstallExtension  entre dans l'app directement sur la page Extension
@@ -52,21 +52,6 @@ export default function Onboarding({ user, onFinished, onSkip, onInstallExtensio
               </div>
             </div>
           </li>
-          <li>
-            <div className="step-head">
-              <span className="step-num">3</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <strong>Optionnel : ton relevé de compte</strong>
-                <div className="muted step-hint">
-                  Account.csv (DEGIRO → <em>Activité</em> → <em>Relevés</em>) active les <strong>dividendes</strong> et
-                  la <strong>vraie performance (TWR)</strong>. Tu pourras le faire plus tard depuis Import / Extension.
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <Uploader hint="auto" title="Relevé de compte" description="Account.csv — dépôts, dividendes, frais" />
-                </div>
-              </div>
-            </div>
-          </li>
         </ol>
 
         {/* L'extension est le chemin le plus court, mais elle demande une
@@ -78,9 +63,8 @@ export default function Onboarding({ user, onFinished, onSkip, onInstallExtensio
             <strong>Plus simple : l'extension Chrome</strong>
           </div>
           <p className="muted" style={{ margin: '4px 0 0' }}>
-            Un clic et ton portefeuille arrive ici, sans aucun fichier à exporter. Elle apporte
-            en plus l'<strong>historique de tes ordres</strong> — d'où viennent tes positions
-            fermées et tes plus-values réalisées, que le seul Portfolio.csv ne contient pas.
+            Un clic et ton portefeuille arrive ici, sans aucun fichier à exporter — et tu le
+            remets à jour quand tu veux, en un clic aussi.
           </p>
           <p className="muted" style={{ margin: '6px 0 0', fontSize: 12.5 }}>
             Sur ordinateur uniquement. Elle lit ta session DEGIRO déjà ouverte : ni mot de passe,

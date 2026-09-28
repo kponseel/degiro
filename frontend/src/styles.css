@@ -378,8 +378,6 @@ button { font: inherit; cursor: pointer; }
 .kpi-value { font-size: 21px; font-weight: 740; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
 .kpi-sub { font-size: 11.5px; color: var(--ink-faint); font-weight: 550; font-variant-numeric: tabular-nums; }
 
-/* ── Grille du dashboard : courbe + répartition ───────── */
-.dash-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
 .alloc-wrap { display: flex; gap: 14px; align-items: center; }
 .alloc-chart { width: 132px; height: 132px; flex-shrink: 0; }
 .alloc-legend { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
@@ -420,16 +418,6 @@ table.data.compact th, table.data.compact td { padding: 8px 12px; }
 tr.row-click { cursor: pointer; }
 tr.row-click:hover { background: var(--accent-soft); }
 tr.row-click:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-tr.row-on { background: var(--accent-soft); cursor: pointer; }
-
-/* ── Vue réalisé / fiscale ────────────────────────────── */
-.real-filters { margin-bottom: 2px; }
-.fiscal-note {
-  margin-top: 16px; padding: 11px 13px; border-radius: 10px;
-  background: var(--card-2); border: 1px solid var(--line);
-  font-size: 12.5px; line-height: 1.5; color: var(--ink-soft);
-}
-.fiscal-note strong { color: var(--ink); }
 
 /* ── Répartitions compactes (4 donuts sur une rangée) ─── */
 .expo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
@@ -468,15 +456,6 @@ tr.row-on { background: var(--accent-soft); cursor: pointer; }
 .dr-note { font-size: 12.5px; margin: 8px 0 0; line-height: 1.5; }
 .dr-ai-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .dr-ai-head h4 { margin: 0; }
-.dr-ai-summary { font-size: 13px; line-height: 1.55; margin: 10px 0 0; color: var(--ink); }
-.dr-ai-points { margin-top: 10px; }
-.dr-ai-points-t { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.05em; }
-.dr-ai-points ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
-.dr-ai-points li { font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
-.dr-news { display: block; text-decoration: none; color: inherit; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
-.dr-news:last-child { border-bottom: none; }
-.dr-news-title { display: block; font-size: 13px; font-weight: 560; line-height: 1.4; }
-.dr-news-src { font-size: 11.5px; }
 
 /* ── Table ────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
@@ -519,17 +498,6 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .chip.link-chip { cursor: pointer; text-decoration: none; }
 .chip.link-chip:hover { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
 
-/* Fil d'actualités */
-.news-list { display: grid; gap: 10px; }
-.news-item {
-  display: block; text-decoration: none; color: inherit;
-  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px;
-  /* Liseré coloré = secteur du titre, pour repérer d'un coup d'œil. */
-  border-left: 3px solid var(--line);
-  transition: border-color 0.12s ease, transform 0.02s ease;
-}
-.news-item:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-
 /* Filtres Actus : chips colorés par secteur + libellés de section */
 .filter-label { font-size: 12px; font-weight: 650; color: var(--ink-soft); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 
@@ -547,34 +515,10 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .ext-instr .muted { font-size: 12.5px; margin-top: 2px; }
 .ext-instr code, .ext-help code { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 12px; }
 
-/* Barre de contribution (page Performance) */
-.contrib { display: flex; align-items: center; gap: 8px; min-width: 120px; }
-.contrib-track { flex: 1; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
-.contrib-fill { display: block; height: 100%; border-radius: 3px; }
-.contrib-fill.pos { background: var(--pos); }
-.contrib-fill.neg { background: var(--neg); }
-.contrib-val { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-soft); min-width: 48px; text-align: right; }
 .sm { font-size: 11.5px; }
 .chip.filter.sector { display: inline-flex; align-items: center; gap: 6px; }
 .sector-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.news-item:active { transform: translateY(0.5px); }
-.news-title { font-weight: 620; line-height: 1.35; letter-spacing: -0.01em; }
-.news-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 7px; font-size: 12.5px; color: var(--ink-soft); }
-.name-link { text-decoration: none; color: inherit; }
-.name-link:hover { color: var(--accent-ink); }
-.name-link:hover .muted { color: var(--accent-ink); }
 
-/* ── Bars ─────────────────────────────────────────────── */
-.bars { display: flex; flex-direction: column; gap: 12px; }
-.bar-row { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; align-items: center; }
-.bar-row .name { font-weight: 600; }
-.bar-row .amt { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 13px; font-weight: 550; }
-.bar-track { grid-column: 1 / -1; height: 8px; border-radius: 6px; background: var(--line-soft); overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 72%, #7db0fa)); }
-
-/* ── Legend ───────────────────────────────────────────── */
-.legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 14px; }
-.legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
 .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 
 /* ── Banners ──────────────────────────────────────────── */
@@ -612,8 +556,6 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   font-size: 13px; color: var(--ink); word-break: break-all; flex: 1 1 240px; user-select: all;
 }
 
-/* ── User chip (sidebar) ──────────────────────────────── */
-.user-chip { display: flex; flex-direction: column; gap: 2px; }
 .user-pseudo { font-weight: 680; color: var(--ink); font-size: 13px; }
 .input {
   width: 100%; padding: 11px 13px; border-radius: 10px;
@@ -630,36 +572,6 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .filter-bar .filter-meta { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .field label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); font-weight: 650; }
 
-/* ── Sous-navigation d'une page (Performance) ─────────── */
-/* Défilable plutôt que repliée : quatre onglets sur deux lignes mangeraient
-   l'écran de téléphone qu'on cherche justement à libérer. */
-/* Le dégradé sur le bord droit signale qu il reste des onglets a decouvrir.
-   Sans lui, sur 360-414 px, « Dividendes » est purement invisible et rien
-   n indique qu il faut faire glisser : l onglet passe pour inexistant.
-   `mask-image` s efface tout seul en fin de course, contrairement a un
-   pseudo-element fixe qui masquerait le dernier onglet une fois atteint. */
-.subtabs {
-  display: flex; gap: 4px; margin-bottom: 16px; padding-bottom: 2px;
-  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  border-bottom: 1px solid var(--line-soft);
-  scroll-snap-type: x proximity;
-}
-.subtabs::-webkit-scrollbar { display: none; }
-.subtab {
-  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
-  padding: 9px 14px; border: none; background: transparent; color: var(--ink-soft);
-  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
-  border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0;
-  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
-}
-.subtab:hover { color: var(--ink); background: var(--line-soft); }
-.subtab.on { color: var(--accent-ink); border-bottom-color: var(--accent); font-weight: 700; }
-.subtab-count {
-  font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px;
-  background: var(--card-2); color: var(--ink-faint); font-variant-numeric: tabular-nums;
-}
-.subtab.on .subtab-count { background: var(--accent-soft); color: var(--accent-ink); }
-
 /* ── Raccourcis par titre (page Actus) ────────────────── */
 .ql-list { display: grid; gap: 2px; }
 .ql-row { padding: 14px 0; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
@@ -671,23 +583,6 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
    (actualite) : c'est cette derniere qu'on vient chercher sur cette page. */
 .ql-row .chip.sm { opacity: 0.72; }
 .ql-row .chip.sm:hover { opacity: 1; }
-
-/* ── Commande segmentee (choix UNIQUE) ────────────────────── */
-/* Les chips espacees se lisaient comme des bascules independantes : on croyait
-   pouvoir cumuler « Moins-values » et « Non calculees ». Des segments jointifs
-   disent, sans legende, qu un seul choix est possible a la fois. */
-.segmented {
-  display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line);
-  border-radius: 9px; overflow: hidden; background: var(--card-2);
-}
-.seg {
-  padding: 6px 13px; border: none; background: transparent; color: var(--ink-soft);
-  font: inherit; font-size: 12.5px; font-weight: 620; cursor: pointer; white-space: nowrap;
-  border-right: 1px solid var(--line);
-}
-.seg:last-child { border-right: none; }
-.seg:hover { color: var(--ink); background: var(--line-soft); }
-.seg.on { background: var(--accent); color: var(--fill-ink); }
 
 /* ── Recherche dans un tableau ────────────────────────── */
 .search-input { position: relative; display: flex; flex: 1 1 200px; min-width: 150px; }
@@ -701,18 +596,6 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   color: var(--ink-faint); font-size: 19px; line-height: 1; border-radius: 6px;
 }
 .search-clear:hover { color: var(--ink); background: var(--line-soft); }
-
-/* ── Pagination ───────────────────────────────────────── */
-.pager {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft);
-  font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
-}
-.pager-btns { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-/* 34 px de côté : la cible tactile recommandée, sans alourdir le desktop. */
-.pager-btn { padding: 0; width: 34px; height: 34px; font-size: 17px; line-height: 1; justify-content: center; }
-.pager-page { min-width: 58px; text-align: center; font-weight: 650; color: var(--ink); }
-.pager-size { padding: 7px 9px; font-size: 12.5px; }
 
 /* ── Uploader ─────────────────────────────────────────── */
 .uploader { display: grid; gap: 14px; }
@@ -746,71 +629,66 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 .assistant-links a.chip { cursor: pointer; text-decoration: none; }
 .assistant-links a.chip:hover { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
-/* ── Générateur de prompts IA (wizard) ────────────────── */
-.wiz-goals { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-.wiz-goal {
-  display: flex; flex-direction: column; gap: 5px; text-align: left;
-  padding: 16px 18px; border: 1px solid var(--line); border-radius: 13px;
-  background: var(--card); cursor: pointer; transition: border-color 0.12s, transform 0.02s;
-}
-.wiz-goal:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--card-2); }
-.wiz-goal:active { transform: translateY(0.5px); }
-.wiz-goal-title { font-weight: 700; letter-spacing: -0.01em; }
-.wiz-goal-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
-
-.wiz-card { max-width: 620px; }
-.wiz-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.wiz-progress { font-size: 12px; color: var(--ink-faint); font-weight: 650; }
-.wiz-q { margin: 6px 0 16px; font-size: 18px; font-weight: 720; letter-spacing: -0.02em; }
-.wiz-opts { display: flex; flex-direction: column; gap: 9px; }
-.wiz-opt {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left;
-  padding: 13px 16px; border: 1px solid var(--line); border-radius: 11px;
-  background: var(--card); cursor: pointer; font-size: 14.5px; font-weight: 550;
-  transition: border-color 0.12s, background 0.12s;
-}
-.wiz-opt:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--card-2); }
-.wiz-opt.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
-.wiz-skip { margin-top: 14px; }
-.wiz-stock-list { display: flex; flex-direction: column; gap: 7px; max-height: 52vh; overflow-y: auto; }
-.wiz-stock-list .wiz-opt { padding: 10px 14px; font-size: 13.5px; }
-
-.wiz-done-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.wiz-flow { list-style: none; margin: 16px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--card-2); display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.5; }
-.wiz-flow li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-
-/* ── Modal de collage ─────────────────────────────────── */
-.paste-modal { max-width: 620px; }
-.paste-area {
-  width: 100%; min-height: 180px; resize: vertical; font-family: ui-monospace, Consolas, Menlo, monospace;
-  font-size: 12.5px; line-height: 1.5; padding: 12px 14px;
+/* ── Générateur de prompts IA ─────────────────────────── */
+/* Réglages à gauche, prompt à droite (collant) tant qu'il y a la place ; une
+   seule colonne en dessous, le prompt venant alors après les réglages. */
+.pb-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+.pb-config { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pb-result { min-width: 0; }
+@media (min-width: 1100px) {
+  .pb-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  /* Sous la barre du haut (52 px), elle aussi collante. */
+  .pb-result { position: sticky; top: 68px; }
 }
 
-/* ── Badge d'avis IA ──────────────────────────────────── */
-.insight-badge {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
-  padding: 2px 7px; border-radius: 6px; white-space: nowrap;
-  background: var(--card-2); border: 1px solid var(--line); color: var(--ink-soft);
+.pb-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--card-2); max-width: 100%; }
+.pb-seg button {
+  border: none; background: transparent; color: var(--ink-soft); cursor: pointer;
+  padding: 7px 12px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
 }
-.insight-badge .ib-risk { font-variant-numeric: tabular-nums; opacity: 0.85; }
-.insight-badge.pos { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); border-color: color-mix(in srgb, var(--pos) 32%, transparent); }
-.insight-badge.neg { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
+.pb-seg button:hover { color: var(--ink); }
+.pb-seg button.on { background: var(--card); color: var(--accent-ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
 
-/* ── Carte « Avis IA du portefeuille » (Vue d'ensemble) ─ */
-.pf-ai { margin-bottom: 14px; }
-.pf-ai-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-.pf-ai-scores { display: flex; gap: 26px; flex-wrap: wrap; }
-/* Deux colonnes tant qu'il y a la place ; `minmax(min(280px, 100%), …)` pour que
-   les libellés longs de l'IA se replient au lieu d'élargir la grille. */
-.pf-ai-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 18px; }
-.pf-ai-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.pf-ai-list li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
-.pf-ai-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.pf-ai-ref { font-size: 12px; flex-shrink: 0; }
-/* Sévérité haute : le rouge des pertes, seul ton « alerte » du système. */
-.chip.sev-high { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
-.chip.pos { color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, transparent); border-color: color-mix(in srgb, var(--pos) 32%, transparent); }
-.chip.neg { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); border-color: color-mix(in srgb, var(--neg) 32%, transparent); }
+.pb-picker-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.pb-picker-bar .search-input { flex: 1 1 220px; }
+.pb-stock-list { display: flex; flex-direction: column; gap: 5px; max-height: 360px; overflow-y: auto; padding-right: 2px; }
+.pb-stock {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13.5px;
+}
+.pb-stock:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.pb-stock.on { border-color: var(--accent); background: var(--accent-soft); }
+.pb-stock input { flex-shrink: 0; accent-color: var(--accent); }
+.pb-stock-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-stock-meta { flex-shrink: 0; font-size: 12.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.pb-goals { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr)); gap: 8px; }
+.pb-goal {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; cursor: pointer;
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--card);
+}
+.pb-goal:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--card-2); }
+.pb-goal.on { border-color: var(--accent); background: var(--accent-soft); }
+.pb-goal-title { font-weight: 700; font-size: 14px; }
+.pb-goal.on .pb-goal-title { color: var(--accent-ink); }
+.pb-goal-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+
+.pb-fields { display: flex; flex-direction: column; gap: 14px; }
+.pb-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pb-field > span { font-size: 12.5px; font-weight: 650; color: var(--ink-soft); }
+.pb-field .filter-select { max-width: 360px; }
+.pb-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; cursor: pointer; }
+.pb-check input { margin-top: 3px; accent-color: var(--accent); }
+.pb-note, .pb-text {
+  width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px 12px;
+}
+.pb-text {
+  min-height: 340px; margin-top: 12px; background: var(--card-2); color: var(--ink-soft);
+  font-family: ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace; font-size: 12.5px; line-height: 1.55;
+}
+@media (min-width: 1100px) { .pb-text { min-height: 0; height: calc(100vh - 330px); } }
+.pb-output-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 
 /* ── Gate ─────────────────────────────────────────────── */
 .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -870,8 +748,6 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
      latéralement. `min-width: 0` autorise la tuile à se réduire. */
   .stat { min-width: 0; }
 
-  /* Dashboard : une colonne, KPI 2 par ligne. */
-  .dash-grid { grid-template-columns: minmax(0, 1fr); }
   .kpi-strip { grid-template-columns: 1fr 1fr; }
   /* Un nombre impair de KPI laisserait une case vide : la dernière s'étale. */
   .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -881,9 +757,7 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
      téléphone — dont 80 pour le montant. Il ne restait pas de quoi écrire un nom :
      « ASML » s'affichait « A… ». Empilées, chaque ligne a toute la carte. */
   .movers { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  /* Avis IA : une seule colonne, scores resserrés. */
-  .pf-ai-cols { grid-template-columns: minmax(0, 1fr); }
-  .pf-ai-scores { gap: 18px; }
+
   .alloc-chart { width: 100%; height: 150px; }
   .filter-bar .filter-search { flex-basis: 100%; }
   .filter-bar .filter-select { flex: 1 1 44%; }
@@ -904,36 +778,13 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
   table.data th, table.data td,
   table.data.compact th, table.data.compact td { padding: 10px 8px; font-size: 13.5px; }
   table.data .col-opt { display: none; }
-  /* Le dégradé sur le bord droit signale qu'il reste des onglets à découvrir.
-     Sans lui, sous 414 px, « Dividendes » est purement invisible et rien ne dit
-     qu'il faut faire glisser : l'onglet passe pour inexistant. `mask-image`
-     s'efface de lui-même en fin de course, là où un dégradé posé en
-     pseudo-élément masquerait le dernier onglet une fois atteint. */
-  .subtabs { mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%); }
-  .subtab { scroll-snap-align: start; }
-  /* Un nom de titre ne se coupe pas (`white-space: nowrap`) : dans le détail
-     des ventes, « Vanguard FTSE All-World · coût ? » poussait hors écran la
-     colonne de plus/moins-value — précisément celle qu'on vient lire, et
-     inatteignable sans défilement horizontal. Le nom se tronque, le chiffre
-     reste. */
-  /* `max-width: 1px` avec `width: 100%` : la colonne réclame toute la place et
-     n'en impose aucune. Elle absorbe donc ce que les autres laissent, à
-     n'importe quelle largeur d'écran — là où un plafond en `vw` doit être
-     retaillé à chaque téléphone plus étroit. */
-  table.data td.col-titre { max-width: 1px; width: 100%; overflow: hidden; text-overflow: ellipsis; }
 }
 
 @media (max-width: 420px) {
   /* `minmax(0, 1fr)` et non `1fr` : sans le minimum à zéro, la piste ne peut pas
      devenir plus étroite que son contenu et la page déborde. */
   .stat-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  /* Le décompte passe sur sa propre ligne : « 1–25 sur 348 ventes » et les
-     flèches côte à côte ne tiennent pas sous 400 px. */
-  .pager { gap: 10px; }
-  .pager-info { flex: 1 1 100%; }
-  .pager-btns { margin-left: 0; }
-  .pager-size { flex: 1 1 auto; }
-  .subtab { padding: 9px 11px; font-size: 13px; }
+
   /* Sur 375 px, deux colonnes laissent ~140 px de contenu par tuile : à 22 px un
      montant à cinq chiffres n'y tient pas. */
   .stat .value { font-size: 19px; }

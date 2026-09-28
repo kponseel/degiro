@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
-import { closePool } from '../src/db/pool.js';
+import { getPool, closePool } from '../src/db/pool.js';
 import { AUTH, resetDb, snapshotPayload } from './helpers.js';
 
 const app = createApp();
@@ -36,8 +36,8 @@ describe('POST /api/ingest', () => {
     expect(again.body.deduplicated).toBe(true);
     expect(again.body.snapshotId).toBe(first.body.snapshotId);
 
-    const snaps = await request(app).get('/api/snapshots').set(AUTH);
-    expect(snaps.body.snapshots).toHaveLength(1);
+    const [snaps] = await getPool().query('SELECT id FROM snapshots');
+    expect(snaps).toHaveLength(1);
   });
 
   it('remplace le snapshot du jour pour une même source (capture_id différent)', async () => {
@@ -58,9 +58,9 @@ describe('POST /api/ingest', () => {
     expect(replaced.status).toBe(201);
     expect(replaced.body.replaced).toBe(true);
 
-    const snaps = await request(app).get('/api/snapshots').set(AUTH);
-    expect(snaps.body.snapshots).toHaveLength(1);
-    expect(Number(snaps.body.snapshots[0].total_value_eur)).toBe(13000);
+    const [snaps] = await getPool().query('SELECT total_value_eur FROM snapshots');
+    expect(snaps).toHaveLength(1);
+    expect(Number(snaps[0].total_value_eur)).toBe(13000);
 
     const pf = await request(app).get('/api/portfolio').set(AUTH);
     expect(pf.body.positions).toHaveLength(1);
@@ -78,20 +78,5 @@ describe('POST /api/ingest', () => {
   it('refuse (401) sans authentification', async () => {
     const res = await request(app).post('/api/ingest').send(snapshotPayload());
     expect(res.status).toBe(401);
-  });
-});
-
-describe('GET /api/snapshots', () => {
-  it('agrège une série multi-jours et respecte le filtre from/to', async () => {
-    await request(app).post('/api/ingest').set(AUTH).send(snapshotPayload({ capture_id: 'd1', captured_at: '2026-07-18T10:00:00Z', total_value_eur: 11000 }));
-    await request(app).post('/api/ingest').set(AUTH).send(snapshotPayload({ capture_id: 'd2', captured_at: '2026-07-19T10:00:00Z', total_value_eur: 11500 }));
-    await request(app).post('/api/ingest').set(AUTH).send(snapshotPayload({ capture_id: 'd3', captured_at: '2026-07-20T10:00:00Z', total_value_eur: 12000 }));
-
-    const all = await request(app).get('/api/snapshots').set(AUTH);
-    expect(all.body.snapshots).toHaveLength(3);
-    expect(all.body.snapshots.map((s) => Number(s.total_value_eur))).toEqual([11000, 11500, 12000]);
-
-    const filtered = await request(app).get('/api/snapshots?from=2026-07-19&to=2026-07-20').set(AUTH);
-    expect(filtered.body.snapshots).toHaveLength(2);
   });
 });

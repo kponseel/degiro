@@ -66,14 +66,6 @@ export const listExtTokens = () => api('/api/auth/me/tokens');
 export const createExtToken = (label) => jsonPost('/api/auth/me/tokens', { label });
 export const revokeExtToken = (id) => api(`/api/auth/me/tokens/${id}`, { method: 'DELETE' });
 
-// ── Avis IA (prompts historisés + réponses ré-ingérées) ───────────
-export const listAiPrompts = () => api('/api/ai/prompts');
-export const saveAiPrompt = (p) => jsonPost('/api/ai/prompts', p);
-export const deleteAiPrompt = (id) => api(`/api/ai/prompts/${id}`, { method: 'DELETE' });
-export const listAiInsights = () => api('/api/ai/insights');
-export const ingestAiInsight = (raw, provider) => jsonPost('/api/ai/insights', { raw, provider });
-export const deleteAiInsight = (id) => api(`/api/ai/insights/${id}`, { method: 'DELETE' });
-
 // ── Administration (ADMIN_EMAIL uniquement) ───────────────────────
 export const adminListUsers = () => api('/api/admin/users');
 export const adminUpdateUser = (id, patch) => jsonPost(`/api/admin/users/${id}`, patch, 'PATCH');
@@ -83,20 +75,14 @@ export const adminSetInviteCode = (code) => jsonPost('/api/admin/invite-code', {
 
 // ── Données ───────────────────────────────────────────────────────
 export const getPortfolio = () => api('/api/portfolio');
-export const getSnapshots = (from, to) => api(`/api/snapshots${qs({ from, to })}`);
 export const getExposure = (lookthrough) => api(`/api/exposure${qs({ lookthrough: lookthrough ? 1 : undefined })}`);
-export const getRisk = () => api('/api/risk');
-export const getDividends = () => api('/api/dividends');
-export const getPerformance = () => api('/api/performance');
-export const getAnalytics = () => api('/api/analytics');
 export const getIsinRef = () => api('/api/isin-ref');
 export const updateIsinRef = (isin, patch) => jsonPost(`/api/isin-ref/${isin}`, patch, 'PUT');
 export const enrichNow = () => api('/api/enrich', { method: 'POST' });
 export const getLookthrough = () => api('/api/lookthrough');
 export const getEtfHoldings = () => api('/api/etf-holdings');
 export const getExtensionVersion = () => api('/api/extension/version');
-export const getBenchmark = (symbol) => api(`/api/benchmark${qs({ symbol })}`);
-export const getNews = (symbol, refresh) => api(`/api/news${qs({ symbol, refresh: refresh ? 1 : undefined })}`);
+export const getNews = () => api('/api/news');
 
 async function uploadForm(path, fd) {
   const res = await fetch(path, { method: 'POST', credentials: 'include', body: fd });

@@ -3,7 +3,6 @@ import { getPool } from '../db/pool.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { sendMagicLink } from './mailer.js';
-import { deleteAiData } from './aiInsights.js';
 import { inviteCodeAccepts } from './settings.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -309,7 +308,13 @@ export async function deleteUserData(userId) {
   const pool = getPool();
   await pool.query('DELETE FROM transactions WHERE account_id = ?', [userId]);
   await pool.query('DELETE FROM snapshots WHERE account_id = ?', [userId]); // positions ON DELETE CASCADE
-  await deleteAiData(userId); // prompts générés + avis IA ré-ingérés
+  // Les tables des fonctions retirées (avis IA importés, prompts enregistrés,
+  // transactions) existent toujours et contiennent des données réelles : la
+  // suppression du compte DOIT continuer de les vider, même si plus rien ne les
+  // alimente. Oublier ces trois lignes laisserait des données personnelles
+  // derrière une suppression annoncée comme complète.
+  await pool.query('DELETE FROM ai_insights WHERE account_id = ?', [userId]);
+  await pool.query('DELETE FROM ai_prompts WHERE account_id = ?', [userId]);
 }
 
 /** Supprime le compte : données + sessions + liens magiques en attente + ligne user. */

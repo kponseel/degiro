@@ -115,7 +115,7 @@ describe("Jeton d'extension — portée limitée à l'ingestion", () => {
 
   it('refuse les routes de données et d’administration', async () => {
     const { auth } = await extensionToken('ext-scope2@example.com');
-    for (const path of ['/api/portfolio', '/api/analytics', '/api/admin/users', '/api/exposure', '/api/dividends']) {
+    for (const path of ['/api/portfolio', '/api/admin/users', '/api/exposure', '/api/lookthrough', '/api/news']) {
       const res = await request(app).get(path).set(auth);
       expect(res.status, `${path} devrait être refusé`).toBe(403);
     }

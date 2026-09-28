@@ -147,7 +147,7 @@ export default function ImportExtension({ onImported, onGoOverview }) {
           <div>
             <strong>⚡ Extension Chrome — recommandé</strong>
             <p className="muted" style={{ margin: '6px 0 10px' }}>
-              Un clic depuis ta session DEGIRO ouverte, historique complet des ordres compris.
+              Un clic depuis ta session DEGIRO ouverte : tes positions et tes liquidités, à jour.
               Sur ordinateur uniquement.
             </p>
             <button className="btn" onClick={() => jump('sec-extension')}>Extension ↓</button>
@@ -155,7 +155,7 @@ export default function ImportExtension({ onImported, onGoOverview }) {
           <div>
             <strong>📄 Fichiers CSV</strong>
             <p className="muted" style={{ margin: '6px 0 10px' }}>
-              Les exports DEGIRO (Portfolio, Transactions, Relevé de compte), déposés à la main.
+              Ton export Portfolio.csv DEGIRO, déposé à la main.
               La solution sur téléphone.
             </p>
             <button className="btn ghost" onClick={() => jump('sec-csv')}>Imports CSV ↓</button>
@@ -168,20 +168,16 @@ export default function ImportExtension({ onImported, onGoOverview }) {
       </section>
 
       <section id="sec-csv" className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
-        <Card title="Importer un export DEGIRO">
+        <Card title="Importer ton Portfolio.csv">
           <p className="muted" style={{ marginTop: 0 }}>
-            Exportez vos fichiers depuis DEGIRO puis déposez-les ici. Le type est détecté automatiquement ; une prévisualisation
+            DEGIRO → <em>Portefeuille</em> → <em>Exporter</em> → CSV, puis dépose le fichier ici. Une prévisualisation
             s'affiche avant l'import définitif.
           </p>
-          <div className="grid" style={{ gap: 22 }}>
-            <Uploader
-              hint="auto" title="Portefeuille (positions)" description="Portfolio.csv — vos lignes actuelles"
-              onImported={onImported}
-              onDone={(res) => { if (res.kind === 'portfolio' && !res.deduplicated) setPortfolioJustImported(true); }}
-            />
-            <Uploader hint="auto" title="Relevé de compte" description="Account.csv — dépôts, dividendes, frais" onImported={onImported} />
-            <Uploader hint="auto" title="Transactions" description="Transactions.csv — vos ordres exécutés" onImported={onImported} />
-          </div>
+          <Uploader
+            hint="auto" title="Portefeuille (positions)" description="Portfolio.csv — tes lignes actuelles"
+            onImported={onImported}
+            onDone={(res) => { if (res.kind === 'portfolio' && !res.deduplicated) setPortfolioJustImported(true); }}
+          />
           {portfolioJustImported && (
             <div style={{ marginTop: 16 }}>
               <button className="btn" onClick={onGoOverview}>Voir la vue d'ensemble →</button>

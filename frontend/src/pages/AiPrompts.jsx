@@ -1,275 +1,324 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getPortfolio, getExposure, listAiPrompts, saveAiPrompt, deleteAiPrompt } from '../lib/api.js';
-import { GOALS, goalById, stepDefault, assemblePrompt } from '../lib/promptWizard.js';
-import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
-import InsightPasteModal from '../components/InsightPasteModal.jsx';
-import { fmtEur, fmtPct, fmtDate } from '../lib/format.js';
+import { getPortfolio, getExposure } from '../lib/api.js';
+import {
+  buildPrompt, objectivesFor, isinsFromHash, plPct, totalValue,
+  HORIZONS, PROFILES, LENGTHS, CASH, MIN_VALUES, DEFAULT_OPTIONS,
+} from '../lib/promptBuilder.js';
+import { Spinner, Card, Banner, Empty, SearchInput } from '../components/ui.jsx';
+import { fmtEur, fmtPct, toneOf } from '../lib/format.js';
 
 const ASSISTANTS = [
-  { name: 'Gemini', url: 'https://gemini.google.com/app', reco: 'recherche web gratuite' },
-  { name: 'ChatGPT', url: 'https://chatgpt.com/', reco: 'active la recherche web' },
-  { name: 'Claude', url: 'https://claude.ai/new', reco: 'raisonnement soigné' },
+  { name: 'ChatGPT', url: 'https://chatgpt.com/' },
+  { name: 'Claude', url: 'https://claude.ai/new' },
+  { name: 'Gemini', url: 'https://gemini.google.com/app' },
+  { name: 'Perplexity', url: 'https://www.perplexity.ai/' },
 ];
 
-/** Lit ?isin=… dans le hash (#/ai?isin=XXX), pour le raccourci depuis une position. */
-function initialIsinFromHash() {
-  const q = window.location.hash.split('?')[1];
-  return q ? new URLSearchParams(q).get('isin') : null;
+/** Objectif proposé par défaut à l'arrivée sur une portée. */
+const DEFAULT_OBJECTIVE = { stocks: 'analyse', portfolio: 'bilan' };
+
+function Segmented({ value, onChange, items, label }) {
+  return (
+    <div className="pb-seg" role="radiogroup" aria-label={label}>
+      {items.map((it) => (
+        <button
+          key={it.value}
+          type="button"
+          role="radio"
+          aria-checked={value === it.value}
+          className={value === it.value ? 'on' : ''}
+          onClick={() => onChange(it.value)}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
-// ── Écran final : le prompt prêt à copier ────────────────────────────
-function ResultStep({ built, onReset, onPasteOpen }) {
+/** Liste de titres à cocher, filtrable. */
+function StockPicker({ positions, total, selected, onChange }) {
+  const [q, setQ] = useState('');
+  const visible = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return positions;
+    return positions.filter((p) => `${p.name || ''} ${p.isin || ''} ${p.ticker || p.symbol || ''} ${p.sector || ''}`
+      .toLowerCase().includes(t));
+  }, [positions, q]);
+
+  const toggle = (isin) => {
+    const next = new Set(selected);
+    if (next.has(isin)) next.delete(isin); else next.add(isin);
+    onChange(positions.map((p) => p.isin).filter((i) => next.has(i)));
+  };
+  // « Tout » ne coche que ce qui est affiché : filtrer « tech » puis « Tout »
+  // doit sélectionner les titres tech, pas le portefeuille entier.
+  const selectVisible = () => {
+    const next = new Set([...selected, ...visible.map((p) => p.isin)]);
+    onChange(positions.map((p) => p.isin).filter((i) => next.has(i)));
+  };
+
+  return (
+    <div className="pb-picker">
+      <div className="pb-picker-bar">
+        <SearchInput value={q} onChange={setQ} placeholder="Filtrer (nom, ISIN, secteur)…" label="Filtrer les titres" />
+        <button type="button" className="link-btn" onClick={selectVisible}>Tout cocher</button>
+        <button type="button" className="link-btn" onClick={() => onChange([])} disabled={!selected.length}>Aucun</button>
+      </div>
+      <div className="pb-stock-list">
+        {visible.map((p) => {
+          const pl = plPct(p);
+          return (
+            <label key={p.isin} className={`pb-stock ${selected.includes(p.isin) ? 'on' : ''}`}>
+              <input type="checkbox" checked={selected.includes(p.isin)} onChange={() => toggle(p.isin)} />
+              <span className="pb-stock-name" title={p.name || p.isin}>{p.name || p.symbol || p.isin}</span>
+              <span className="pb-stock-meta">
+                {fmtEur(p.value_eur)} · {fmtPct(total > 0 ? (Number(p.value_eur) || 0) / total : null)}
+                {pl != null && <span className={toneOf(pl)}> · {pl > 0 ? '+' : ''}{fmtPct(pl)}</span>}
+              </span>
+            </label>
+          );
+        })}
+        {!visible.length && <div className="muted" style={{ padding: 10 }}>Aucun titre ne correspond.</div>}
+      </div>
+      <div className="muted sm" style={{ marginTop: 8 }}>
+        {selected.length ? `${selected.length} titre${selected.length > 1 ? 's' : ''} sélectionné${selected.length > 1 ? 's' : ''}` : 'Coche un ou plusieurs titres.'}
+      </div>
+    </div>
+  );
+}
+
+function PromptOutput({ built }) {
   const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+
+  // Le texte change à chaque réglage : un « Copié ✓ » resté affiché laisserait
+  // croire que la dernière version est dans le presse-papiers.
+  useEffect(() => { setCopied(false); }, [built.text]);
 
   async function copy() {
-    try { await navigator.clipboard.writeText(built.text); setCopied(true); setTimeout(() => setCopied(false), 1800); }
-    catch { setOpen(true); }
+    try {
+      await navigator.clipboard.writeText(built.text);
+      setCopied(true);
+      setCopyFailed(false);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Presse-papiers refusé (permission, page non sécurisée) : le texte reste
+      // sélectionnable dans la zone ci-dessous.
+      setCopyFailed(true);
+    }
   }
 
   return (
-    <Card>
-      <div className="wiz-done-head">
+    <Card className="pb-output">
+      <div className="pb-output-head">
         <div>
-          <div style={{ fontWeight: 720, fontSize: 16 }}>Ton prompt est prêt 🎯</div>
-          <div className="muted" style={{ fontSize: 13.5, marginTop: 3 }}>
-            Copie-le, colle-le dans l'assistant, puis reviens coller sa réponse ici.
-          </div>
+          <div style={{ fontWeight: 720, fontSize: 16 }}>Ton prompt</div>
+          <div className="muted sm">{built.text.length.toLocaleString('fr-FR')} caractères · se met à jour à chaque réglage</div>
         </div>
         <button className="btn" onClick={copy}>{copied ? 'Copié ✓' : 'Copier le prompt'}</button>
       </div>
-
-      <ol className="wiz-flow">
-        <li><strong>1.</strong> Ouvre un assistant (compte web gratuit) :
-          <div className="assistant-links" style={{ marginTop: 8 }}>
-            {ASSISTANTS.map((a) => (
-              <a key={a.name} className="chip link-chip" href={a.url} target="_blank" rel="noopener noreferrer">
-                {a.name} <span className="muted sm">· {a.reco}</span> ↗
-              </a>
-            ))}
-          </div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 7 }}>
-            Astuce : choisis le modèle le plus récent proposé (souvent « Pro », « Thinking » ou « raisonnement ») et,
-            si l'option existe, active la <strong>recherche web</strong> — l'analyse s'appuiera sur des cours à jour.
-          </div>
-        </li>
-        <li><strong>2.</strong> Colle le prompt, envoie, attends la réponse.</li>
-        <li><strong>3.</strong> Sélectionne toute la réponse, copie-la, puis :
-          <button className="btn" style={{ marginLeft: 8, padding: '5px 12px', fontSize: 13 }} onClick={onPasteOpen}>Coller la réponse</button>
-        </li>
-      </ol>
-
-      <button className="link-btn" onClick={() => setOpen((o) => !o)}>{open ? 'Masquer le prompt' : 'Voir le prompt'}</button>
-      {open && <pre className="prompt-pre">{built.text}</pre>}
-
-      <div style={{ marginTop: 14 }}>
-        <button className="btn ghost" onClick={onReset}>← Générer un autre prompt</button>
-      </div>
-    </Card>
-  );
-}
-
-// ── Le wizard, une question par écran ────────────────────────────────
-function Wizard({ pf, expo, initialIsin: rawIsin, onBuilt }) {
-  // Un ISIN venu de l'URL (#/ai?isin=…) peut ne plus être détenu — position
-  // revendue, lien partagé, portefeuille remplacé. On ne le retient que s'il
-  // correspond à une position réelle : sinon l'étape de choix du titre était
-  // sautée, puis la génération échouait sans rien dire à l'utilisateur.
-  const initialIsin = (pf?.positions || []).some((p) => p.isin === rawIsin) ? rawIsin : null;
-  const total = useMemo(() => pf.positions.reduce((s, p) => s + (Number(p.value_eur) || 0), 0), [pf]);
-  const sorted = useMemo(() => [...pf.positions].sort((a, b) => (b.value_eur || 0) - (a.value_eur || 0)), [pf]);
-
-  // step -1 = choix de l'objectif ; 0..n = étapes ; puis on émet le prompt.
-  const [goalId, setGoalId] = useState(null);
-  const [selIsin, setSelIsin] = useState(initialIsin || '');
-  const [answers, setAnswers] = useState({});
-  const [step, setStep] = useState(-1);
-
-  const goal = goalById(goalId);
-  // Un objectif « titre » insère une étape de sélection en tête s'il n'a pas d'ISIN.
-  const needsStockStep = goal?.needsStock && !initialIsin;
-  const steps = goal ? (needsStockStep ? ['__stock', ...goal.steps] : goal.steps) : [];
-
-  function pickGoal(g) {
-    setGoalId(g.id);
-    setAnswers(Object.fromEntries(g.steps.map((s) => [s.id, s.optional ? null : stepDefault(s)])));
-    setStep(0);
-  }
-
-  function finish(finalAnswers) {
-    const sel = goal.scope === 'position' ? sorted.find((p) => p.isin === (initialIsin || selIsin)) : null;
-    onBuilt(assemblePrompt({ goalId, answers: finalAnswers, pf, expo, sel }));
-  }
-
-  function next(value) {
-    const cur = steps[step];
-    let a = answers;
-    if (cur !== '__stock') { a = { ...answers, [cur.id]: value }; setAnswers(a); }
-    if (step + 1 < steps.length) setStep(step + 1);
-    else finish(a);
-  }
-
-  // ── Choix de l'objectif ──
-  if (step === -1) {
-    return (
-      <div className="wiz-goals">
-        {GOALS.map((g) => (
-          <button key={g.id} className="wiz-goal" onClick={() => pickGoal(g)}>
-            <span className="wiz-goal-title">{g.label}</span>
-            <span className="wiz-goal-desc">{g.desc}</span>
-          </button>
+      {copyFailed && (
+        <Banner kind="warn">Copie automatique refusée par le navigateur : sélectionne le texte ci-dessous (Ctrl+A dans la zone) puis copie-le.</Banner>
+      )}
+      <textarea
+        className="pb-text"
+        readOnly
+        value={built.text}
+        aria-label="Prompt généré"
+        onFocus={(e) => e.target.select()}
+      />
+      <div className="assistant-links">
+        <span className="muted sm">Puis colle-le dans :</span>
+        {ASSISTANTS.map((a) => (
+          <a key={a.name} className="chip link-chip" href={a.url} target="_blank" rel="noopener noreferrer">{a.name} ↗</a>
         ))}
       </div>
-    );
-  }
-
-  const cur = steps[step];
-  const progress = `${step + 1} / ${steps.length}`;
-
-  const back = () => (step === 0 ? (setStep(-1), setGoalId(null)) : setStep(step - 1));
-
-  return (
-    <Card className="wiz-card">
-      <div className="wiz-top">
-        <button className="link-btn" onClick={back}>← Retour</button>
-        <span className="wiz-progress">{progress}</span>
-      </div>
-
-      {cur === '__stock' ? (
-        <>
-          <h3 className="wiz-q">Quel titre veux-tu analyser ?</h3>
-          <div className="wiz-stock-list">
-            {sorted.map((p) => (
-              <button
-                key={p.isin}
-                className={`wiz-opt ${selIsin === p.isin ? 'on' : ''}`}
-                onClick={() => { setSelIsin(p.isin); next(); }}
-              >
-                <span>{p.name || p.symbol || p.isin}</span>
-                <span className="muted">{fmtEur(p.value_eur)} · {fmtPct((Number(p.value_eur) || 0) / total)}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <h3 className="wiz-q">{cur.label}</h3>
-          <div className="wiz-opts">
-            {cur.options.map((o) => (
-              <button key={o.value} className={`wiz-opt ${answers[cur.id] === o.value ? 'on' : ''}`} onClick={() => next(o.value)}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-          {cur.optional && (
-            <button className="link-btn wiz-skip" onClick={() => next(null)}>Passer cette étape →</button>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
-
-// ── Historique ───────────────────────────────────────────────────────
-function History({ items, onReuse, onDelete }) {
-  if (!items?.length) return null;
-  return (
-    <Card title="Mes prompts précédents">
-      <div className="table-wrap">
-        <table className="data compact">
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left' }}>Objectif</th>
-              <th style={{ textAlign: 'left' }}>Titre</th>
-              <th>Créé le</th>
-              <th>Réponse</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((p) => (
-              <tr key={p.id}>
-                <td>{goalById(p.goal)?.label || p.goal}</td>
-                <td>{p.isin ? <code className="muted">{p.isin}</code> : <span className="muted">portefeuille</span>}</td>
-                <td>{fmtDate(p.created_at)}</td>
-                <td style={{ textAlign: 'center' }}>{p.has_insight ? '✓' : <span className="muted">—</span>}</td>
-                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                  <button className="btn ghost" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => onReuse(p)}>Revoir</button>
-                  <button className="link-btn danger-text" style={{ marginLeft: 10 }} onClick={() => onDelete(p.id)}>Suppr.</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="muted sm" style={{ marginTop: 8 }}>
+        Astuce : choisis le modèle le plus récent proposé et active la recherche web si l'option existe.
       </div>
     </Card>
   );
 }
 
-export default function AiPrompts() {
+export default function AiPrompts({ onGoImport }) {
   const [pf, setPf] = useState(null);
   const [expo, setExpo] = useState(null);
   const [error, setError] = useState(null);
-  const [built, setBuilt] = useState(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [wizardKey, setWizardKey] = useState(0);
-  const initialIsin = useMemo(initialIsinFromHash, []);
 
-  const reloadHistory = () => listAiPrompts().then((d) => setHistory(d.prompts || [])).catch(() => {});
+  const [scope, setScope] = useState('portfolio');
+  const [selected, setSelected] = useState([]);
+  const [objective, setObjective] = useState(DEFAULT_OBJECTIVE.portfolio);
+  const [opts, setOpts] = useState({ ...DEFAULT_OPTIONS });
+  const set = (k) => (v) => setOpts((o) => ({ ...o, [k]: v }));
 
   useEffect(() => {
-    getPortfolio().then(setPf).catch((e) => setError(e.message));
+    getPortfolio()
+      .then((d) => {
+        setPf(d);
+        // Raccourci « Préparer un prompt » depuis le détail d'une position.
+        const fromHash = isinsFromHash(window.location.hash, d.positions);
+        if (fromHash.length) {
+          setScope('stocks');
+          setSelected(fromHash);
+          setObjective(DEFAULT_OBJECTIVE.stocks);
+        }
+      })
+      .catch((e) => setError(e.message));
+    // L'exposition n'enrichit que le contexte « portefeuille » : son absence
+    // n'empêche rien.
     getExposure(false).then(setExpo).catch(() => {});
-    reloadHistory();
   }, []);
 
-  // Prompt généré → on le sauvegarde (historique), puis on affiche l'écran final.
-  async function onBuilt(result) {
-    setBuilt(result);
-    try {
-      await saveAiPrompt({ goal: result.goal, scope: result.scope, isin: result.isin, ref: result.ref, prompt_text: result.text });
-      reloadHistory();
-    } catch { /* la sauvegarde échoue en silence : le prompt reste utilisable */ }
-  }
+  const positions = useMemo(
+    () => [...(pf?.positions || [])].sort((a, b) => (Number(b.value_eur) || 0) - (Number(a.value_eur) || 0)),
+    [pf],
+  );
+  const total = useMemo(() => totalValue(positions), [positions]);
 
-  function reset() { setBuilt(null); setWizardKey((k) => k + 1); }
+  const available = objectivesFor(scope, selected.length);
+  // L'objectif retenu doit exister pour la portée courante : « Comparer » ne
+  // survit pas au décochage du deuxième titre, on retombe alors sur le premier.
+  const effective = available.some((o) => o.id === objective) ? objective : available[0]?.id;
+  const current = available.find((o) => o.id === effective);
+
+  const built = useMemo(
+    () => (pf ? buildPrompt({ pf, exposure: expo, scope, isins: selected, objective: effective, options: opts }) : null),
+    [pf, expo, scope, selected, effective, opts],
+  );
+
+  function changeScope(s) {
+    setScope(s);
+    setObjective(DEFAULT_OBJECTIVE[s]);
+  }
 
   if (error) return <Banner kind="err">Erreur : {error}</Banner>;
   if (!pf) return <Spinner />;
-  if (!pf.snapshot) {
-    return <Card><Empty title="Aucune donnée">Importe d'abord ton portefeuille pour générer des prompts personnalisés.</Empty></Card>;
+  if (!pf.snapshot || !positions.length) {
+    return (
+      <Card>
+        <Empty title="Aucune position">
+          Importe d'abord ton portefeuille pour générer des prompts remplis avec tes chiffres.
+          {onGoImport && <div style={{ marginTop: 12 }}><button className="btn" onClick={onGoImport}>Importer →</button></div>}
+        </Empty>
+      </Card>
+    );
   }
 
   return (
     <>
       <div className="page-head">
-        <h1>Générateur de prompts IA</h1>
+        <h1>Prompts IA</h1>
         <p>
-          Réponds à quelques questions : l'app fabrique un prompt sur mesure, rempli avec ton portefeuille.
-          Colle-le dans l'assistant de ton choix — puis colle sa réponse ici pour enrichir ton tableau de bord.
+          Choisis sur quoi porte l'analyse et ce que tu veux savoir : le prompt se remplit avec tes chiffres.
+          Copie-le et colle-le dans l'assistant de ton choix.
         </p>
       </div>
 
       <Banner kind="info">
-        ⚠️ Ce ne sont pas des conseils financiers, et tu partages tes données avec l'assistant que tu choisis (gratuit).
+        Ce ne sont pas des conseils financiers. En collant le prompt, tu partages ces chiffres avec l'assistant choisi.
       </Banner>
 
-      <div style={{ marginTop: 16 }}>
-        {built
-          ? <ResultStep built={built} onReset={reset} onPasteOpen={() => setPasteOpen(true)} />
-          : <Wizard key={wizardKey} pf={pf} expo={expo} initialIsin={initialIsin} onBuilt={onBuilt} />}
-      </div>
+      <div className="pb-layout">
+        <div className="pb-config">
+          <Card title="1. Sur quoi ?">
+            <Segmented
+              label="Portée de l'analyse"
+              value={scope}
+              onChange={changeScope}
+              items={[
+                { value: 'portfolio', label: 'Tout le portefeuille' },
+                { value: 'stocks', label: 'Titres choisis' },
+              ]}
+            />
+            <div style={{ marginTop: 12 }}>
+              {scope === 'stocks' ? (
+                <StockPicker positions={positions} total={total} selected={selected} onChange={setSelected} />
+              ) : (
+                <label className="pb-field">
+                  <span>Lignes incluses</span>
+                  <select className="filter-select" value={opts.minValue} onChange={(e) => set('minValue')(Number(e.target.value))}>
+                    {MIN_VALUES.map((v) => (
+                      <option key={v} value={v}>
+                        {v ? `Plus de ${fmtEur(v)} (${positions.filter((p) => (Number(p.value_eur) || 0) >= v).length} lignes)` : `Toutes (${positions.length} lignes)`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          </Card>
 
-      <div style={{ marginTop: 18 }}>
-        <History
-          items={history}
-          onReuse={(p) => setBuilt({ text: p.prompt_text, ref: p.ref, scope: p.scope, isin: p.isin, goal: p.goal })}
-          onDelete={async (id) => { await deleteAiPrompt(id).catch(() => {}); reloadHistory(); }}
-        />
-      </div>
+          <Card title="2. Objectif">
+            {available.length ? (
+              <div className="pb-goals" role="radiogroup" aria-label="Objectif">
+                {available.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={o.id === effective}
+                    className={`pb-goal ${o.id === effective ? 'on' : ''}`}
+                    onClick={() => setObjective(o.id)}
+                  >
+                    <span className="pb-goal-title">{o.label}</span>
+                    <span className="pb-goal-desc">{o.desc}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="muted">Sélectionne au moins un titre.</div>
+            )}
+            {scope === 'stocks' && selected.length === 1 && (
+              <div className="muted sm" style={{ marginTop: 10 }}>Coche un deuxième titre pour pouvoir les comparer.</div>
+            )}
+          </Card>
 
-      {pasteOpen && <InsightPasteModal onClose={() => setPasteOpen(false)} onIngested={() => reloadHistory()} />}
+          <Card title="3. Réglages">
+            <div className="pb-fields">
+              <div className="pb-field">
+                <span>Horizon</span>
+                <Segmented label="Horizon" value={opts.horizon} onChange={set('horizon')} items={HORIZONS} />
+              </div>
+              <div className="pb-field">
+                <span>Profil</span>
+                <Segmented label="Profil" value={opts.profile} onChange={set('profile')} items={PROFILES} />
+              </div>
+              <div className="pb-field">
+                <span>Réponse</span>
+                <Segmented label="Longueur de la réponse" value={opts.length} onChange={set('length')} items={LENGTHS} />
+              </div>
+              {current?.usesCash && (
+                <div className="pb-field">
+                  <span>Budget</span>
+                  <Segmented label="Budget" value={opts.cash} onChange={set('cash')} items={CASH} />
+                </div>
+              )}
+              <label className="pb-check">
+                <input type="checkbox" checked={opts.web || Boolean(current?.web)} disabled={Boolean(current?.web)} onChange={(e) => set('web')(e.target.checked)} />
+                <span>Demander d'utiliser la recherche web {current?.web && <span className="muted">(indispensable pour cet objectif)</span>}</span>
+              </label>
+              <label className="pb-field">
+                <span>Précision (facultatif)</span>
+                <textarea
+                  className="pb-note"
+                  rows={2}
+                  maxLength={600}
+                  value={opts.note}
+                  placeholder="Ex. : j'ai besoin de 5 000 € dans un an · je vise un revenu régulier…"
+                  onChange={(e) => set('note')(e.target.value)}
+                />
+              </label>
+            </div>
+          </Card>
+        </div>
+
+        <div className="pb-result">
+          {built?.error
+            ? <Card><div className="muted">{built.error}</div></Card>
+            : built && <PromptOutput built={built} />}
+        </div>
+      </div>
     </>
   );
 }

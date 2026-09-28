@@ -6,7 +6,6 @@ export async function listUsers() {
   const [rows] = await getPool().query(
     `SELECT u.id, u.email, u.pseudo, u.created_at, u.last_login_at, u.login_count,
             (SELECT COUNT(*) FROM snapshots s WHERE s.account_id = u.id)   AS snapshots,
-            (SELECT COUNT(*) FROM transactions t WHERE t.account_id = u.id) AS transactions,
             (SELECT COUNT(*) FROM sessions se WHERE se.user_id = u.id AND se.expires_at > NOW()) AS active_sessions
      FROM users u
      ORDER BY u.id ASC`,
