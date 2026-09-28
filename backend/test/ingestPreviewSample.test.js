@@ -11,14 +11,11 @@ const fixturePath = (name) => new URL(`./fixtures/${name}`, import.meta.url).pat
  * Contrat de l'échantillon de prévisualisation.
  *
  * L'aperçu affiché avant confirmation (frontend/src/components/Uploader.jsx) lit
- * des champs précis, différents selon le type de fichier. Si un mapper cesse d'en
- * produire un, l'aperçu se viderait sans bruit — et l'utilisateur revaliderait à
+ * des champs précis. Si le mapper cesse d'en produire un, l'aperçu se viderait sans bruit — et l'utilisateur revaliderait à
  * l'aveugle, ce que cet aperçu existe précisément pour éviter.
  */
 const PREVIEW_FIELDS = {
   portfolio: ['name', 'isin', 'qty', 'price', 'currency', 'value_eur'],
-  transactions: ['tx_date', 'isin', 'description', 'qty', 'amount_eur'],
-  account: ['tx_date', 'description', 'amount', 'currency'],
 };
 
 const preview = (fixture) => request(app)
@@ -38,8 +35,7 @@ afterAll(async () => {
 describe('prévisualisation — échantillon affichable', () => {
   it.each([
     ['portfolio.csv', 'portfolio'],
-    ['transactions.csv', 'transactions'],
-    ['account.csv', 'account'],
+    ['portfolio-real-fr.csv', 'portfolio'],
   ])('%s expose les champs que l\'aperçu affiche', async (fixture, kind) => {
     const res = await preview(fixture);
     expect(res.status).toBe(200);
@@ -64,20 +60,5 @@ describe('prévisualisation — échantillon affichable', () => {
       currency: 'USD',
       value_eur: 1050,
     });
-  });
-
-  it('transactions : une vente garde sa quantité négative et son montant EUR', async () => {
-    const res = await preview('transactions-real-fr.csv');
-    const sell = res.body.sample.find((t) => t.isin === 'IE00B4L5Y983');
-    expect(sell.qty).toBe(-20);
-    expect(sell.amount_eur).toBeCloseTo(1900, 2);
-    expect(sell.tx_date.slice(0, 10)).toBe('2026-07-19');
-  });
-
-  it('relevé : montant et devise du mouvement, pas ceux du solde', async () => {
-    const res = await preview('account.csv');
-    const dividend = res.body.sample.find((t) => t.description === 'Dividende');
-    expect(dividend.amount).toBeCloseTo(12.5, 2);
-    expect(dividend.currency).toBe('USD');
   });
 });

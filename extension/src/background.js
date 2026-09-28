@@ -8,17 +8,10 @@
  * Chaque étape est journalisée dans un rapport de diagnostic renvoyé au popup :
  * si DEGIRO change son format, on voit immédiatement quelle étape a lâché.
  */
-import {
-  buildPayload, parsePortfolio, parseTransactions, productIds, transactionProductIds, chunk,
-} from './degiro.js';
+import { buildPayload, parsePortfolio, productIds, chunk } from './degiro.js';
 import {
   isComplete, intAccountFromClient, sessionIdFromConfig, urls,
-  TX_PATHS_CONNUS, CASH_PATHS_CONNUS,
 } from './session.js';
-import { captureHistory, makeRangeFetcher, HISTORY_FLOOR } from './history.js';
-import {
-  captureCash, cashProductIds, cashWindow, cashNextState, cashFloorFromOrders,
-} from './cash.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
 const isDegiro = (tab) => String(tab?.url || '').startsWith('https://trader.degiro.nl/');
@@ -76,119 +69,6 @@ function makeDegiroFetch(tabId, creds) {
 async function rafraichirSession(tabId) {
   const res = await fetchViaTab(tabId, urls.config());
   return res?.ok ? sessionIdFromConfig(res.json) : null;
-}
-
-/**
- * Récupère l'historique des ordres. Toute la stratégie (découverte de la
- * première année, arrêt sur années vides, balayage, mémoire inter-captures)
- * vit dans `history.js`, testable hors navigateur — ici on ne fait que le
- * branchement au stockage et à l'onglet DEGIRO.
- */
-async function fetchTransactions(tabId, creds, degiroFetch) {
-  // Mémoire par compte DEGIRO ET par jeton Analyzer : régénérer un jeton force
-  // une nouvelle découverte complète. C'est le remède documenté quand les
-  // données ont été vidées côté Analyzer — l'extension ne peut pas le détecter.
-  const { token, txPath: memorise } = await chrome.storage.local.get(['token', 'txPath']);
-  const cle = `txHistory_${creds.intAccount}_${String(token || '').slice(0, 12)}`;
-  const state = (await chrome.storage.local.get(cle))[cle] || null;
-
-  // Chemins candidats vers l'historique, par ordre de confiance : celui que
-  // l'application DEGIRO utilise ELLE-MÊME (relevé par inject.js quand
-  // l'utilisateur visite sa page Transactions), celui qui a marché la dernière
-  // fois, puis les versions connues. Motif : le 29/07/2026, v4 s'est mis à
-  // répondre 502 en continu — l'endpoint avait bougé.
-  const candidates = [...new Set(
-    [creds.txPath, memorise, ...TX_PATHS_CONNUS].filter(Boolean),
-  )];
-
-  let cheminRetenu = false;
-  const doFetch = async (path, du, au, grouper) => {
-    const res = await degiroFetch(
-      (sid) => urls.transactions(creds.intAccount, sid, du, au, grouper, path),
-    );
-    if (res?.ok && res.json) {
-      // Premier succès de la capture : ce chemin est le bon, on s'en souvient
-      // pour les captures futures (même sans page Transactions ouverte).
-      if (!cheminRetenu) {
-        cheminRetenu = true;
-        if (path !== memorise) chrome.storage.local.set({ txPath: path }).catch(() => {});
-      }
-      return { ok: true, rows: parseTransactions(res.json) };
-    }
-    const corps = String(res?.text || res?.error || '').trim().slice(0, 120);
-    return { ok: false, status: res?.status, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };
-  };
-  const fetchRange = makeRangeFetcher({ candidates, doFetch });
-
-  const out = await captureHistory({ today: new Date(), state, fetchRange });
-  // La mémoire n'est PAS écrite ici : tant que l'envoi à Analyzer n'a pas
-  // abouti, ces ordres ne sont enregistrés nulle part. L'écrire trop tôt — un
-  // jeton manquant suffit — condamnerait l'historique à ne jamais repartir,
-  // chaque capture suivante ne relisant plus que la période récente.
-  //
-  // `decouverte` dit si cette lecture a balayé TOUT l'historique ou seulement la
-  // période récente. Sans cette distinction, le plancher du relevé se déduirait
-  // d'une poignée d'ordres du mois dernier et raterait des années de versements.
-  return { ...out, storageKey: cle, decouverte: !state };
-}
-
-/**
- * Récupère le RELEVÉ DE COMPTE (dépôts, retraits, dividendes, taxes, frais) —
- * ce qu'il fallait exporter à la main dans un `Account.csv` pour débloquer la
- * performance réelle (TWR) et les dividendes.
- *
- * Même architecture que l'historique des ordres : stratégie pure dans `cash.js`,
- * mémoire par compte et par jeton, chemin d'endpoint suivi puis mémorisé.
- *
- * @param debutConnu 'AAAA-MM-JJ' découvert par l'historique, ou null : évite de
- *                   balayer des années où le compte n'existait pas.
- */
-async function fetchCashMovements(tabId, creds, degiroFetch, debutConnu) {
-  const { token, cashPath: memorise } = await chrome.storage.local.get(['token', 'cashPath']);
-  const cle = `cashHistory_${creds.intAccount}_${String(token || '').slice(0, 12)}`;
-  const state = (await chrome.storage.local.get(cle))[cle] || null;
-
-  const candidates = [...new Set(
-    [creds.cashPath, memorise, ...CASH_PATHS_CONNUS].filter(Boolean),
-  )];
-
-  let cheminRetenu = false;
-  const doFetch = async (path, du, au) => {
-    const res = await degiroFetch(
-      (sid) => urls.accountOverview(creds.intAccount, sid, du, au, path),
-    );
-    // Une enveloppe JSON bien formée vaut succès, MÊME sans liste de mouvements :
-    // une période sans le moindre mouvement — les premières années d'un compte —
-    // ne renvoie pas de `cashMovements`. La compter comme un refus empêchait à
-    // jamais la mémoire de couverture de se poser, et faisait relire tout le
-    // relevé à chaque capture (constaté : « 2 période(s) refusée(s) — HTTP 200 »).
-    const json = res?.ok && res.json && typeof res.json === 'object' && !Array.isArray(res.json)
-      ? res.json : null;
-    if (json) {
-      const enveloppe = json.data && typeof json.data === 'object' ? json.data : json;
-      const mouvements = enveloppe.cashMovements;
-      if (!cheminRetenu) {
-        cheminRetenu = true;
-        if (path !== memorise) chrome.storage.local.set({ cashPath: path }).catch(() => {});
-      }
-      return { ok: true, rows: Array.isArray(mouvements) ? mouvements : [] };
-    }
-    const corps = String(res?.text || res?.error || '').trim().slice(0, 120);
-    return { ok: false, status: res?.status, reason: `HTTP ${res?.status ?? '?'}${corps ? ` — ${corps}` : ''}` };
-  };
-  const fetchRange = makeRangeFetcher({ candidates, doFetch });
-
-  const today = new Date();
-  const { from, to, since } = cashWindow({
-    today, state, floorSince: debutConnu, floorYear: HISTORY_FLOOR,
-  });
-  const out = await captureCash({ from, to, fetchRange });
-  return {
-    ...out,
-    storageKey: cle,
-    nextState: cashNextState({ complete: out.complete, since, to }),
-    depuis: since,
-  };
 }
 
 /** Un pas de diagnostic : libellé, verdict, détail lisible. */
@@ -267,37 +147,10 @@ async function capture() {
     return { ok: false, report, error: update?.status === 401 ? 'Session DEGIRO expirée : reconnecte-toi puis réessaie.' : 'DEGIRO a refusé la lecture du portefeuille.' };
   }
 
-  // Historique complet des ordres — positions fermées et plus-values réalisées.
-  // Best-effort : un échec ici n'empêche pas la capture du portefeuille.
-  const tx = await fetchTransactions(tab.id, creds, degiroFetch);
-  const txJson = tx.rows.length ? tx.rows : null;
-  step(report, 'Historique des transactions', tx.rows.length > 0 || tx.failed === 0, tx.detail);
-
-  // Relevé de compte : dépôts (donc TWR), dividendes, taxes et frais. Best-effort
-  // lui aussi — et l'import manuel d'un Account.csv reste possible en secours.
-  // Plancher de lecture du relevé. Le resserrement sur le premier ordre n'est
-  // légitime QUE si l'historique vient d'être balayé en entier : sur une lecture
-  // incrémentale, les ordres connus se limitent au mois écoulé et le plancher
-  // qu'ils suggèrent raterait des années de versements — définitivement, puisque
-  // la mémoire du relevé serait ensuite posée sur ce début tronqué.
-  const debutHistorique = tx.nextState?.completeSince ?? null;
-  const cash = await fetchCashMovements(
-    tab.id, creds, degiroFetch,
-    tx.decouverte ? cashFloorFromOrders(tx.rows, debutHistorique) : debutHistorique,
-  );
-  step(report, 'Relevé de compte', cash.rows.length > 0 || cash.failed === 0, cash.detail);
-
-  // Résolution des identifiants produit en ISIN, par lots de 100. On résout à la
-  // fois les positions (détenues + soldées), les produits cités par les ordres et
-  // ceux cités par le relevé : une position fermée n'apparaît plus dans le
-  // portefeuille courant, et un dividende sans ISIN n'est rattachable à rien.
-  const { products, closed } = parsePortfolio(update.json);
-  const ids = [...new Set([
-    ...productIds(products),
-    ...productIds(closed),
-    ...transactionProductIds(parseTransactions(txJson)),
-    ...cashProductIds(cash.rows),
-  ])];
+  // Résolution des identifiants produit en ISIN, par lots de 100 — pour les
+  // seules positions détenues : les lignes soldées ne sont plus envoyées.
+  const { products } = parsePortfolio(update.json);
+  const ids = [...new Set(productIds(products))];
   const lots = [];
   for (const batch of chunk(ids, 100)) {
     // Par degiroFetch comme les autres : c'était le seul appel DEGIRO privé de
@@ -315,23 +168,13 @@ async function capture() {
   const { payload, diagnostics } = buildPayload({
     update: update.json,
     products: lots,
-    transactions: txJson,
-    cashMovements: cash.rows,
     captureId: crypto.randomUUID(),
     capturedAt: new Date().toISOString(),
   });
 
   step(report, 'Positions retenues', payload.positions.length > 0,
-    `${diagnostics.sent - diagnostics.closed} envoyée(s) sur ${diagnostics.held} détenue(s)`
-    + (diagnostics.closed ? ` + ${diagnostics.closed} fermée(s)` : '')
+    `${diagnostics.sent} envoyée(s) sur ${diagnostics.held} détenue(s)`
     + (diagnostics.skipped.length ? ` — ignorées faute d'ISIN : ${diagnostics.skipped.map((s) => s.name || s.productId).join(', ')}` : ''));
-
-  if (diagnostics.transactionsRead > 0) {
-    const ordres = diagnostics.transactions - (diagnostics.cashMovements || 0);
-    step(report, 'Transactions retenues', ordres > 0,
-      `${ordres} ordre(s) envoyé(s) sur ${diagnostics.transactionsRead} lu(s)`
-      + (diagnostics.cashMovements ? `, + ${diagnostics.cashMovements} mouvement(s) du relevé` : ''));
-  }
 
   // Le fonds de trésorerie tombe dans un angle mort du vocabulaire DEGIRO : son
   // API le compte dans les TITRES (`reportPortfValue`), son interface l'affiche
@@ -431,30 +274,9 @@ async function capture() {
   step(report, 'Envoi à Analyzer', sent.ok, sent.detail);
   if (!sent.ok) return { ok: false, report, diagnostics, error: sent.detail };
 
-  // L'envoi a abouti ET chaque ordre lu figure dans le payload : la mémoire de
-  // couverture peut être posée. Si des ordres ont été écartés faute d'ISIN
-  // résolu (panne passagère de products/info), on ne la pose PAS — la capture
-  // suivante relira tout, ce qui coûte quelques requêtes mais ne perd rien.
-  // Le payload porte désormais AUSSI les mouvements du relevé : la comparaison
-  // doit se faire sur les seuls ordres, sans quoi la mémoire ne serait plus
-  // jamais posée.
-  const ordresEnvoyes = diagnostics.transactions - (diagnostics.cashMovements || 0);
-  const historiqueEntier = diagnostics.transactionsRead === ordresEnvoyes;
-  if (tx.nextState && tx.storageKey && historiqueEntier) {
-    await chrome.storage.local.set({ [tx.storageKey]: tx.nextState }).catch(() => {});
-  }
-  // Mémoire du relevé, indépendante : elle n'est posée que si toutes ses
-  // périodes ont répondu (`cash.complete`), sinon la capture suivante reprend
-  // depuis le même début et rattrape le trou.
-  if (cash.nextState && cash.storageKey) {
-    await chrome.storage.local.set({ [cash.storageKey]: cash.nextState }).catch(() => {});
-  }
-
   const summary = {
     at: report.at,
     positions: payload.positions.length,
-    transactions: ordresEnvoyes,
-    movements: diagnostics.cashMovements || 0,
     total: payload.total_value_eur,
     deduplicated: Boolean(sent.body?.deduplicated),
   };

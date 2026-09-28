@@ -60,34 +60,20 @@ describe('POST /api/ingest/csv — portfolio', () => {
   });
 });
 
-describe('POST /api/ingest/csv — account & transactions', () => {
-  it('importe le relevé de compte, idempotent au ré-import', async () => {
-    const first = await request(app)
-      .post('/api/ingest/csv')
-      .set(AUTH)
-      .field('mode', 'commit')
-      .attach('file', fixturePath('account.csv'));
-    expect(first.status).toBe(200);
-    expect(first.body.kind).toBe('account');
-    expect(first.body.inserted).toBe(4);
-
-    const again = await request(app)
-      .post('/api/ingest/csv')
-      .set(AUTH)
-      .field('mode', 'commit')
-      .attach('file', fixturePath('account.csv'));
-    expect(again.body.inserted).toBe(0);
-  });
-
-  it('importe les transactions (buy/sell)', async () => {
+describe('POST /api/ingest/csv — relevé de compte et transactions refusés', () => {
+  it.each([
+    ['account.csv', /relevé de compte/],
+    ['transactions.csv', /historique d'ordres/],
+  ])('%s est refusé (422) avec une explication, sans rien écrire', async (file, message) => {
     const res = await request(app)
       .post('/api/ingest/csv')
       .set(AUTH)
       .field('mode', 'commit')
-      .attach('file', fixturePath('transactions.csv'));
-    expect(res.status).toBe(200);
-    expect(res.body.kind).toBe('transactions');
-    expect(res.body.inserted).toBe(2);
+      .attach('file', fixturePath(file));
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(message);
+    const pf = await request(app).get('/api/portfolio').set(AUTH);
+    expect(pf.body.snapshot).toBeNull();
   });
 });
 

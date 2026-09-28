@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
-import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getPortfolio, getSnapshots, getLookthrough, getPerformance, listAiInsights } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtNum, fmtDate, fmtDateShort, fmtSignedEur, toneOf, plural } from '../lib/format.js';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { getPortfolio, getLookthrough } from '../lib/api.js';
+import { fmtEur, fmtPct, fmtNum, fmtDate, fmtSignedEur, toneOf } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
-import { InsightBadge } from '../components/InsightPasteModal.jsx';
-import PortfolioInsightCard from '../components/PortfolioInsightCard.jsx';
 import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
@@ -49,30 +47,15 @@ function Mover({ p, onSelect }) {
 
 export default function Overview({ onGoImport }) {
   const [data, setData] = useState(null);
-  const [series, setSeries] = useState([]);
-  const [perf, setPerf] = useState(null);
   const [lookthrough, setLookthrough] = useState(null);
-  const [insights, setInsights] = useState({});
-  const [pfInsight, setPfInsight] = useState(null);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = usePersistentState('degiro_filter_overview', EMPTY_FILTER);
 
   useEffect(() => {
     getPortfolio().then(setData).catch((e) => setError(e.message));
-    getSnapshots().then((d) => setSeries(d.snapshots || [])).catch(() => setSeries([]));
-    getPerformance().then(setPerf).catch(() => setPerf(null));
     getLookthrough().then(setLookthrough).catch(() => setLookthrough(null));
-    loadInsights();
   }, []);
-
-  // `listInsights` renvoie AUSSI l'avis portefeuille : ne lire que `byIsin`
-  // revenait à jeter le résumé, les scores et les actions suggérées.
-  function loadInsights() {
-    return listAiInsights()
-      .then((d) => { setInsights(d.byIsin || {}); setPfInsight(d.portfolio || null); })
-      .catch(() => { setInsights({}); setPfInsight(null); });
-  }
 
   // Ouvre le générateur de prompts pré-rempli pour un titre (raccourci contextuel).
   const analyze = (p) => { window.location.hash = `#/ai?isin=${encodeURIComponent(p.isin)}`; };
@@ -112,11 +95,6 @@ export default function Overview({ onGoImport }) {
   const totalPl = positions.reduce((s, p) => s + (Number(p.pl_eur) || 0), 0);
   const hasPl = positions.some((p) => p.pl_eur != null);
 
-  // Évolution depuis le début de l'historique (contexte du chiffre principal).
-  const chart = series.map((r) => ({ date: fmtDateShort(r.snapshot_date), raw: r.snapshot_date, value: Number(r.total_value_eur) || 0 }));
-  const first = chart[0]?.value;
-  const drift = first && chart.length > 1 ? (totalValue - first) / first : null;
-
   // Répartition par classe d'actifs (compacte, à côté de la courbe).
   const byClass = [...weighted.reduce((m, p) => {
     const k = typeOf(p) || 'Non typé';
@@ -131,13 +109,6 @@ export default function Overview({ onGoImport }) {
   // côtés à la fois.
   const worst = movers.slice(Math.max(3, movers.length - 3)).reverse();
 
-  // Le TWR ne neutralise que les apports qu'il CONNAÎT : sans relevé de compte
-  // importé, il vaut la variation de valeur brute. L'annoncer « neutralisé »
-  // serait un chiffre qui ment sur l'écran le plus regardé.
-  const twrSub = !perf || perf.insufficient
-    ? '≥ 2 jours requis'
-    : (perf.flows > 0 ? plural(perf.flows, 'apport neutralisé', 'apports neutralisés') : 'importe ton relevé pour neutraliser les apports');
-
   const facets = [
     { key: 'type', label: 'Type', value: filter.type, options: distinctValues(weighted, typeOf), onChange: (v) => setFilter((f) => ({ ...f, type: v })) },
     { key: 'sector', label: 'Secteur', value: filter.sector, options: distinctValues(weighted, (p) => p.sector), onChange: (v) => setFilter((f) => ({ ...f, sector: v })) },
@@ -150,7 +121,7 @@ export default function Overview({ onGoImport }) {
         <Kpi
           label="Valeur totale"
           value={fmtEur(totalValue)}
-          sub={drift != null ? `${drift >= 0 ? '+' : ''}${fmtPct(drift)} depuis le ${fmtDate(chart[0].raw)}` : `au ${fmtDate(snapshot.snapshot_date)}`}
+          sub={`au ${fmtDate(snapshot.snapshot_date)}`}
         />
         <Kpi
           label="P/L latent"
@@ -158,43 +129,11 @@ export default function Overview({ onGoImport }) {
           sub={hasPl && totalValue ? fmtPct(totalPl / (totalValue - totalPl)) : 'non fourni'}
           tone={hasPl ? toneOf(totalPl) : ''}
         />
-        <Kpi
-          label="Performance (TWR)"
-          value={perf && !perf.insufficient ? fmtPct(perf.twr) : '—'}
-          sub={twrSub}
-          tone={perf && !perf.insufficient ? (perf.twr >= 0 ? 'pos' : 'neg') : ''}
-        />
         <Kpi label="Liquidités" value={fmtEur(snapshot.cash_eur)} />
         <Kpi label="Lignes" value={fmtNum(positions.length, 0)} sub="positions détenues" />
       </div>
 
-      <div className="dash-grid">
-        <Card title="Valeur du portefeuille" className="dash-chart">
-          {chart.length >= 2 ? (
-            <div style={{ width: '100%', height: 208 }}>
-              <ResponsiveContainer>
-                <AreaChart data={chart} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gv2" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--ink-faint)' }} tickLine={false} axisLine={false} minTickGap={40} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--ink-faint)' }} tickLine={false} axisLine={false} width={52}
-                    tickFormatter={(v) => new Intl.NumberFormat('fr-FR', { notation: 'compact' }).format(v)} />
-                  <Tooltip formatter={(v) => [fmtEur(v), 'Valeur']} contentStyle={TT} />
-                  <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="url(#gv2)" isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="muted" style={{ padding: '28px 0', textAlign: 'center' }}>
-              L'historique se construit à chaque import — reviens après un second import.
-            </div>
-          )}
-        </Card>
-
+      <div style={{ marginBottom: 14 }}>
         <Card title="Répartition" className="dash-alloc">
           <div className="alloc-wrap">
             <div className="alloc-chart">
@@ -234,13 +173,6 @@ export default function Overview({ onGoImport }) {
         </Card>
       </div>
 
-      <PortfolioInsightCard
-        insight={pfInsight}
-        positions={weighted}
-        onSelect={setSelected}
-        onDeleted={loadInsights}
-      />
-
       <Card title="Positions">
         <FilterBar
           q={filter.q}
@@ -275,9 +207,13 @@ export default function Overview({ onGoImport }) {
                   <tr key={p.isin} className="row-click" onClick={() => setSelected(p)} tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(p); } }}>
                     <td>
-                      <span className="sym">{p.symbol || p.ticker || '—'}</span>{' '}
-                      <span className="muted">{p.name || p.isin}</span>
-                      {insights[p.isin] && <InsightBadge insight={insights[p.isin]} compact />}
+                      {/* Un Portfolio.csv ne porte pas de ticker : le nom devient alors le
+                          libellé principal, plutôt qu'un « — » suivi d'un nom grisé. */}
+                      {p.symbol || p.ticker ? (
+                        <><span className="sym">{p.symbol || p.ticker}</span>{' '}<span className="muted">{p.name || p.isin}</span></>
+                      ) : (
+                        <span className="sym">{p.name || p.isin}</span>
+                      )}
                     </td>
                     <td className="col-opt">{ac ? <span className={`chip ${isFund ? 'etf' : 'stock'}`}>{ac}</span> : <span className="muted">—</span>}</td>
                     <td className="col-opt">{fmtNum(p.qty, 0)}</td>
@@ -292,14 +228,13 @@ export default function Overview({ onGoImport }) {
           </table>
         </div>
         <div className="sub muted" style={{ marginTop: 10, fontSize: 12.5 }}>
-          Clique une ligne pour le détail (exposition réelle, actus, liens finance).
+          Clique une ligne pour le détail (exposition réelle, liens finance, prompt IA).
         </div>
       </Card>
 
       <PositionDrawer
         position={selected}
         lookthrough={lookthrough}
-        insight={selected ? insights[selected.isin] : null}
         onAnalyze={analyze}
         onClose={() => setSelected(null)}
       />

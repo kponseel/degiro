@@ -58,12 +58,3 @@ export const plural = (n, mot, pluriel) => {
   const forme = Number.isFinite(v) && Math.abs(v) >= 2 ? (pluriel ?? `${mot}s`) : mot;
   return `${fmtNum(n, 0)} ${forme}`;
 };
-
-/** Montant dans sa devise native (EUR, USD…). Repli si la devise est inconnue. */
-export function fmtMoney(n, cur) {
-  if (unusable(n)) return '—';
-  if (/^[A-Z]{3}$/.test(cur || '')) {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: cur, maximumFractionDigits: 2 }).format(Number(n));
-  }
-  return `${fmtNum(n)} ${cur || ''}`.trim();
-}

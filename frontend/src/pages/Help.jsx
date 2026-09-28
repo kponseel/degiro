@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Card, Banner } from '../components/ui.jsx';
-import { buildBrowserAgentPrompt } from '../lib/browserAgentPrompt.js';
+import { Card } from '../components/ui.jsx';
 
 /**
  * Aide et astuces. Volontairement statique : aucune donnée à charger, donc la
@@ -14,12 +13,8 @@ const TIPS = [
     body: "C'est la vue qui surprend le plus. Importe la composition de tes ETF (Import / Extension → Compositions d'ETF), puis regarde l'onglet « vraie exposition » : les titres que tu détiens sans le savoir apparaissent, et les doublons entre deux ETF aussi.",
   },
   {
-    title: 'Le relevé de compte débloque deux vues',
-    body: "Sans Account.csv, pas de dividendes ni de TWR — l'outil ne peut pas distinguer un versement d'une hausse. Une fois importé, la performance devient enfin comparable à un indice.",
-  },
-  {
     title: 'Clique sur une ligne du portefeuille',
-    body: "Le panneau de détail donne le prix de revient, l'exposition réelle du titre (en direct et via tes ETF), ses actualités et des liens directs vers Yahoo Finance, Finviz et le profil de l'entreprise.",
+    body: "Le panneau de détail donne le prix de revient, l'exposition réelle du titre (en direct et via tes ETF), des liens directs vers Yahoo Finance, Finviz et l'actualité — et un bouton pour préparer un prompt IA sur ce titre.",
   },
   {
     title: 'Les secteurs se complètent tout seuls',
@@ -27,11 +22,11 @@ const TIPS = [
   },
   {
     title: 'Une capture par jour suffit',
-    body: "L'outil ne garde qu'un instantané par journée et par source. Capturer plusieurs fois dans la journée remplace simplement le précédent — ça ne crée jamais de doublon ni de faux point sur la courbe.",
+    body: "L'outil ne garde qu'un instantané par journée et par source. Capturer plusieurs fois dans la journée remplace simplement le précédent — ça ne crée jamais de doublon.",
   },
   {
     title: 'Les prompts IA sont pré-remplis avec tes chiffres',
-    body: 'La page Prompts IA génère des questions à copier-coller dans ton assistant préféré, déjà remplies avec ta répartition réelle. Utile pour un avis extérieur sans ressaisir quoi que ce soit.',
+    body: "La page Prompts IA prépare un texte à copier-coller dans ton assistant préféré : tout le portefeuille ou quelques titres choisis, avec l'objectif de ton choix (risques, diversification, rééquilibrage…). Aucune ressaisie.",
   },
 ];
 
@@ -41,20 +36,8 @@ const FAQ = [
     a: "Vérifie que le fichier vient bien de DEGIRO et qu'il est au format CSV (pas Excel). La langue de l'export n'a pas d'importance. Une prévisualisation s'affiche avant l'import définitif : si les colonnes semblent décalées, ne confirme pas et signale-le.",
   },
   {
-    q: 'Je ne vois aucun dividende',
-    a: "Les dividendes viennent du relevé de compte (Account.csv), pas du portefeuille. DEGIRO → Activité → Relevés, puis importe-le dans Import / Extension.",
-  },
-  {
-    q: 'Ma performance a l\'air fausse',
-    a: "Une courbe de valeur monte aussi quand tu verses de l'argent. Le TWR neutralise tes versements — c'est lui qu'il faut comparer à un indice. Il a besoin du relevé de compte pour connaître les dates de tes versements.",
-  },
-  {
     q: 'Un secteur ou un pays reste vide',
     a: "Les sources gratuites ne connaissent pas tout. Lance l'enrichissement, puis complète à la main dans Import / Extension → Références ISIN. Ta correction est définitive et prioritaire.",
-  },
-  {
-    q: 'Mon historique semble incomplet (ventes ou dividendes manquants)',
-    a: "Presque toujours la plage de dates de l'export DEGIRO : elle est courte par défaut et ne couvre pas tout l'historique. Réexporte Transactions et Relevé de compte depuis l'ouverture du compte (au besoin année par année — réimporter ne crée aucun doublon). Pour le portefeuille, pense à cocher « toutes les positions », sinon les lignes soldées n'apparaissent pas.",
   },
   {
     q: "L'extension me demande « l'adresse de mon Analyzer » — je mets quoi ?",
@@ -66,87 +49,13 @@ const FAQ = [
   },
   {
     q: 'Mes données sont-elles visibles par les autres utilisateurs ?',
-    a: "Non. Chaque compte ne voit que ses propres positions, mouvements et instantanés. Seules les données de référence — compositions d'ETF, secteurs, cours des indices — sont partagées, parce qu'elles ne disent rien de personne.",
+    a: "Non. Chaque compte ne voit que ses propres positions et instantanés. Seules les données de référence — compositions d'ETF, secteurs, pays — sont partagées, parce qu'elles ne disent rien de personne.",
   },
   {
     q: 'Comment repartir de zéro ?',
-    a: "Réglages → Mon compte → « Effacer mes données » retire tes instantanés, positions et mouvements en gardant le compte. « Supprimer mon compte » efface tout, définitivement.",
+    a: "Réglages → Mon compte → « Effacer mes données » retire tes instantanés et positions en gardant le compte. « Supprimer mon compte » efface tout, définitivement.",
   },
 ];
-
-/**
- * Mise à jour pilotée par un agent navigateur (Claude for Chrome et équivalents).
- * Troisième voie, à côté de l'extension de capture et de l'import manuel : l'agent
- * va chercher les exports lui-même. Le prompt insiste sur les deux réglages que
- * DEGIRO rate par défaut — plages de dates et « toutes les positions ».
- */
-function BrowserAgentCard() {
-  const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState(false);
-  const prompt = buildBrowserAgentPrompt({ appUrl: window.location.origin });
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Presse-papiers refusé (permission, http) : on déplie, l'utilisateur copie à la main.
-      setOpen(true);
-    }
-  }
-
-  return (
-    <Card title="Mise à jour par un agent navigateur (Claude for Chrome)">
-      <p className="muted" style={{ marginTop: 0 }}>
-        Si tu utilises un agent qui pilote ton navigateur — <strong>Claude for Chrome</strong> avec
-        Sonnet&nbsp;5, ou équivalent — il peut aller chercher tes trois exports DEGIRO et les importer
-        ici à ta place. Le prompt ci-dessous lui donne les consignes exactes, y compris les deux
-        réglages que l'on rate presque toujours&nbsp;: les <strong>plages de dates complètes</strong>
-        {' '}et l'option <strong>« toutes les positions »</strong> du portefeuille.
-      </p>
-
-      <ol className="help-steps" style={{ marginTop: 14 }}>
-        <li>
-          <strong>Ouvre DEGIRO et connecte-toi</strong>
-          <div className="muted">
-            L'agent ne doit jamais saisir tes identifiants : la session doit déjà être ouverte.
-          </div>
-        </li>
-        <li>
-          <strong>Copie le prompt et donne-le à ton agent</strong>
-          <div className="muted">
-            Laisse cet onglet ouvert&nbsp;: l'agent y reviendra pour importer les fichiers.
-          </div>
-        </li>
-        <li>
-          <strong>Surveille et valide</strong>
-          <div className="muted">
-            Le prompt lui demande de vérifier l'étendue réelle des fichiers et de te faire un rapport.
-            Relis-le avant de considérer la mise à jour comme faite.
-          </div>
-        </li>
-      </ol>
-
-      <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn" onClick={copy}>{copied ? 'Copié ✓' : 'Copier le prompt'}</button>
-        <button className="link-btn" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Masquer le prompt' : 'Voir le prompt'}
-        </button>
-      </div>
-
-      {open && <pre className="prompt-pre">{prompt}</pre>}
-
-      <div style={{ marginTop: 16 }}>
-        <Banner kind="warn">
-          Le prompt impose à l'agent de rester en <strong>lecture seule</strong>&nbsp;: aucun ordre passé,
-          modifié ou annulé, aucun mouvement d'argent, aucun identifiant saisi. Garde tout de même un œil
-          sur ce qu'il fait — c'est ton compte-titres réel.
-        </Banner>
-      </div>
-    </Card>
-  );
-}
 
 export default function Help({ onGoImport, onReplayTour }) {
   const [openFaq, setOpenFaq] = useState(null);
@@ -161,7 +70,7 @@ export default function Help({ onGoImport, onReplayTour }) {
         </p>
       </div>
 
-      <Card title="Démarrer en trois minutes">
+      <Card title="Démarrer en deux minutes">
         <ol className="help-steps">
           <li>
             <strong>Exporte ton portefeuille depuis DEGIRO</strong>
@@ -172,15 +81,8 @@ export default function Help({ onGoImport, onReplayTour }) {
           <li>
             <strong>Importe-le ici</strong>
             <div className="muted">
-              Import / Extension → <em>Importer un export DEGIRO</em>. Le type de fichier est reconnu tout seul,
-              et une prévisualisation s'affiche avant de valider.
-            </div>
-          </li>
-          <li>
-            <strong>Ajoute ton relevé de compte</strong>
-            <div className="muted">
-              DEGIRO → <em>Activité</em> → <em>Relevés</em> → CSV. C'est lui qui débloque les
-              <strong> dividendes</strong> et la <strong>performance réelle (TWR)</strong>.
+              Import / Extension → <em>Importer un export DEGIRO</em>. Une prévisualisation s'affiche avant
+              de valider.
             </div>
           </li>
           <li>
@@ -197,8 +99,6 @@ export default function Help({ onGoImport, onReplayTour }) {
         </div>
       </Card>
 
-      <BrowserAgentCard />
-
       <Card title="Ce que montre chaque vue">
         <dl className="help-defs">
           <dt>Portefeuille</dt>
@@ -208,16 +108,10 @@ export default function Help({ onGoImport, onReplayTour }) {
             Ta répartition par secteur, pays, devise et classe d'actifs. L'onglet <em>vraie exposition</em> éclate
             tes ETF en leurs titres — c'est là qu'on voit les concentrations invisibles autrement.
           </dd>
-          <dt>Performance</dt>
-          <dd>
-            La courbe de valeur, le <strong>TWR</strong> (la performance débarrassée de l'effet de tes
-            versements, donc comparable à un indice), tes plus-values réalisées — et tes
-            <strong> dividendes</strong>, en bas de page, tirés du relevé de compte.
-          </dd>
           <dt>Actus</dt>
-          <dd>L'actualité des titres que tu détiens, filtrable, avec des liens vers les pages finance.</dd>
+          <dd>Des raccourcis vers l'actualité et les pages finance (Google News, Yahoo Finance, Finviz…) de chacun de tes titres.</dd>
           <dt>Prompts IA</dt>
-          <dd>Des questions d'analyse déjà remplies avec tes chiffres, à copier dans l'assistant de ton choix.</dd>
+          <dd>Un prompt prêt à copier — portefeuille entier ou titres sélectionnés, selon l'objectif choisi — rempli avec tes chiffres.</dd>
         </dl>
       </Card>
 

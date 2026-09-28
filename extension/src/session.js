@@ -20,15 +20,6 @@ export const PATTERNS = [
   { key: 'sessionId', re: /;jsessionid=([A-Za-z0-9._-]{8,})/i },
   { key: 'intAccount', re: /\/v5\/update\/(\d{3,})/ },
   { key: 'intAccount', re: /[?&]intAccount=(\d{3,})/ },
-  // Relevé de compte (dividendes, dépôts, frais) — même raison que txPath :
-  // suivre l'adresse que l'application DEGIRO appelle plutôt que la deviner.
-  { key: 'cashPath', re: /(\/[a-z][a-z-]*\/secure\/v\d+\/accountoverview)(?=[?/]|$)/i },
-  // Chemin de l'historique des ordres tel que l'application DEGIRO l'appelle
-  // elle-même. Le 29/07/2026, notre chemin `reporting/secure/v4` s'est mis à
-  // répondre 502 en continu : l'endpoint avait bougé. Plutôt que de deviner la
-  // nouvelle adresse, on lit celle que DEGIRO utilise — même méthode que pour
-  // le sessionId.
-  { key: 'txPath', re: /(\/[a-z][a-z-]*\/secure\/v\d+\/transactions)(?=[?/]|$)/ },
 ];
 
 /**
@@ -66,8 +57,7 @@ export function intAccountFromClient(client) {
  * repérage d'URL n'a alors rien vu, et l'utilisateur se voyait répondre « reste
  * quelques secondes sur l'onglet ». Cet appel-là répond à la seule force du
  * cookie de session. (Constaté dans l'extension Zeus, qui n'utilise QUE cette
- * voie ; on la garde en secours, le repérage donnant en plus `intAccount` et
- * les chemins vivants.)
+ * voie ; on la garde en secours, le repérage donnant en plus `intAccount`.)
  */
 export function sessionIdFromConfig(config) {
   const data = config?.data ?? config;
@@ -86,54 +76,4 @@ export const urls = {
   productsInfo: (intAccount, sessionId) =>
     'https://trader.degiro.nl/product_search/secure/v5/products/info'
     + `?intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
-  // Historique des ordres (achats/ventes), agrégé par ordre — la seule source des
-  // positions fermées et des plus-values réalisées. `fromDate`/`toDate` au format
-  // JJ/MM/AAAA attendu par DEGIRO ; on remonte très loin pour tout capturer.
-  // `path` est remplaçable : quand DEGIRO déplace l'endpoint, on suit le chemin
-  // relevé dans les appels de l'application elle-même (motif `txPath`).
-  transactions: (intAccount, sessionId, fromDate, toDate, groupByOrder = true, path = TX_PATH_DEFAUT) =>
-    `https://trader.degiro.nl${path}`
-    + `?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
-    // `groupTransactionsByOrder` agrège les exécutions partielles en un ordre.
-    // Paramètre facultatif : certaines instances le refusent, d'où le repli.
-    + (groupByOrder ? '&groupTransactionsByOrder=true' : '')
-    + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
-  // Mouvements de trésorerie sur une plage. DEGIRO plafonne la largeur de plage
-  // (~6 mois) : le découpage vit dans `cash.js`.
-  accountOverview: (intAccount, sessionId, fromDate, toDate, path = CASH_PATH_DEFAUT) =>
-    `https://trader.degiro.nl${path}`
-    + `?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`
-    + `&intAccount=${encodeURIComponent(intAccount)}&sessionId=${encodeURIComponent(sessionId)}`,
 };
-
-/**
- * Chemin par défaut de l'endpoint des transactions.
- *
- * DEGIRO a MIGRÉ sa famille reporting : l'ancien `reporting/secure/v4` répond
- * 502 en continu (constaté les 28-29/07/2026, même sur une année vide), et la
- * bibliothèque communautaire maintenue (degiro-connector 3.0.36) appelle
- * désormais `portfolio-reports/secure/v4/transactions` — mêmes paramètres
- * (fromDate/toDate JJ/MM/AAAA, groupTransactionsByOrder, intAccount,
- * sessionId), même réponse `{ data: [...] }`.
- */
-export const TX_PATH_DEFAUT = '/portfolio-reports/secure/v4/transactions';
-
-/** Chemins connus, du plus récent au plus ancien — essayés quand le courant est mort (5xx/404). */
-export const TX_PATHS_CONNUS = [
-  TX_PATH_DEFAUT,
-  // Ancien chemin d'avant la migration : gardé au cas où une entité DEGIRO le
-  // servirait encore.
-  '/reporting/secure/v4/transactions',
-];
-
-/**
- * Relevé de compte : dépôts, retraits, dividendes, taxes et frais — la source
- * de la performance réelle (TWR) et des dividendes, qui exigeaient jusqu'ici
- * l'export manuel d'un Account.csv.
- */
-export const CASH_PATH_DEFAUT = '/portfolio-reports/secure/v6/accountoverview';
-
-export const CASH_PATHS_CONNUS = [
-  CASH_PATH_DEFAUT,
-  '/reporting/secure/v6/accountoverview',
-];

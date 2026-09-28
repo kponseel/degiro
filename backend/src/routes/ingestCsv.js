@@ -5,13 +5,10 @@ import {
   parseCsv,
   detectKind,
   mapPortfolio,
-  mapAccount,
-  mapTransactions,
   extractCashEur,
   csvCaptureId,
 } from '../services/csvParser.js';
 import { ingestSnapshot } from '../services/ingest.js';
-import { saveTransactions } from '../services/transactions.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -48,8 +45,8 @@ function receiveFile(req, res) {
   });
 }
 
-// POST /api/ingest/csv — champ multipart `file` ; `kind` (portfolio|account|transactions|auto)
-// et `mode` (preview|commit) dans le corps.
+// POST /api/ingest/csv — champ multipart `file` (un Portfolio.csv DEGIRO) ;
+// `mode` (preview|commit) dans le corps.
 router.post('/', async (req, res, next) => {
   try {
     await receiveFile(req, res);
@@ -78,11 +75,20 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    const requested = req.body.kind && req.body.kind !== 'auto' ? req.body.kind : null;
-    const kind = requested || detectKind(rows);
-    if (!['portfolio', 'account', 'transactions'].includes(kind)) {
+    // Seul le Portfolio.csv est accepté désormais. La détection reste utile pour
+    // EXPLIQUER un refus : « c'est un relevé de compte » dit quoi faire, là où
+    // « type non reconnu » laissait chercher.
+    const kind = detectKind(rows);
+    if (kind === 'account' || kind === 'transactions') {
       return res.status(422).json({
-        error: 'Type de CSV non reconnu',
+        error: kind === 'account'
+          ? "C'est un relevé de compte (Account.csv). L'application n'analyse plus que le portefeuille ouvert : importe ton Portfolio.csv."
+          : "C'est un historique d'ordres (Transactions.csv). L'application n'analyse plus que le portefeuille ouvert : importe ton Portfolio.csv.",
+      });
+    }
+    if (kind !== 'portfolio') {
+      return res.status(422).json({
+        error: "Ce fichier n'a pas l'allure d'un Portfolio.csv DEGIRO (colonnes Produit, ISIN, Quantité, Montant…).",
         delimiter,
         // Les colonnes sans titre portent une clé interne : on la traduit
         // plutôt que d'afficher « __c9 » à quelqu'un qui cherche pourquoi.
@@ -90,41 +96,35 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    const mappers = { portfolio: mapPortfolio, account: mapAccount, transactions: mapTransactions };
-    const normalized = mappers[kind](rows);
+    const normalized = mapPortfolio(rows);
     const mode = req.body.mode === 'commit' ? 'commit' : 'preview';
 
     if (mode === 'preview') {
       return res.json({ kind, delimiter, count: normalized.length, sample: normalized.slice(0, 25) });
     }
 
-    if (kind === 'portfolio') {
-      // Garde-fou contre une confusion coûteuse : la détection conclut
-      // « portefeuille » dès qu'une ligne porte un ISIN, ce qui inclut un fichier
-      // de composition d'ETF — demandé sur la même page. Importé comme
-      // portefeuille, il remplaçait l'instantané du jour par des lignes sans
-      // quantité ni valeur, ramenant le patrimoine affiché à 0,00 €.
-      if (!normalized.some((p) => p.qty != null || p.value_eur != null)) {
-        return res.status(422).json({
-          error: "Ce fichier ne contient ni quantité ni valeur : ce n'est pas un export de portefeuille. S'il s'agit de la composition d'un ETF, importe-la depuis « Compositions d'ETF ».",
-        });
-      }
-      const posTotal = normalized.reduce((s, p) => s + (p.value_eur || 0), 0);
-      const cashEur = extractCashEur(rows);
-      const totalValueEur = posTotal + (cashEur || 0);
-      const result = await ingestSnapshot({
-        source: 'csv',
-        capture_id: csvCaptureId(text),
-        captured_at: new Date().toISOString(),
-        total_value_eur: totalValueEur || null,
-        cash_eur: cashEur,
-        positions: normalized,
-      }, req.user.id);
-      return res.status(200).json({ kind, positions: normalized.length, cash_eur: cashEur, ...result });
+    // Garde-fou contre une confusion coûteuse : la détection conclut
+    // « portefeuille » dès qu'une ligne porte un ISIN, ce qui inclut un fichier
+    // de composition d'ETF — demandé sur la même page. Importé comme
+    // portefeuille, il remplaçait l'instantané du jour par des lignes sans
+    // quantité ni valeur, ramenant le patrimoine affiché à 0,00 €.
+    if (!normalized.some((p) => p.qty != null || p.value_eur != null)) {
+      return res.status(422).json({
+        error: "Ce fichier ne contient ni quantité ni valeur : ce n'est pas un export de portefeuille. S'il s'agit de la composition d'un ETF, importe-la depuis « Compositions d'ETF ».",
+      });
     }
-
-    const result = await saveTransactions(normalized, req.user.id);
-    return res.status(200).json({ kind, ...result });
+    const posTotal = normalized.reduce((s, p) => s + (p.value_eur || 0), 0);
+    const cashEur = extractCashEur(rows);
+    const totalValueEur = posTotal + (cashEur || 0);
+    const result = await ingestSnapshot({
+      source: 'csv',
+      capture_id: csvCaptureId(text),
+      captured_at: new Date().toISOString(),
+      total_value_eur: totalValueEur || null,
+      cash_eur: cashEur,
+      positions: normalized,
+    }, req.user.id);
+    return res.status(200).json({ kind, positions: normalized.length, cash_eur: cashEur, ...result });
   } catch (err) {
     return next(err);
   }

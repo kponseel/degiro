@@ -141,7 +141,7 @@ describe('GET /api/news — la liste des titres, sans appel sortant', () => {
     expect(res.body.stocks).toHaveLength(1);
     expect(res.body.stocks[0]).toMatchObject({ isin: 'US67066G1040', ticker: 'NVDA', sector: 'Technologie' });
     // Plus d'articles : c'est le navigateur qui va les chercher désormais.
-    expect(res.body.items).toEqual([]);
+    expect(res.body.items).toBeUndefined();
   });
 
   it('exige une authentification', async () => {

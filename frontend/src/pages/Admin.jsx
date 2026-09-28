@@ -56,7 +56,7 @@ function UserRow({ u, isSelf, onSaved, onDeleted, onError }) {
       <td style={{ fontSize: 13 }}>{u.last_login_at ? fmtDate(u.last_login_at) : '—'}</td>
       <td>{fmtNum(u.login_count, 0)}</td>
       <td style={{ fontSize: 13 }}>
-        {fmtNum(u.snapshots, 0)} snap · {fmtNum(u.transactions, 0)} mvt
+        {plural(u.snapshots, 'capture')}
         {u.active_sessions > 0 && <div className="muted" style={{ fontSize: 11.5 }}>{plural(u.active_sessions, 'session')}</div>}
       </td>
       <td style={{ whiteSpace: 'nowrap' }}>

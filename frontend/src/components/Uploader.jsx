@@ -1,9 +1,9 @@
 import { useId, useState } from 'react';
 import { uploadCsv } from '../lib/api.js';
 import { Banner } from './ui.jsx';
-import { fmtDate, fmtEur, fmtNum, fmtMoney, plural } from '../lib/format.js';
+import { fmtEur, fmtNum, plural } from '../lib/format.js';
 
-const KIND_LABEL = { portfolio: 'Portefeuille', account: 'Relevé de compte', transactions: 'Transactions' };
+const KIND_LABEL = { portfolio: 'Portefeuille' };
 
 /** Nombre de lignes montrées : assez pour juger d'un décalage, assez peu pour tenir sur un mobile. */
 const SAMPLE_ROWS = 4;
@@ -27,9 +27,8 @@ const text = (s) => (String(s ?? '').trim() ? <span title={String(s)}>{short(s)}
 /**
  * Colonnes de l'aperçu, par type de fichier.
  *
- * Les champs normalisés diffèrent d'un type à l'autre : on montre ceux qui
- * trahissent un décalage de colonnes (une quantité dans le cours, un montant
- * dans la devise), pas l'intégralité de l'objet.
+ * On montre les champs qui trahissent un décalage de colonnes (une quantité
+ * dans le cours, un montant dans la devise), pas l'intégralité de l'objet.
  */
 const SAMPLE_COLS = {
   portfolio: [
@@ -38,19 +37,6 @@ const SAMPLE_COLS = {
     { label: 'Qté', cell: (r) => fmtQty(r.qty) },
     { label: 'Cours', cell: (r) => <>{fmtNum(r.price)} <span className="muted sm">{r.currency || ''}</span></> },
     { label: 'Valeur', cell: (r) => fmtEur(r.value_eur) },
-  ],
-  transactions: [
-    { label: 'Date', left: true, cell: (r) => fmtDate(r.tx_date) },
-    { label: 'ISIN', left: true, cell: (r) => <span className="muted">{r.isin || '—'}</span> },
-    { label: 'Libellé', left: true, cell: (r) => text(r.description) },
-    { label: 'Qté', cell: (r) => fmtQty(r.qty) },
-    { label: 'Montant', cell: (r) => fmtEur(r.amount_eur) },
-  ],
-  account: [
-    { label: 'Date', left: true, cell: (r) => fmtDate(r.tx_date) },
-    { label: 'Description', left: true, cell: (r) => text(r.description) },
-    { label: 'Montant', cell: (r) => fmtMoney(r.amount, r.currency) },
-    { label: 'Devise', cell: (r) => <span className="muted">{r.currency || '—'}</span> },
   ],
 };
 
@@ -193,9 +179,7 @@ export default function Uploader({ hint, title, description, onImported, onDone 
       )}
       {result && !result.deduplicated && (
         <Banner kind="info">
-          {result.kind === 'portfolio'
-            ? `Portefeuille importé : ${plural(result.positions, 'position')}${result.replaced ? ', snapshot du jour remplacé' : ''}.`
-            : `${KIND_LABEL[result.kind] || result.kind} : ${plural(result.inserted, 'nouveau mouvement', 'nouveaux mouvements')} sur ${result.received}.`}
+          {`Portefeuille importé : ${plural(result.positions, 'position')}${result.replaced ? ', instantané du jour remplacé' : ''}.`}
         </Banner>
       )}
     </div>

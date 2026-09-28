@@ -43,19 +43,9 @@ const PANNES = [
     remede: "Ré-enregistre les réglages dans l'extension et accepte la demande d'autorisation de Chrome.",
   },
   {
-    symptome: "« Historique des transactions ✗ » (HTTP 502 ou autre)",
-    cause: "Le service d'historique de DEGIRO refuse la demande — le plus souvent parce que DEGIRO a déplacé son adresse interne. L'extension essaie alors toute seule les adresses voisines connues.",
-    remede: "Si ça persiste : dans l'onglet DEGIRO, ouvre Activité → Transactions, laisse la liste s'afficher, puis relance la capture. L'extension apprend l'adresse exacte que DEGIRO utilise et s'en souvient. Le portefeuille, lui, est capturé quand même — et tant que l'historique n'est pas complet, la capture suivante retentera tout.",
-  },
-  {
     symptome: '« Contrôle du total ✗ » — un écart de quelques euros ou plus',
     cause: "Un solde en devise non converti, ou une ligne dont la valeur DEGIRO est elle-même incohérente (opération sur titres mal répercutée, par exemple). Le diagnostic nomme désormais les lignes suspectes (« piste(s) : … »).",
     remede: "Vérifie la ligne nommée sur le site DEGIRO : si son cours y est aussi bizarre, l'écart vient de DEGIRO, pas de la capture. Le total enregistré ici reste celui affiché par DEGIRO.",
-  },
-  {
-    symptome: "J'ai vidé mes données côté Analyzer, et l'historique ne revient pas",
-    cause: "L'extension retient que ton historique complet a déjà été envoyé, et ne relit que la période récente — elle ne peut pas savoir que la base a été vidée.",
-    remede: 'Révoque ton jeton ci-dessus et génères-en un nouveau : la prochaine capture refera la découverte complète.',
   },
   {
     symptome: "L'icône de l'extension a disparu de la barre",
@@ -81,13 +71,6 @@ export default function Extension() {
           Elle lit ton portefeuille depuis la session DEGIRO <em>déjà ouverte</em> dans ton navigateur.
           Elle ne connaît ni ton mot de passe ni tes identifiants, et ne parle qu'à deux adresses :
           DEGIRO, et cette application.
-        </p>
-        <p className="muted">
-          Elle apporte aussi ce que les exports CSV ne donnent pas facilement : l'<strong>historique
-          complet de tes ordres</strong>, d'où viennent les positions fermées et les plus-values réalisées,
-          et depuis peu ton <strong>relevé de compte</strong> — versements, dividendes, taxes et frais.
-          Autrement dit : <strong>plus aucun fichier à exporter</strong>, même pour la performance réelle
-          (TWR) et les dividendes.
         </p>
         <Banner kind="info">
           Sur ordinateur uniquement (Chrome, Edge ou Brave). Sur téléphone, l'import d'un fichier CSV
@@ -127,13 +110,12 @@ export default function Extension() {
               <strong>Clique sur l'icône de l'extension</strong>, puis sur
               <strong> « Capturer mon portefeuille »</strong>.
               <div className="muted">
-                Quelques secondes : elle lit tes positions, tes positions fermées et l'historique de
-                tes ordres, puis envoie le tout ici.
+                Quelques secondes : elle lit tes positions et tes liquidités, puis envoie le tout ici.
               </div>
             </li>
             <li>
               <strong>Attends le message vert</strong> — par exemple
-              «&nbsp;Envoyé : 27 positions, 412 ordres, 6 794 mouvements, 85&nbsp;946&nbsp;€&nbsp;».
+              «&nbsp;Envoyé : 27 positions, 85&nbsp;946&nbsp;€&nbsp;».
               <div className="muted">
                 Un message rouge&nbsp;? Ouvre le panneau <strong>Diagnostic</strong> juste en dessous :
                 la section suivante explique chaque cas.
@@ -142,21 +124,16 @@ export default function Extension() {
           </ol>
 
           <p style={{ marginTop: 12 }}>
-            <strong>Reviens ensuite ici</strong> : tes pages Portefeuille, Performance et Exposition
+            <strong>Reviens ensuite ici</strong> : tes pages Portefeuille, Exposition et Prompts IA
             sont à jour. Rien d'autre à faire.
           </p>
 
           <Banner kind="info">
-            Capture aussi souvent que tu veux — une par semaine suffit à suivre l'évolution. Deux
+            Capture aussi souvent que tu veux — après chaque achat ou vente, par exemple. Deux
             captures identiques ne créent pas de doublon&nbsp;: l'extension te répondra simplement
             «&nbsp;déjà enregistré&nbsp;». Et si tu gardes la fenêtre épinglée dans un onglet, la
             capture se lance en deux clics.
           </Banner>
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-            La première capture retrouve toute seule ta première année chez DEGIRO et lit l'historique
-            complet de tes ordres. Les suivantes ne relisent que la période récente&nbsp;: le passé ne
-            change pas, et DEGIRO n'est pas sollicité pour rien.
-          </p>
         </Card>
       </div>
 

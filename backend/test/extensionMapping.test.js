@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import {
   flattenRow, parsePortfolio, parseTotals, chunk, indexProducts, toPosition, buildPayload,
-  parseTransactions, toTransaction, transactionProductIds,
 } from '../../extension/src/degiro.js';
 import { readFileSync } from 'node:fs';
 import {
@@ -10,7 +9,7 @@ import {
 } from '../../extension/src/session.js';
 import { ingestSchema } from '../src/schemas/ingest.js';
 import { createApp } from '../src/app.js';
-import { closePool } from '../src/db/pool.js';
+import { getPool, closePool } from '../src/db/pool.js';
 import { resetDb } from './helpers.js';
 
 /** Reconstitue le format DEGIRO : des listes [{name, value}] imbriquées. */
@@ -65,17 +64,6 @@ const productsInfoFull = [{
     999999: { id: '999999', isin: 'FR0000131906', symbol: 'RNO', name: 'Renault SA', productType: 'STOCK', currency: 'EUR' },
   },
 }];
-
-/** Réponse type de l'endpoint transactions v4 (agrégée par ordre). */
-const transactions = {
-  data: [
-    // Achat NVDA (avec orderId → dédoublonnage stable).
-    { id: 1, orderId: 'ord-nvda-buy', productId: 331868, date: '2024-01-10T10:00:00+01:00', buysell: 'B', quantity: 10, price: 100, total: -1000, totalInBaseCurrency: -917, feeInBaseCurrency: -0.5 },
-    // Achat puis vente de RNO (position aujourd'hui fermée) → plus-value réalisée.
-    { id: 2, productId: 999999, date: '2023-05-01T09:00:00+02:00', buysell: 'B', quantity: 5, price: 25, total: -125, totalInBaseCurrency: -125, feeInBaseCurrency: -0.5 },
-    { id: 3, orderId: 'ord-rno-sell', productId: 999999, date: '2025-03-20T14:30:00+01:00', buysell: 'S', quantity: 5, price: 30, total: 150, totalInBaseCurrency: 150, feeInBaseCurrency: -0.5 },
-  ],
-};
 
 describe('Extension — lecture du format DEGIRO', () => {
   it('aplatit les listes [{name, value}] en objet', () => {
@@ -152,55 +140,6 @@ describe('Extension — conversion en positions', () => {
   });
 });
 
-describe('Extension — conversion des transactions', () => {
-  it('déballe la liste des ordres, quelle que soit l’enveloppe', () => {
-    expect(parseTransactions(transactions)).toHaveLength(3);
-    expect(parseTransactions([{ id: 1 }])).toHaveLength(1);
-    expect(parseTransactions(null)).toEqual([]);
-    expect(parseTransactions({})).toEqual([]);
-  });
-
-  it('collecte les identifiants produit cités par les ordres', () => {
-    expect(transactionProductIds(parseTransactions(transactions))).toEqual(['331868', '999999', '999999']);
-  });
-
-  it('mappe un achat : signe, montant brut EUR négatif, frais, orderId', () => {
-    const buy = toTransaction(transactions.data[0], productsInfoFull[0].data[331868]);
-    expect(buy).toMatchObject({
-      tx_date: '2024-01-10 10:00:00',
-      type: 'buy',
-      isin: 'US67066G1040',
-      qty: 10,
-      amount_eur: -917, // sortie de cash
-      amount: -0.5, // frais
-      currency: 'USD',
-      external_id: 'ord-nvda-buy',
-    });
-  });
-
-  it('mappe une vente : quantité resignée et montant brut EUR positif', () => {
-    const sell = toTransaction(transactions.data[2], productsInfoFull[0].data[999999]);
-    expect(sell).toMatchObject({
-      type: 'sell',
-      isin: 'FR0000131906',
-      qty: -5, // vente → quantité négative même si DEGIRO l'annonce positive
-      amount_eur: 150, // entrée de cash
-      external_id: 'ord-rno-sell',
-    });
-  });
-
-  it('forge un identifiant déterministe quand l’ordre n’a pas d’orderId', () => {
-    const buy = toTransaction(transactions.data[1], productsInfoFull[0].data[999999]);
-    expect(buy.external_id).toBe('dgx-tx-2');
-    expect(buy.qty).toBe(5);
-  });
-
-  it('écarte un ordre sans ISIN résolu ou sans date', () => {
-    expect(toTransaction(transactions.data[0], undefined)).toBeNull();
-    expect(toTransaction({ ...transactions.data[0], date: null }, productsInfoFull[0].data[331868])).toBeNull();
-  });
-});
-
 describe('Extension — payload envoyé à l’API', () => {
   const built = buildPayload({
     update, products: productsInfo, captureId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', capturedAt: '2026-07-25T09:00:00Z',
@@ -250,32 +189,20 @@ describe('Extension — payload envoyé à l’API', () => {
   it('survit à un portefeuille vide sans planter', () => {
     const p = buildPayload({ update: {}, products: [], captureId: 'x', capturedAt: '2026-07-25T09:00:00Z' });
     expect(p.payload.positions).toEqual([]);
-    expect(p.payload.transactions).toEqual([]);
+    expect(p.payload.transactions).toBeUndefined();
     expect(p.payload.total_value_eur).toBe(0);
   });
 
-  it('inclut la position soldée quand son ISIN se résout, à quantité nulle', () => {
+  it('n’envoie pas les positions soldées, même quand leur ISIN se résout', () => {
+    // Seul le portefeuille ouvert est analysé : une ligne à quantité nulle
+    // n'apporterait rien, et n'a donc plus de raison de voyager.
     const p = buildPayload({
       update, products: productsInfoFull, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z',
     });
     expect(p.diagnostics.held).toBe(2);
-    expect(p.diagnostics.closed).toBe(1);
-    expect(p.payload.positions).toHaveLength(3);
-    const rno = p.payload.positions.find((q) => q.isin === 'FR0000131906');
-    expect(rno.qty).toBe(0);
-    expect(rno.value_eur).toBe(0);
-    // Une position soldée n'ajoute rien à la valeur totale.
+    expect(p.payload.positions).toHaveLength(2);
+    expect(p.payload.positions.some((q) => q.isin === 'FR0000131906')).toBe(false);
     expect(p.payload.total_value_eur).toBe(11105);
-  });
-
-  it('embarque l’historique des transactions dans le payload', () => {
-    const p = buildPayload({
-      update, products: productsInfoFull, transactions, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z',
-    });
-    expect(p.payload.transactions).toHaveLength(3);
-    expect(p.diagnostics.transactions).toBe(3);
-    expect(p.diagnostics.transactionsRead).toBe(3);
-    expect(ingestSchema.safeParse(p.payload).success).toBe(true);
   });
 });
 
@@ -403,27 +330,6 @@ describe('Extension — repérage de la session DEGIRO', () => {
     });
   });
 
-  it("relève le chemin de l'historique que l'application DEGIRO appelle elle-même", () => {
-    // Motif de la fonctionnalité : le 29/07/2026, notre chemin v4 répondait 502
-    // en continu — l'endpoint avait bougé. On suit celui de l'application.
-    expect(sniff('https://trader.degiro.nl/portfolio-reports/secure/v6/transactions?intAccount=1&sessionId=x'))
-      .toMatchObject({ txPath: '/portfolio-reports/secure/v6/transactions' });
-    // L'application appelle aussi en relatif.
-    expect(sniff('/reporting/secure/v5/transactions?fromDate=01/01/2026'))
-      .toMatchObject({ txPath: '/reporting/secure/v5/transactions' });
-    // Pas de confusion avec les autres endpoints.
-    expect(sniff('https://trader.degiro.nl/trading/secure/v5/update/123;jsessionid=ABCDEF123456').txPath).toBeUndefined();
-  });
-
-  it("construit l'URL de l'historique sur un chemin de remplacement", () => {
-    const u = urls.transactions('123', 'S123456789', '01/01/2026', '29/07/2026', true, '/reporting/secure/v6/transactions');
-    expect(u.startsWith('https://trader.degiro.nl/reporting/secure/v6/transactions?')).toBe(true);
-    expect(u).toContain('groupTransactionsByOrder=true');
-    // Sans chemin fourni : la famille post-migration (degiro-connector 3.0.36),
-    // l'ancienne `reporting/secure/v4` répondant 502 depuis fin juillet 2026.
-    expect(urls.transactions('123', 'S123456789', 'a', 'b')).toContain('/portfolio-reports/secure/v4/transactions');
-  });
-
   it('les motifs dupliqués dans inject.js n’ont pas divergé', () => {
     // `inject.js` tourne dans la page et ne peut pas importer de module : ses
     // motifs sont recopiés. Ce test est le garde-fou contre la dérive.
@@ -481,38 +387,27 @@ describe('Extension — trajet complet jusqu’au portefeuille', () => {
     expect(body.positions).toHaveLength(2);
   });
 
-  it('capture avec transactions : position fermée filtrée, plus-value réalisée calculée', async () => {
+  it('une ancienne extension qui envoie encore son historique est acceptée, historique ignoré', async () => {
     const agent = request.agent(app);
-    const link = await agent.post('/api/auth/request-link').send({ email: 'ext-tx@example.com' });
+    const link = await agent.post('/api/auth/request-link').send({ email: 'ext-old@example.com' });
     await agent.post('/api/auth/verify').send({ token: new URL(link.body.devLink).searchParams.get('token') });
     const { body: created } = await agent.post('/api/auth/me/tokens').send({ label: 'Chrome' });
-    const auth = { Authorization: `Bearer ${created.token}` };
 
-    const { payload } = buildPayload({
-      update, products: productsInfoFull, transactions,
-      captureId: 'cap-with-tx', capturedAt: '2026-07-25T09:00:00Z',
-    });
-    expect(payload.positions).toHaveLength(3); // 2 détenues + 1 soldée
-    expect(payload.transactions).toHaveLength(3);
+    const { payload } = buildPayload({ update, products: productsInfo, captureId: 'cap-old', capturedAt: '2026-07-25T09:00:00Z' });
+    // Forme envoyée par l'extension 0.5 : ordres et position soldée en plus.
+    payload.positions.push({ isin: 'FR0000131906', name: 'Renault SA', qty: 0, value_eur: 0 });
+    payload.transactions = [
+      { tx_date: '2025-03-20 14:30:00', type: 'sell', isin: 'FR0000131906', qty: -5, amount_eur: 150, external_id: 'ord-1' },
+      { tx_date: 'illisible', type: 'buy', external_id: 'ord-2' },
+    ];
 
-    const ingest = await request(app).post('/api/ingest').set(auth).send(payload);
+    const ingest = await request(app).post('/api/ingest').set({ Authorization: `Bearer ${created.token}` }).send(payload);
     expect(ingest.status).toBe(201);
-    expect(ingest.body.transactions.inserted).toBe(3);
 
-    // La position soldée est stockée mais absente de la vue des positions courantes.
     const { body: pf } = await agent.get('/api/portfolio');
     expect(pf.positions).toHaveLength(2);
-    expect(pf.positions.some((p) => p.isin === 'FR0000131906')).toBe(false);
-
-    // L'achat + la vente de RNO ressortent en plus-value réalisée : 149,5 − 125,5 = 24 €.
-    const { body: an } = await agent.get('/api/analytics');
-    expect(an.realized.totals.net).toBe(24);
-    expect(an.realized.totals.sales).toBe(1);
-
-    // Rejeu idempotent : les mêmes ordres ne se dédoublent pas (INSERT IGNORE).
-    const again = await request(app).post('/api/ingest').set(auth)
-      .send(buildPayload({ update, products: productsInfoFull, transactions, captureId: 'cap-with-tx-2', capturedAt: '2026-07-25T18:00:00Z' }).payload);
-    expect(again.body.transactions.inserted).toBe(0);
+    const [[{ n }]] = await getPool().query('SELECT COUNT(*) AS n FROM transactions');
+    expect(Number(n)).toBe(0);
   });
 
   it('deux captures le même jour : la seconde remplace, sans doubler', async () => {
@@ -538,9 +433,9 @@ describe('Extension — trajet complet jusqu’au portefeuille', () => {
     expect(body.positions).toHaveLength(2);
     expect(Number(body.snapshot.total_value_eur)).toBe(11200);
 
-    // Une seule journée dans l'historique, pas deux points superposés.
-    const { body: snaps } = await agent.get('/api/snapshots');
-    expect(snaps.points ?? snaps.snapshots ?? snaps).toHaveLength(1);
+    // Une seule capture conservée pour la journée, pas deux superposées.
+    const [[{ n }]] = await getPool().query('SELECT COUNT(*) AS n FROM snapshots');
+    expect(Number(n)).toBe(1);
   });
 
   it('rejouer la même capture ne crée rien de neuf', async () => {
@@ -568,23 +463,5 @@ describe('Extension — session : secours et renouvellement', () => {
     expect(sessionIdFromConfig({ data: { sessionId: 'abc' } })).toBeNull();
     expect(sessionIdFromConfig({})).toBeNull();
     expect(sessionIdFromConfig(null)).toBeNull();
-  });
-
-  it("relève le chemin du relevé de compte appelé par l'application DEGIRO", () => {
-    expect(sniff('https://trader.degiro.nl/portfolio-reports/secure/v6/accountoverview?intAccount=1'))
-      .toMatchObject({ cashPath: '/portfolio-reports/secure/v6/accountoverview' });
-    expect(sniff('/reporting/secure/v6/accountoverview?fromDate=01/01/2026'))
-      .toMatchObject({ cashPath: '/reporting/secure/v6/accountoverview' });
-    expect(sniff('https://trader.degiro.nl/reporting/secure/v4/transactions?x=1').cashPath).toBeUndefined();
-  });
-
-  it("construit l'URL du relevé, échappée et sur un chemin de remplacement", () => {
-    const u = urls.accountOverview('123', 'S123456789', '01/01/2026', '29/07/2026');
-    expect(u.startsWith('https://trader.degiro.nl/portfolio-reports/secure/v6/accountoverview?')).toBe(true);
-    expect(u).toContain('fromDate=01%2F01%2F2026');
-    expect(u).toContain('intAccount=123');
-    const alt = urls.accountOverview('123', 'x', 'a', 'b', '/reporting/secure/v6/accountoverview');
-    expect(alt).toContain('/reporting/secure/v6/accountoverview?');
-    expect(urls.config()).toBe('https://trader.degiro.nl/login/secure/config');
   });
 });

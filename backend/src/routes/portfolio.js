@@ -17,9 +17,8 @@ router.get('/', async (req, res, next) => {
       return res.json({ snapshot: null, positions: [] });
     }
     const snapshot = snaps[0];
-    // Les positions soldées (quantité nulle) sont conservées dans le snapshot
-    // mais exclues de la vue des positions courantes ; leur détail (dates, prix,
-    // plus-values) se lit dans la vue réalisé/fiscal, alimentée par les transactions.
+    // Les positions soldées (quantité nulle) qu'une ancienne extension envoyait
+    // encore sont exclues : seul le portefeuille ouvert est analysé.
     const [positions] = await pool.query(
       `SELECT p.isin, p.symbol, p.name, p.product_type, p.qty, p.price, p.currency,
               p.fx_rate, p.break_even_price, p.value_eur, p.pl_eur, p.pl_day_eur,

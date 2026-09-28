@@ -51,10 +51,9 @@ export const MIN_COHORTE = 3;
  * Sépare les lignes du portefeuille : titres détenus, positions **soldées** et
  * liquidités.
  *
- * Les lignes soldées (quantité nulle) restent présentes chez DEGIRO. On les
- * conservait autrefois comme des fantômes ; on les remonte désormais à part
- * (`closed`) pour capturer un maximum de données — l'historique complet des
- * positions fermées vient toutefois des transactions, pas de cet instantané.
+ * Les lignes soldées (quantité nulle) restent présentes chez DEGIRO. Elles sont
+ * isolées (`closed`) pour ne pas polluer les positions détenues ; seules les
+ * vérifications de cohérence les consultent encore.
  */
 export function parsePortfolio(update) {
   const rows = (update?.portfolio?.value || []).map(flattenRow);
@@ -171,144 +170,14 @@ export function toPosition(row, info) {
   };
 }
 
-// ─── Transactions (historique des ordres) ────────────────────────────────────
-
-/** Récupère la liste des ordres, que DEGIRO enveloppe dans `{ data: [...] }`. */
-export function parseTransactions(response) {
-  const data = response?.data ?? response;
-  return Array.isArray(data) ? data : [];
-}
-
-/**
- * Convertit une date DEGIRO ISO (« 2024-03-15T09:30:00+01:00 ») en
- * « YYYY-MM-DD HH:MM:SS ». On garde l'heure murale telle que DEGIRO la rapporte
- * (fuseau du compte) : le calcul du réalisé ne raisonne qu'au jour près, et
- * l'import CSV stocke lui aussi l'heure locale sans conversion.
- */
-function degiroDate(v) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(v ?? ''));
-  if (!m) return null;
-  const [, y, mo, d, hh, mm, ss] = m;
-  return `${y}-${mo}-${d} ${hh}:${mm}:${ss ?? '00'}`;
-}
-
-/**
- * Identifiant stable d'un ordre, pour le dédoublonnage (contrainte `uq_external`,
- * globale). On privilégie l'`orderId` (UUID) : globalement unique, et **identique**
- * à celui de l'import Transactions.csv — un même ordre importé par les deux voies
- * ne compte donc qu'une fois. À défaut, un identifiant déterministe reconstruit.
- */
-function txExternalId(row, isin) {
-  const orderId = String(row?.orderId ?? '').trim();
-  if (orderId) return orderId.slice(0, 64);
-  const id = row?.id ?? row?.transactionId;
-  if (id !== undefined && id !== null && String(id) !== '') return `dgx-tx-${id}`.slice(0, 64);
-  const date = degiroDate(row?.date)?.slice(0, 10) ?? '';
-  return `dgx-${isin}-${date}-${num(row?.quantity) ?? ''}`.slice(0, 64);
-}
-
-/**
- * Regroupe les exécutions partielles d'un même ordre en une seule ligne.
- *
- * Sans agrégation côté DEGIRO (repli `groupTransactionsByOrder=false`), un
- * ordre servi en plusieurs fois arrive en plusieurs lignes qui partagent le
- * même `orderId`. Or l'identifiant externe côté serveur est précisément cet
- * `orderId` : envoyées telles quelles, seules les quantités de la première
- * exécution étaient conservées — les autres disparaissaient en silence, et le
- * prix moyen pondéré était faux d'autant.
- *
- * Sur des lignes déjà agrégées (le cas normal), les `orderId` sont uniques et
- * cette fonction est neutre.
- */
-export function aggregateByOrder(rows) {
-  const parOrdre = new Map();
-  const out = [];
-  for (const row of rows || []) {
-    const oid = String(row?.orderId ?? '').trim();
-    if (!oid) { out.push(row); continue; }
-    const cumul = parOrdre.get(oid);
-    if (!cumul) {
-      // Les montants sont normalisés dès la première exécution : DEGIRO les
-      // renvoie parfois en objet `{ EUR: x }`, qu'une simple addition ignorerait.
-      const copie = { ...row };
-      copie.quantity = num(row.quantity);
-      copie.totalInBaseCurrency = amount(row.totalInBaseCurrency);
-      copie.feeInBaseCurrency = amount(row.feeInBaseCurrency) ?? 0;
-      parOrdre.set(oid, copie);
-      out.push(copie);
-      continue;
-    }
-    // Quantité : indispensable — une exécution sans quantité rend l'ordre
-    // inutilisable, comme le veut toTransaction.
-    const q = num(row?.quantity);
-    cumul.quantity = cumul.quantity === undefined || q === undefined ? undefined : cumul.quantity + q;
-    // Montant : une exécution sans montant rend le TOTAL inconnaissable. Une
-    // somme partielle présentée comme complète serait pire qu'une absence.
-    const total = amount(row?.totalInBaseCurrency);
-    cumul.totalInBaseCurrency = cumul.totalInBaseCurrency === undefined || total === undefined
-      ? undefined
-      : cumul.totalInBaseCurrency + total;
-    // Frais : un frais absent vaut zéro (cas normal d'une exécution sans frais).
-    cumul.feeInBaseCurrency += amount(row?.feeInBaseCurrency) ?? 0;
-    // La date la plus ancienne fait foi.
-    if (row?.date && (!cumul.date || String(row.date) < String(cumul.date))) cumul.date = row.date;
-  }
-  return out;
-}
-
-/**
- * Assemble un ordre au format normalisé attendu par l'API (table `transactions`).
- * Renvoie `null` sans ISIN exploitable ou sans date : une ligne inclassable.
- *
- * Conventions reprises telles quelles de l'import CSV, dont dépend le calcul des
- * plus-values (`realizedPnl`) : `qty` signée (vente < 0), `amount_eur` brut EUR
- * signé (achat < 0, vente > 0), `amount` = frais.
- */
-export function toTransaction(row, info) {
-  if (!row || typeof row !== 'object') return null;
-  const isin = String(info?.isin || '').trim().toUpperCase();
-  if (!ISIN_RE.test(isin)) return null;
-
-  const txDate = degiroDate(row.date);
-  if (!txDate) return null;
-
-  let qty = num(row.quantity);
-  if (qty === undefined) return null;
-  // DEGIRO fournit `quantity` signée ET `buysell` ('B'/'S') : on aligne le signe
-  // sur le sens de l'ordre pour ne pas dépendre d'une seule des deux sources.
-  const side = String(row.buysell ?? '').toUpperCase();
-  if (side === 'S') qty = -Math.abs(qty);
-  else if (side === 'B') qty = Math.abs(qty);
-
-  // Montant brut EUR, resigné : achat = sortie de cash (< 0), vente = entrée (> 0).
-  const gross = amount(row.totalInBaseCurrency);
-  const grossEur = gross === undefined ? undefined : (qty < 0 ? Math.abs(gross) : -Math.abs(gross));
-  const fee = amount(row.feeInBaseCurrency);
-  const currency = clip(info?.currency, 3);
-
-  return {
-    tx_date: txDate,
-    type: qty < 0 ? 'sell' : 'buy',
-    isin,
-    description: clip(info?.name, 255),
-    qty: num(qty),
-    amount: fee === undefined ? undefined : round2(fee),
-    currency: currency && currency.length === 3 ? currency : undefined,
-    amount_eur: grossEur === undefined ? undefined : round2(grossEur),
-    external_id: txExternalId(row, isin),
-  };
-}
-
-/** Identifiants produit portés par des transactions (à résoudre en ISIN). */
-export const transactionProductIds = (txRows) =>
-  txRows.map((t) => String(t?.productId ?? '')).filter((s) => /^\d+$/.test(s));
-
 // ─── Assemblage du payload ────────────────────────────────────────────────────
 
 /**
  * Construit le corps du POST /api/ingest à partir d'une capture DEGIRO :
- * l'instantané (positions détenues + soldées + liquidités) et l'historique des
- * ordres (achats/ventes) pour la vue réalisé/fiscal.
+ * l'instantané du portefeuille OUVERT — positions détenues et liquidités.
+ *
+ * Les positions soldées et l'historique des ordres ne sont plus envoyés :
+ * l'application n'analyse plus que ce qui est détenu aujourd'hui.
  *
  * `total_value_eur` suit la convention de l'import CSV : titres **plus**
  * liquidités. On préfère le total annoncé par DEGIRO quand il est là, et on
@@ -316,7 +185,7 @@ export const transactionProductIds = (txRows) =>
  * dans le diagnostic pour repérer tout de suite une lecture qui a dérivé.
  */
 export function buildPayload({
-  update, products: infoByLot, transactions, cashMovements = [], captureId, capturedAt,
+  update, products: infoByLot, captureId, capturedAt,
 }) {
   const { products, closed, cashEur, cashOther, unsized } = parsePortfolio(update);
   const index = indexProducts(infoByLot);
@@ -327,37 +196,6 @@ export function buildPayload({
     const position = toPosition(row, index[row.productId]);
     if (position) positions.push(position);
     else skipped.push({ productId: row.productId, name: index[row.productId]?.name || null });
-  }
-  // Positions soldées : rattachées si l'ISIN se résout, laissées tomber en
-  // silence sinon (une ligne déjà fermée n'est pas un problème à signaler).
-  let closedSent = 0;
-  for (const row of closed) {
-    const position = toPosition(row, index[row.productId]);
-    if (position) { positions.push(position); closedSent += 1; }
-  }
-
-  // Ordres → transactions normalisées ; sans ISIN résolu, l'ordre est ignoré.
-  const txRows = aggregateByOrder(parseTransactions(transactions));
-  const txs = [];
-  for (const row of txRows) {
-    const tx = toTransaction(row, index[String(row?.productId ?? '')]);
-    if (tx) txs.push(tx);
-  }
-
-  // Mouvements du relevé de compte (déjà normalisés par `cash.js`) : on leur
-  // rattache l'ISIN quand le produit a pu être résolu. Contrairement aux ordres,
-  // un ISIN manquant ne les disqualifie PAS — un versement n'a pas de titre, et
-  // un dividende sans ISIN reste un dividende encaissé.
-  let cashSent = 0;
-  for (const m of cashMovements || []) {
-    const info = m.productId ? index[m.productId] : null;
-    const isin = String(info?.isin || '').trim().toUpperCase();
-    // `productId` ne fait pas partie du contrat d'ingestion : il ne servait qu'à
-    // retrouver l'ISIN, et n'a rien à faire dans le payload envoyé.
-    const mouvement = { ...m, isin: ISIN_RE.test(isin) ? isin : null };
-    delete mouvement.productId;
-    txs.push(mouvement);
-    cashSent += 1;
   }
 
   const totals = parseTotals(update);
@@ -589,7 +427,6 @@ export function buildPayload({
     captured_at: capturedAt,
     total_value_eur: totalRetenu,
     positions,
-    transactions: txs,
   };
   if (cash !== undefined) payload.cash_eur = round2(cash);
 
@@ -601,13 +438,7 @@ export function buildPayload({
       // Positions détenues dont la valeur a pu être lue : distingue « il manque
       // une ligne » de « la valorisation ligne à ligne diverge ».
       valued: products.filter((r) => amount(r.value) !== undefined).length,
-      closed: closedSent,
       sent: positions.length,
-      transactions: txs.length,
-      transactionsRead: txRows.length,
-      // Mouvements du relevé compris dans `transactions` : les distinguer permet
-      // au diagnostic de dire ce qui vient des ordres et ce qui vient du relevé.
-      cashMovements: cashSent,
       skipped,
       cashEur,
       // Devises non converties, pour expliquer un éventuel reliquat au lieu de
