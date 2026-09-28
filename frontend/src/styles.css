@@ -660,6 +660,18 @@ table.data tbody tr.row-flag:hover { background: color-mix(in srgb, var(--warn) 
 }
 .subtab.on .subtab-count { background: var(--accent-soft); color: var(--accent-ink); }
 
+/* ── Raccourcis par titre (page Actus) ────────────────── */
+.ql-list { display: grid; gap: 2px; }
+.ql-row { padding: 14px 0; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
+.ql-row:last-child { border-bottom: none; }
+.ql-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ql-head .sym { font-weight: 660; }
+.ql-head .sector-dot { margin-right: 5px; }
+/* La seconde rangee (pages de donnees) doit s'effacer devant la premiere
+   (actualite) : c'est cette derniere qu'on vient chercher sur cette page. */
+.ql-row .chip.sm { opacity: 0.72; }
+.ql-row .chip.sm:hover { opacity: 1; }
+
 /* ── Commande segmentee (choix UNIQUE) ────────────────────── */
 /* Les chips espacees se lisaient comme des bascules independantes : on croyait
    pouvoir cumuler « Moins-values » et « Non calculees ». Des segments jointifs

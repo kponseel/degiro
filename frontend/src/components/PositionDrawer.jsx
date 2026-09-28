@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { getNews } from '../lib/api.js';
+import { useEffect, useRef } from 'react';
 import { fmtEur, fmtPct, fmtNum, fmtDate } from '../lib/format.js';
 import StockLinks from './StockLinks.jsx';
+import { newsLinks } from '../lib/links.js';
 import { InsightBadge } from './InsightPasteModal.jsx';
 import { RECOMMENDATION_LABELS } from '../../../shared/aiInsightContract.js';
 
@@ -31,15 +31,12 @@ function Row({ label, children }) {
  * Ferme sur Échap / clic extérieur ; le focus est piégé le temps de l'ouverture.
  */
 export default function PositionDrawer({ position, lookthrough, insight, onClose, onAnalyze }) {
-  const [news, setNews] = useState(null);
   const panelRef = useRef(null);
   const previousFocus = useRef(null);
 
   useEffect(() => {
     if (!position) return undefined;
     previousFocus.current = document.activeElement;
-    setNews(null);
-    getNews(position.isin).then((d) => setNews(d.items || [])).catch(() => setNews([]));
 
     function onKey(e) {
       if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
@@ -158,16 +155,18 @@ export default function PositionDrawer({ position, lookthrough, insight, onClose
             <StockLinks stock={{ ticker: p.ticker, isin: p.isin, name: p.name }} />
           </section>
 
+          {/* Des liens plutôt qu'un flux : les appels sortants du serveur sont
+              filtrés chez l'hébergeur, et la liste d'articles restait vide sans
+              jamais dire pourquoi. Le navigateur, lui, atteint la source. */}
           <section className="dr-section">
             <h4>Actualités</h4>
-            {news === null && <div className="muted">Chargement…</div>}
-            {news?.length === 0 && <div className="muted">Aucune actualité récente pour ce titre.</div>}
-            {news?.slice(0, 6).map((it, i) => (
-              <a key={`${it.link}-${i}`} className="dr-news" href={it.link} target="_blank" rel="noopener noreferrer">
-                <span className="dr-news-title">{it.title}</span>
-                {it.source && <span className="muted dr-news-src">{it.source}</span>}
-              </a>
-            ))}
+            <div className="stock-links">
+              {newsLinks({ ticker: p.ticker, isin: p.isin, name: p.name }).map((l) => (
+                <a key={l.label} className="chip link-chip" href={l.url} target="_blank" rel="noopener noreferrer">
+                  {l.label} ↗
+                </a>
+              ))}
+            </div>
           </section>
         </div>
       </aside>

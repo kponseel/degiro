@@ -1,108 +1,22 @@
 import { getPool } from '../db/pool.js';
-import { logger } from '../logger.js';
-
-const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36';
-
-// Cache mémoire par utilisateur (2-3 utilisateurs → largement suffisant).
-const CACHE_TTL_MS = 20 * 60 * 1000;
-// Quand la source refuse, on ne la martèle pas à chaque affichage de la page —
-// mais on retente bien plus tôt qu'un succès, sinon une coupure de dix secondes
-// coûterait vingt minutes d'actualités vides.
-const FAIL_TTL_MS = 2 * 60 * 1000;
-const cache = new Map(); // accountId -> { at, expiresAt, items, stocks, degraded }
-
-const decodeEntities = (s) =>
-  String(s || '')
-    .replace(/<!\[CDATA\[|\]\]>/g, '')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&(?:apos|#39);/g, "'")
-    .replace(/<[^>]+>/g, '')
-    .trim();
-
-/** Parse les <item> d'un flux RSS. Fonction pure (testable sans réseau). */
-export function parseRssItems(xml) {
-  const items = [];
-  const blocks = String(xml || '').split(/<item[\s>]/i).slice(1);
-  for (const raw of blocks) {
-    const body = raw.split(/<\/item>/i)[0];
-    const pick = (tag) => {
-      const m = body.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i'));
-      return m ? decodeEntities(m[1]) : null;
-    };
-    const rawTitle = pick('title');
-    const link = pick('link');
-    if (!rawTitle || !link) continue;
-    const source = pick('source');
-    // Google News formate « Titre - Source » ; on isole la source si absente du tag.
-    let title = rawTitle;
-    let src = source;
-    if (!src) {
-      const dash = rawTitle.lastIndexOf(' - ');
-      if (dash > 0) { title = rawTitle.slice(0, dash).trim(); src = rawTitle.slice(dash + 3).trim(); }
-    }
-    const pubDate = pick('pubDate');
-    items.push({ title, link, source: src || null, pubDate: pubDate || null });
-  }
-  return items;
-}
-
-/** Terme de recherche propre à partir d'un nom DEGIRO (retire suffixes juridiques/ADR). */
-export function searchTerm(name) {
-  return String(name || '')
-    .replace(/\bADR ON\b/gi, '')
-    .replace(/\b(CLASS [A-C]|CL [A-C])\b/gi, '')
-    .replace(/\b(LTD|INC|CORP|CORPORATION|PLC|N\.?V\.?|S\.?A\.?|S\.?E\.?|A\.?G\.?|HOLDING|GROUP|CO)\b\.?/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-const ts = (d) => {
-  const t = d ? Date.parse(d) : NaN;
-  return Number.isFinite(t) ? t : 0;
-};
 
 /**
- * Interroge Google News. Distingue « aucun article » d'« appel en échec » : les
- * confondre revenait à effacer les actualités connues dès que la source refusait
- * de répondre, sans que rien ne le signale ni dans l'interface ni dans les
- * journaux.
- * @returns {Promise<{ ok: boolean, items: Array, reason: string|null }>}
+ * Titres détenus, pour la page « Actus & raccourcis ».
+ *
+ * Ce service allait chercher lui-même les articles sur Google News. C'est fini,
+ * et ce n'est pas un renoncement : sur un hébergement mutualisé, les appels
+ * sortants sont filtrés ou limités en débit, et la source refusait les nôtres.
+ * L'écran restait figé sur un cache périmé — le code repoussait même l'échéance
+ * à chaque échec, si bien que le bouton « Actualiser » n'avait plus d'effet
+ * visible, et que rien ne distinguait « aucune actualité pour tes titres » de
+ * « la source ne nous répond plus ».
+ *
+ * Le navigateur de l'utilisateur, lui, n'est bloqué par personne. L'interface
+ * construit donc des liens vers les sources, et n'a plus besoin d'ici que la
+ * liste des lignes détenues. Plus de cache à invalider, plus de source à
+ * surveiller, plus de clé d'API à prévoir — et l'accès à la source complète
+ * plutôt qu'aux quelques titres qu'un flux RSS voulait bien céder.
  */
-async function fetchGoogleNews(query) {
-  const url =
-    `https://news.google.com/rss/search?q=${encodeURIComponent(query)}` +
-    '&hl=fr-FR&gl=FR&ceid=FR:fr';
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 6000);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': UA } });
-    clearTimeout(timer);
-    if (!res.ok) return { ok: false, items: [], reason: `HTTP ${res.status}` };
-    return { ok: true, items: parseRssItems(await res.text()), reason: null };
-  } catch (err) {
-    clearTimeout(timer);
-    const reason = err?.name === 'AbortError' ? 'délai dépassé (6 s)' : String(err?.message || err);
-    return { ok: false, items: [], reason };
-  }
-}
-
-async function withPool(items, size, fn) {
-  const out = new Array(items.length);
-  let i = 0;
-  const workers = Array.from({ length: Math.min(size, items.length) }, async () => {
-    while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx]); }
-  });
-  await Promise.all(workers);
-  return out;
-}
-
-/** Positions du dernier snapshot (nom, ticker, ISIN, classe, valeur) pour un utilisateur. */
 async function heldStocks(accountId) {
   const [rows] = await getPool().query(
     `SELECT p.isin, MAX(p.name) AS name, MAX(p.value_eur) AS value_eur,
@@ -118,100 +32,24 @@ async function heldStocks(accountId) {
 }
 
 /**
- * Actualités agrégées des titres du portefeuille (Google News RSS, FR).
- * Best-effort + cache 20 min. Chaque article est tagué par titre (filtrable).
+ * Titres à afficher sur la page Actus.
  *
- * `degraded` distingue « rien à afficher » de « la source n'a pas répondu » :
- * sans lui, une source indisponible et un portefeuille sans actualité donnaient
- * exactement le même écran vide.
+ * `items` et `available` subsistent — vide et `true` — parce que d'autres écrans
+ * les lisent encore : les retirer d'un coup casserait leur affichage sans rien
+ * apporter. Ils disparaîtront quand ces écrans auront basculé sur les liens.
  *
- * @returns {Promise<{ available:boolean, degraded:boolean, items:Array, stocks:Array, fetchedAt:string, cachedAt:string }>}
+ * @returns {Promise<{ available: boolean, stocks: Array, items: Array }>}
  */
-export async function computeNews(accountId, { symbol, force = false } = {}) {
-  const stocksAll = await heldStocks(accountId);
-  const stocks = stocksAll.map((s) => ({ isin: s.isin, name: s.name, ticker: s.ticker || null, sector: s.sector || null }));
-
-  const cached = cache.get(accountId);
-  const usable = cached && Date.now() < cached.expiresAt;
-
-  let entry;
-  if (!force && usable) {
-    entry = cached;
-  } else {
-    // Top positions pour rester rapide ; on évite les ETF (news moins pertinente par titre).
-    const targets = stocksAll
-      .filter((s) => s.asset_class !== 'ETF' && s.asset_class !== 'ETC')
-      .slice(0, 12);
-    const results = await withPool(targets, 4, async (s) => {
-      const term = searchTerm(s.name) || s.name;
-      const res = await fetchGoogleNews(`${term} action bourse`);
-      return {
-        ok: res.ok,
-        reason: res.reason,
-        items: res.items.slice(0, 6).map((it) => ({ ...it, isin: s.isin, stock: s.name, sector: s.sector || null })),
-      };
-    });
-
-    const failures = results.filter((r) => !r.ok);
-    if (failures.length) {
-      logger.warn(
-        { source: 'news.google.com', echecs: failures.length, cibles: targets.length, motif: failures[0].reason },
-        'Actualités : la source publique a refusé une partie des appels',
-      );
-    }
-
-    const seen = new Set();
-    const fresh = results
-      .flatMap((r) => r.items)
-      .filter((it) => { const k = it.link; if (seen.has(k)) return false; seen.add(k); return true; })
-      .sort((a, b) => ts(b.pubDate) - ts(a.pubDate))
-      .slice(0, 60);
-
-    const totalFailure = targets.length > 0 && failures.length === targets.length;
-    const now = Date.now();
-
-    if (totalFailure && cached) {
-      // Aucun appel n'a abouti : on garde ce que l'utilisateur voyait déjà.
-      // Écraser par une liste vide faisait disparaître les actualités d'un clic
-      // sur « Rafraîchir », et pour vingt minutes.
-      //
-      // On repousse aussi l'échéance : sans cela, un cache déjà périmé relancerait
-      // la série d'appels à chaque affichage de la page tant que la source est à
-      // terre. Le bouton « Rafraîchir » (force) reste prioritaire.
-      entry = {
-        ...cached,
-        stocks,
-        degraded: true,
-        expiresAt: Math.max(cached.expiresAt, now + FAIL_TTL_MS),
-      };
-      cache.set(accountId, entry);
-    } else {
-      entry = {
-        at: totalFailure ? cached?.at || now : now,
-        expiresAt: now + (totalFailure ? FAIL_TTL_MS : CACHE_TTL_MS),
-        items: fresh,
-        stocks,
-        degraded: failures.length > 0,
-      };
-      cache.set(accountId, entry);
-    }
-  }
-
-  const all = entry.items;
-  const items = symbol ? all.filter((it) => it.isin === symbol) : all;
-  const fetchedAt = new Date(entry.at).toISOString();
+export async function computeNews(accountId) {
+  const rows = await heldStocks(accountId);
   return {
-    available: all.length > 0,
-    degraded: Boolean(entry.degraded),
-    items,
-    stocks,
-    fetchedAt,
-    // Conservé pour ne rien casser chez un client déjà déployé.
-    cachedAt: fetchedAt,
+    available: true,
+    items: [],
+    stocks: rows.map((s) => ({
+      isin: s.isin,
+      name: s.name,
+      ticker: s.ticker || null,
+      sector: s.sector || null,
+    })),
   };
-}
-
-/** Vide le cache d'un utilisateur (après un nouvel import par ex.). */
-export function invalidateNews(accountId) {
-  cache.delete(accountId);
 }
