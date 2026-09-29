@@ -30,8 +30,8 @@ const STEPS = [
     title: 'Les vues, en une phrase chacune',
     body: (
       <ul className="tour-list">
-        <li><strong>Portefeuille</strong> — tes positions et leurs +/− values. Clique une ligne : tout son détail s'ouvre.</li>
-        <li><strong>Exposition</strong> — secteurs, pays, devises. L'onglet <em>vraie exposition</em> éclate tes ETF en leurs titres : c'est là qu'on découvre qu'on détient trois fois la même entreprise.</li>
+        <li><strong>Portefeuille</strong> — chiffres clés, concentration, points d'attention, et tes lignes. Clique une ligne : tout son détail s'ouvre.</li>
+        <li><strong>Exposition</strong> — secteurs, régions, devises. La vue <em>ETF éclatés</em> remplace tes ETF par leurs titres : c'est là qu'on découvre qu'on détient trois fois la même entreprise.</li>
         <li><strong>Actus</strong> — des raccourcis vers l'actualité et les pages finance de chacun de tes titres.</li>
         <li><strong>Prompts IA</strong> — choisis des titres (ou tout le portefeuille) et un objectif, puis copie le prompt.</li>
       </ul>

@@ -152,7 +152,9 @@ describe('Extension — payload envoyé à l’API', () => {
 
   it('reprend la convention de l’import CSV : titres + liquidités', () => {
     expect(built.payload.total_value_eur).toBe(11105);
-    expect(built.payload.cash_eur).toBe(500);
+    // 500 € de lignes en euros + 42 $ convertis au taux de la ligne NVIDIA
+    // (1 105 / 1 205) : 38,51 €.
+    expect(built.payload.cash_eur).toBe(538.51);
     expect(built.payload.source).toBe('extension');
     expect(built.payload.positions).toHaveLength(2);
   });
@@ -249,7 +251,7 @@ describe('Extension — fonds de trésorerie compté deux fois différemment', (
     // Avant correction : 7 604,92 €, soit 2 426,80 € évaporés.
     expect(payload.cash_eur).toBe(10031.72);
     expect(payload.total_value_eur).toBe(87235.01);
-    expect(diagnostics.cashSource).toBe('DEGIRO (total − titres)');
+    expect(diagnostics.cashSource).toBe('lignes de trésorerie');
   });
 
   it('nomme le fonds au lieu de laisser un écart inexpliqué', () => {
@@ -371,7 +373,7 @@ describe('Extension — trajet complet jusqu’au portefeuille', () => {
 
     const { body } = await agent.get('/api/portfolio');
     expect(Number(body.snapshot.total_value_eur)).toBe(11105);
-    expect(Number(body.snapshot.cash_eur)).toBe(500);
+    expect(Number(body.snapshot.cash_eur)).toBe(538.51);
 
     const nvda = body.positions.find((p) => p.isin === 'US67066G1040');
     expect(Number(nvda.qty)).toBe(10);

@@ -201,37 +201,6 @@ export function buildPayload({
   const totals = parseTotals(update);
   const positionsTotal = round2(positions.reduce((s, p) => s + (p.value_eur || 0), 0));
 
-  /**
-   * Liquidités — et le piège qu'il a fallu une capture d'écran pour voir.
-   *
-   * DEGIRO expose DEUX découpages incompatibles du même patrimoine :
-   *  - son interface montre « Portfolio » (les titres) et « EUR » (les
-   *    liquidités), et le fonds de trésorerie est compté dans les LIQUIDITÉS ;
-   *  - son API expose `reportPortfValue` et `reportCashBal`, où ce même fonds
-   *    est compté dans les TITRES.
-   * Les deux découpages donnent bien le même total (`reportNetliq`), mais nous
-   * prenions nos titres d'un côté (sans le fonds, comme l'interface) et nos
-   * liquidités de l'autre (`reportCashBal`, sans le fonds non plus). Le fonds
-   * tombait donc entre les deux chaises : sur un cas réel, 2 400 € de
-   * liquidités disparus, et un « écart » que rien n'expliquait.
-   *
-   * Le total de DEGIRO faisant foi, les liquidités s'en déduisent : ce qui n'est
-   * pas en titres est de la trésorerie. Ce calcul embarque du même coup les
-   * soldes en devises, que nous ne savons pas convertir nous-mêmes.
-   *
-   * Contrepartie assumée : une position dont la valeur n'a pas pu être lue
-   * compte pour 0 € dans `positionsTotal` et gonflerait d'autant les liquidités
-   * — un titre manquant se déguiserait en cash. C'est le rôle du contrôle plus
-   * bas, qui confronte NOS deux lectures indépendantes au total de DEGIRO et
-   * rend cet accident bruyant, tandis que la liste des suspects nomme la ligne.
-   */
-  const cash = totals.netLiq !== undefined
-    ? round2(totals.netLiq - positionsTotal)
-    : totals.cash ?? cashEur;
-  const cashSource = totals.netLiq !== undefined
-    ? 'DEGIRO (total − titres)'
-    : (totals.cash !== undefined ? 'DEGIRO (converti)' : 'lignes en euros');
-
   // Ce que `reportCashBal` laisse de côté par rapport à nos propres lignes de
   // trésorerie : le fonds de trésorerie, précisément. Le nommer transforme un
   // écart inexpliqué en une ligne de diagnostic qui se lit.
@@ -310,18 +279,57 @@ export function buildPayload({
     }
   }
 
+  /**
+   * Liquidités : NOS lignes de trésorerie, telles que l'interface DEGIRO les
+   * affiche sous « EUR » (fonds de trésorerie compris).
+   *
+   * DEGIRO expose deux découpages incompatibles du même patrimoine : son
+   * interface range le fonds de trésorerie dans les liquidités, son API
+   * (`reportPortfValue` / `reportCashBal`) dans les titres. Nos lignes de
+   * trésorerie suivent l'interface, au centime près (vérifié sur un compte réel :
+   * 9 995,51 € des deux côtés).
+   *
+   * On déduisait auparavant les liquidités du total DEGIRO (total − titres). Or
+   * ce total convertit les titres en dollars à un taux légèrement différent de
+   * celui de leurs lignes : l'écart de change (92 à 468 € selon les jours)
+   * atterrissait dans les liquidités, qui n'avaient plus rien à voir avec
+   * l'écran de DEGIRO. La déduction ne sert plus que de repli, faute de ligne de
+   * trésorerie lisible.
+   *
+   * Les soldes en devise sont convertis au taux de leurs propres titres quand il
+   * y en a (ce que DEGIRO applique à ces lignes) ; sans titre dans la devise, ils
+   * restent de côté et le diagnostic les nomme.
+   */
+  const tauxDe = (devise) => parDevise.find((d) => d.devise === devise)?.taux ?? null;
+  const devisesConverties = cashOther
+    .filter((c) => tauxDe(c.currency))
+    .map((c) => ({ ...c, eur: round2(c.value * tauxDe(c.currency)) }));
+  let cash;
+  let cashSource;
+  if (cashEur !== undefined) {
+    cash = round2(cashEur + devisesConverties.reduce((s2, c) => s2 + c.eur, 0));
+    cashSource = devisesConverties.length ? 'lignes de trésorerie, devises converties' : 'lignes de trésorerie';
+  } else if (totals.netLiq !== undefined) {
+    cash = round2(totals.netLiq - positionsTotal);
+    cashSource = 'DEGIRO (total − titres)';
+  } else if (totals.cash !== undefined) {
+    cash = round2(totals.cash);
+    cashSource = 'DEGIRO (converti)';
+  }
+
   // Contrôle de cohérence : NOS deux lectures indépendantes (titres lus ligne à
-  // ligne + trésorerie lue ligne à ligne) face au total de DEGIRO. Comparer
-  // `cash` — désormais déduit de ce total — l'aurait rendu tautologique : c'est
-  // exactement ce qui masquait le problème, le diagnostic annonçant « liquidités
-  // exactes au centime » en confrontant le chiffre de DEGIRO à lui-même.
+  // ligne + trésorerie en euros lue ligne à ligne) face au total de DEGIRO. Rien
+  // de ce qui se DÉDUIT de ce total n'y entre : le comparer à lui-même
+  // annoncerait « exact au centime » quoi qu'il arrive.
   //
   // Sans ligne de trésorerie en euros, il n'y a pas de seconde lecture : le
   // contrôle est alors ANNULÉ plutôt que faussé. Le faire tourner quand même
   // aurait crié « écart de 7 600 € » là où il ne manque rien — le genre de
   // fausse alerte qui envoie chercher un bug inexistant.
   const summed = cashEur === undefined ? undefined : round2(positionsTotal + cashEur);
-  const totalRetenu = totals.netLiq ?? summed ?? round2(positionsTotal + (cash ?? 0));
+  // Le total affiché par DEGIRO fait foi (c'est celui que l'utilisateur compare) :
+  // arrondi au centime, DEGIRO le livrant avec six décimales.
+  const totalRetenu = round2(totals.netLiq ?? summed ?? (positionsTotal + (cash ?? 0)));
   const totalGap = totals.netLiq === undefined || summed === undefined
     ? null : round2(totals.netLiq - summed);
 
@@ -376,6 +384,13 @@ export function buildPayload({
     const v = amount(row.value);
     if (v) suspects.push(`${nomDe(row)} : valorisée ${round2(v)} € mais sans quantité — hors de notre somme`);
   }
+  // Une ligne soldée (quantité nulle) n'est pas envoyée ; si DEGIRO lui garde
+  // pourtant une valeur — vente du jour pas encore dénouée, par exemple — c'est
+  // de l'argent qu'il compte et que nous ne voyons pas.
+  for (const row of closed) {
+    const v = amount(row.value);
+    if (v && Math.abs(v) >= 1) suspects.push(`${nomDe(row)} : soldée mais valorisée ${round2(v)} € par DEGIRO — hors de notre somme`);
+  }
   // Position détenue dont la VALEUR n'a pas pu être lue : elle compte pour 0 €
   // dans notre somme et creuse l'écart d'autant. C'était le point aveugle des
   // contrôles ci-dessous, qui exigent tous une valeur pour se déclencher — une
@@ -420,6 +435,38 @@ export function buildPayload({
     return true;
   });
 
+  /**
+   * Écart de change entre les lignes et le total DEGIRO.
+   *
+   * Constaté sur un compte réel à chaque capture : lignes en euros exactes au
+   * centime, lignes en dollars toutes au MÊME taux (dispersion nulle), et
+   * pourtant un total DEGIRO plus haut de 0,3 à 0,9 % de la poche en dollars.
+   * Aucune ligne n'est mal lue : DEGIRO convertit son total à un autre taux que
+   * ses lignes. Crier « ✗ écart » à chaque capture enverrait chercher un bug
+   * qui n'existe pas.
+   *
+   * Conditions, toutes nécessaires : aucune piste nominative, toutes les lignes
+   * valorisées, chaque devise contrôlée cohérente, et un écart qui tient dans 2 %
+   * des titres en devises. Un portefeuille tout en euros n'en bénéficie jamais :
+   * son écart ne peut pas venir du change.
+   */
+  const poche = parDevise.filter((d) => d.devise !== 'EUR' && d.devise !== '?');
+  const valeurPoche = round2(poche.reduce((s2, d) => s2 + d.valeur, 0));
+  const localConnu = poche.length === 1 && poche[0].local;
+  const ecartChange = totalGap !== null && Math.abs(totalGap) > 1 && !gapExplique
+    && !pistes.length
+    && products.every((r) => amount(r.value) !== undefined)
+    && parDevise.every((d) => !d.controlee || d.dispersion <= 0.005)
+    && valeurPoche > 0 && Math.abs(totalGap) <= valeurPoche * 0.02
+    ? {
+      devises: poche.map((d) => d.devise),
+      part: Math.round((totalGap / valeurPoche) * 1e4) / 1e4,
+      // Une seule devise : le taux que le total DEGIRO implique, face à celui des lignes.
+      tauxLignes: poche.length === 1 ? poche[0].taux : null,
+      tauxTotal: localConnu ? Math.round(((valeurPoche + totalGap) / poche[0].local) * 1e6) / 1e6 : null,
+    }
+    : null;
+
   const payload = {
     schema_version: 1,
     source: 'extension',
@@ -428,7 +475,7 @@ export function buildPayload({
     total_value_eur: totalRetenu,
     positions,
   };
-  if (cash !== undefined) payload.cash_eur = round2(cash);
+  if (cash !== undefined) payload.cash_eur = cash;
 
   return {
     payload,
@@ -447,16 +494,20 @@ export function buildPayload({
       // Décomposition de notre total : sans elle, un écart ne désigne pas son
       // origine — titres mal lus, ou liquidités mal comptées.
       positionsTotal,
-      cash: cash === undefined ? undefined : round2(cash),
+      cash,
       cashSource,
-      degiroPositions: totals.positions,
-      degiroCash: totals.cash,
-      degiroTotal: totals.netLiq,
+      // Soldes en devise inclus dans `cash`, convertis au taux de leurs titres.
+      devisesConverties,
+      degiroPositions: totals.positions === undefined ? undefined : round2(totals.positions),
+      degiroCash: totals.cash === undefined ? undefined : round2(totals.cash),
+      degiroTotal: totals.netLiq === undefined ? undefined : round2(totals.netLiq),
       computedTotal: summed ?? totalRetenu,
       // Un écart > 1 € signale un champ mal lu : à vérifier avant de se fier aux chiffres.
       totalGap,
       // …sauf s'il tient dans les soldes en devises que nous ne convertissons pas.
       gapExplique,
+      // …ou s'il s'explique par le taux de change du total DEGIRO (voir plus haut).
+      ecartChange,
       // Lignes qui peuvent expliquer un écart côté titres, nommées.
       suspects: pistes,
       // Ventilation par devise : tranche un écart qu'aucune ligne n'explique.

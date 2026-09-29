@@ -224,7 +224,8 @@ async function capture() {
     // `gapExplique` : le reliquat tient dans les soldes en devises que nous ne
     // savons pas convertir. Ce n'est pas une erreur de lecture, et l'annoncer
     // comme telle enverrait chercher un bug là où il n'y en a pas.
-    const consistent = Math.abs(diagnostics.totalGap) <= 1 || diagnostics.gapExplique;
+    const change = diagnostics.ecartChange;
+    const consistent = Math.abs(diagnostics.totalGap) <= 1 || diagnostics.gapExplique || Boolean(change);
     // Les devises non converties sont la cause la plus fréquente d'un reliquat :
     // le dire évite de faire chercher une lecture fautive là où il n'y en a pas.
     const devises = (diagnostics.cashOther || [])
@@ -252,17 +253,26 @@ async function capture() {
     // Ventilation par devise : sur une devise étrangère, « valeur » et
     // « cours × quantité » doivent différer du taux de change. S'ils sont égaux,
     // la valeur reçue est locale et comptée à tort comme des euros.
-    const devisesDetail = '';
+    // Écart de change : toutes les lignes sont justes, c'est le total DEGIRO qui
+    // convertit ses titres en devise à un autre taux. On le dit en clair, avec
+    // les deux taux, plutôt qu'un ✗ qui ferait chercher une ligne fautive.
+    const changeDetail = change
+      ? `écart de ${diagnostics.totalGap} € avec le total DEGIRO ${diagnostics.degiroTotal} €, soit ${(change.part * 100).toFixed(2)} % de tes titres en ${change.devises.join(', ')} :`
+        + ' DEGIRO convertit son total à un taux légèrement différent de celui de ses lignes'
+        + (change.tauxLignes && change.tauxTotal ? ` (${change.tauxLignes} sur les lignes, ${change.tauxTotal} dans le total)` : '')
+        + '. Aucune ligne mal lue ; total et liquidités retenus = ceux affichés par DEGIRO'
+      : '';
     step(report, 'Contrôle du total', consistent,
-      (consistent
-        ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
-          + (diagnostics.gapExplique && devises
-            ? `, au reliquat de ${diagnostics.totalGap} € près — les soldes en ${devises} que DEGIRO convertit et nous non`
-            : '')
-        : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €) — ${detail}`
-          + (devises ? ` — devises non converties : ${devises}` : '')
-          + (pistes ? ` — piste(s) : ${pistes}` : '')
-          + (devisesDetail ? ` — par devise : ${devisesDetail}` : ''))
+      (change
+        ? changeDetail
+        : consistent
+          ? `${diagnostics.computedTotal} € ≈ total DEGIRO`
+            + (diagnostics.gapExplique && devises
+              ? `, au reliquat de ${diagnostics.totalGap} € près — les soldes en ${devises} que DEGIRO convertit et nous non`
+              : '')
+          : `écart de ${diagnostics.totalGap} € (nous ${diagnostics.computedTotal} € / DEGIRO ${diagnostics.degiroTotal} €) — ${detail}`
+            + (devises ? ` — devises non converties : ${devises}` : '')
+            + (pistes ? ` — piste(s) : ${pistes}` : ''))
       + fonds);
   }
 

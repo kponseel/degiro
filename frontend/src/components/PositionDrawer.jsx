@@ -51,6 +51,13 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
   const viaEtf = lt?.viaEtf || 0;
   const hasOverlap = viaEtf > 0.005 && (lt?.direct || 0) > 0.005;
   const pl = p.pl_eur != null ? Number(p.pl_eur) : null;
+  const day = p.pl_day_eur != null ? Number(p.pl_day_eur) : null;
+  const value = Number(p.value_eur) || 0;
+  // Coût et % : seulement quand DEGIRO a fourni la plus-value (extension), jamais devinés.
+  const cost = pl != null ? value - pl : null;
+  const plPct = cost > 0 ? pl / cost : null;
+  const dayPct = day != null && value - day > 0 ? day / (value - day) : null;
+  const signed = (x) => `${x > 0 ? '+' : ''}${fmtPct(x)}`;
 
   return (
     <>
@@ -80,17 +87,25 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
               <span className={`dr-kpi-value ${pl == null ? '' : pl >= 0 ? 'pos' : 'neg'}`}>
                 {pl == null ? '—' : `${pl >= 0 ? '+' : ''}${fmtEur(pl)}`}
               </span>
+              {plPct != null && <span className={`dr-kpi-sub ${pl >= 0 ? 'pos' : 'neg'}`}>{signed(plPct)}</span>}
             </div>
           </div>
 
           <section className="dr-section">
             <h4>Position</h4>
-            <Row label="Quantité">{fmtNum(p.qty, 0)}</Row>
+            <Row label="Quantité">{fmtNum(p.qty, Number.isInteger(Number(p.qty)) ? 0 : 2)}</Row>
             <Row label="Cours">{fmtNum(p.price)} {p.currency || ''}</Row>
-            {p.break_even_price != null && <Row label="Prix de revient">{fmtNum(p.break_even_price)}</Row>}
-            <Row label="Type">{p.asset_class || p.product_type || '—'}</Row>
-            <Row label="Secteur">{p.sector || <span className="muted">non renseigné</span>}</Row>
-            <Row label="Pays">{p.country || <span className="muted">non renseigné</span>}</Row>
+            {p.break_even_price != null && <Row label="Prix de revient">{fmtNum(p.break_even_price)} {p.currency || ''}</Row>}
+            {cost != null && <Row label="Coût d'achat">{fmtEur(cost)}</Row>}
+            {day != null && (
+              <Row label="Variation du jour">
+                <span className={day >= 0 ? 'pos' : 'neg'}>{`${day >= 0 ? '+' : ''}${fmtEur(day)}`}{dayPct != null ? ` (${signed(dayPct)})` : ''}</span>
+              </Row>
+            )}
+            <Row label="Type">{p.type || p.asset_class || p.product_type || '—'}</Row>
+            <Row label="Secteur">{p.sectorN || p.sector || <span className="muted">non renseigné</span>}</Row>
+            <Row label="Pays">{p.fund ? <span className="muted">fonds (domicile {p.countryN || p.country || '—'})</span> : (p.countryN || p.country || <span className="muted">non renseigné</span>)}</Row>
+            {p.region && !p.fund && <Row label="Région">{p.region}</Row>}
           </section>
 
           {(viaEtf > 0.005 || lt) && (
