@@ -60,6 +60,20 @@ describe.each([
   });
 });
 
+describe('liquidités sur plusieurs devises', () => {
+  it('additionne chaque ligne de trésorerie, en euros', () => {
+    // Synthétique, au format réel de DEGIRO : une ligne de trésorerie par devise.
+    const { rows } = parseCsv([
+      'Product,Symbol/ISIN,Amount,Closing,Local value,,Value in EUR',
+      'CASH & CASH FUND & FTX CASH (EUR),,,,EUR,"1000,50","1000,50"',
+      'CASH & CASH FUND & FTX CASH (USD),,,,USD,"2,24","1,97"',
+      'ACME CORP,US0000000001,3,"10,00",USD,"30,00","26,37"',
+    ].join('\n'));
+    expect(extractCashEur(rows)).toBe(1002.47);
+    expect(mapPortfolio(rows)).toHaveLength(1);
+  });
+});
+
 describe('parité stricte entre les deux langues', () => {
   it('le même portefeuille donne les mêmes positions', () => {
     const en = mapPortfolio(parseCsv(fixture('portfolio-real.csv')).rows);

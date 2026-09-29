@@ -47,6 +47,16 @@ export function plPct(p) {
   return cost > 0 ? pl / cost : null;
 }
 
+/** Coût moyen en euros d'un titre détenu, déduit de la plus-value latente. */
+function avgCost(p) {
+  const v = num(p.value_eur);
+  const pl = num(p.pl_eur);
+  const q = num(p.qty);
+  if (v == null || pl == null || !q) return null;
+  const cost = v - pl;
+  return cost > 0 ? cost / q : null;
+}
+
 /** Tri par valeur décroissante, sans muter l'entrée. */
 const byValue = (positions) => [...(positions || [])].sort((a, b) => (num(b.value_eur) || 0) - (num(a.value_eur) || 0));
 
@@ -65,11 +75,12 @@ const COLUMNS = [
   { head: 'Qté', cell: (p) => (num(p.qty) == null ? '' : fmtNum(p.qty, Number.isInteger(num(p.qty)) ? 0 : 4)) },
   { head: 'Cours', cell: (p) => (num(p.price) == null ? '' : fmtNum(p.price)) },
   { head: 'Devise', cell: (p) => p.currency || '' },
-  { head: 'PRU', cell: (p) => (num(p.break_even_price) == null ? '' : fmtNum(p.break_even_price)) },
+  { head: 'Coût moyen €', cell: (p) => (avgCost(p) == null ? '' : fmtNum(avgCost(p))) },
   { head: 'Valeur €', cell: (p) => (num(p.value_eur) == null ? '' : fmtEur(p.value_eur)), keep: true },
   { head: 'Poids', cell: (p, total) => (total > 0 ? pct1((num(p.value_eur) || 0) / total) : ''), keep: true },
   { head: '+/- value €', cell: (p) => (num(p.pl_eur) == null ? '' : signedEur(num(p.pl_eur))) },
   { head: '+/- value %', cell: (p) => (plPct(p) == null ? '' : signedPct(plPct(p))) },
+  { head: 'Déjà réalisé €', cell: (p) => (num(p.pl_realized_eur) ? signedEur(num(p.pl_realized_eur)) : '') },
 ];
 
 /**
@@ -364,9 +375,12 @@ export function buildPrompt({ pf, exposure = null, scope, isins = [], objective,
   out.push('');
   const { table, heads } = positionsTable(shown, total);
   out.push(table);
-  out.push(heads.includes('PRU')
-    ? 'PRU = prix de revient unitaire, dans la devise du titre. Poids = part de la valeur investie totale.'
-    : 'Poids = part de la valeur investie totale.');
+  out.push([
+    heads.includes('Coût moyen €') ? 'Coût moyen = prix d’achat moyen en euros d’un titre encore détenu.' : null,
+    heads.includes('+/- value €') ? '+/- value = plus-value latente des titres détenus.' : null,
+    heads.includes('Déjà réalisé €') ? 'Déjà réalisé = gain déjà encaissé par des ventes partielles, hors plus-value latente.' : null,
+    'Poids = part de la valeur investie totale.',
+  ].filter(Boolean).join(' '));
 
   if (scope === 'portfolio') {
     const expo = exposureLines(exposure);

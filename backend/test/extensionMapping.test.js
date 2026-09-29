@@ -118,6 +118,38 @@ describe('Extension — conversion en positions', () => {
     expect(p.pl_day_eur).toBe(25); // 1105 - 1080
   });
 
+  it('ligne en partie vendue : le réalisé des ventes sort de la plus-value latente', () => {
+    // Synthétique : 100 titres achetés 10 € (1 000 €), 90 revendus 50 € (4 500 €),
+    // 10 encore détenus, cotés 60 € (600 €). Flux net : −1 000 + 4 500 = +3 500 €.
+    // DEGIRO : plBase = +3 500, résultat total = 600 + 3 500 = 4 100 €, dont
+    // 90 × (50 − 10) = 3 600 € réalisés. Latent : 10 × (60 − 10) = 500 €.
+    const row = {
+      id: '1', positionType: 'PRODUCT', size: 10, price: 60, value: 600,
+      plBase: { EUR: 3500 }, todayPlBase: { EUR: -590 }, breakEvenPrice: -350,
+      realizedProductPl: 3600, realizedFxPl: 0,
+    };
+    const p = toPosition(row, { isin: 'FR0000120271', currency: 'EUR' });
+    expect(p.pl_eur).toBe(500);
+    expect(p.pl_realized_eur).toBe(3600);
+    // Coût des titres détenus = valeur − latent = 100 € : 10 € par titre, le vrai prix d'achat.
+    expect(p.value_eur - p.pl_eur).toBe(100);
+  });
+
+  it('réalisé en devise : produit et change s’additionnent', () => {
+    const p = toPosition(
+      { size: 1, price: 10, value: 100, plBase: { EUR: 50 }, realizedProductPl: { EUR: 120 }, realizedFxPl: -5 },
+      { isin: 'US0000000001', currency: 'USD' },
+    );
+    expect(p.pl_realized_eur).toBe(115);
+    expect(p.pl_eur).toBe(35); // 100 + 50 − 115
+  });
+
+  it('sans réalisé livré : résultat total conservé, jamais un réalisé inventé', () => {
+    const p = toPosition(flattenRow(update.portfolio.value[0]), productsInfo[0].data[331868]);
+    expect(p.pl_realized_eur).toBeUndefined();
+    expect(p.pl_eur).toBe(105);
+  });
+
   it('écarte une ligne sans ISIN exploitable', () => {
     const r = flattenRow(update.portfolio.value[0]);
     expect(toPosition(r, undefined)).toBeNull();
@@ -180,6 +212,17 @@ describe('Extension — payload envoyé à l’API', () => {
     const p = buildPayload({ update: sansTotal, products: productsInfo, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z' });
     expect(p.payload.total_value_eur).toBe(11105); // 1105 + 9500 + 500
     expect(p.diagnostics.totalGap).toBeNull();
+  });
+
+  it('diagnostic : nomme les lignes en partie vendues, et dit si le réalisé manque', () => {
+    const partiel = structuredClone(update);
+    const nvda = partiel.portfolio.value[0].value;
+    nvda.push({ name: 'realizedProductPl', value: 800 }, { name: 'realizedFxPl', value: 0 });
+    const d = buildPayload({ update: partiel, products: productsInfo, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z' }).diagnostics;
+    expect(d.avecPl).toBe(2);
+    expect(d.realiseConnu).toBe(1);
+    expect(d.ventesPartielles).toEqual([{ nom: 'NVIDIA Corporation', realise: 800, latent: -695 }]);
+    expect(ingestSchema.safeParse(buildPayload({ update: partiel, products: productsInfo, captureId: 'x', capturedAt: '2026-07-25T09:00:00Z' }).payload).success).toBe(true);
   });
 
   it('tronque capture_id à la limite de la colonne', () => {
