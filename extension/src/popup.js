@@ -25,6 +25,11 @@ let lastReport = null;
 
 function show(el, text) { el.textContent = text; el.hidden = !text; }
 
+/** « 89 912,55 € » — DEGIRO livre ses totaux avec six décimales. */
+const euros = (n) => (Number.isFinite(Number(n))
+  ? `${Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  : '— €');
+
 // ── Réglages ────────────────────────────────────────────────────────
 const stored = await chrome.storage.local.get(['apiUrl', 'token', 'brouillon', 'lastCapture']);
 // `brouillon` : ce qui a été tapé sans être enregistré. Le popup se ferme dès
@@ -134,8 +139,8 @@ els.capture.addEventListener('click', async () => {
     if (res?.ok) {
       const s = res.summary;
       show(els.success, s.deduplicated
-        ? `Déjà à jour : ${s.positions} position(s), ${s.total} €.`
-        : `Envoyé : ${s.positions} position(s), ${s.total} €.`);
+        ? `Déjà à jour : ${s.positions} position(s), ${euros(s.total)}.`
+        : `Envoyé : ${s.positions} position(s), ${euros(s.total)}.`);
       els.last.textContent = 'dernière capture à l’instant';
     } else {
       show(els.error, res?.error || 'Échec de la capture.');

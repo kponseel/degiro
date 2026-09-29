@@ -18,7 +18,6 @@ export default defineConfig({
         // Forme fonctionnelle : compatible rollup ET rolldown (moteur de Vite 8),
         // qui n'accepte plus la table { nom: [modules] }.
         manualChunks(id) {
-          if (id.includes('node_modules/recharts')) return 'recharts';
           if (id.includes('node_modules/react-dom') || /node_modules\/react(\/|$)/.test(id)) return 'react';
           return undefined;
         },

@@ -36,11 +36,13 @@ describe('liquidités en devises', () => {
     expect(cashOther).toEqual([{ currency: 'USD', value: 115 }]);
   });
 
-  it("s'appuie sur le solde total converti par DEGIRO, pas sur les seules lignes en euros", () => {
-    // Le défaut : ne sommer que l'euro laissait 105,89 € de côté et faisait
-    // apparaître un écart avec le total DEGIRO, sans dire d'où il venait.
-    const { payload } = capture();
-    expect(payload.cash_eur).toBe(605.89);
+  it('convertit un solde en devise au taux de ses propres titres, sans le perdre', () => {
+    // Ne sommer que l'euro laissait les 115 $ de côté. Ils sont convertis au
+    // taux que DEGIRO applique à la ligne en dollars (1 000 / 1 200).
+    const { payload, diagnostics } = capture();
+    expect(payload.cash_eur).toBe(round2(500 + 115 * (1000 / 1200)));
+    expect(diagnostics.devisesConverties).toEqual([{ currency: 'USD', value: 115, eur: 95.83 }]);
+    // Le total reste celui de DEGIRO : c'est lui que l'utilisateur compare.
     expect(payload.total_value_eur).toBe(1605.89);
   });
 
@@ -71,12 +73,12 @@ describe('liquidités en devises', () => {
     expect(diagnostics.cashOther).toEqual([{ currency: 'USD', value: 115 }]);
   });
 
-  it('retombe sur la somme des lignes en euros si DEGIRO ne donne pas de total', () => {
+  it('lit les liquidités sur ses lignes même sans total DEGIRO', () => {
     const sansTotal = { portfolio: update.portfolio };
     const { payload } = buildPayload({
       update: sansTotal, products: infos, transactions: null, captureId: 'c2', capturedAt: '2026-07-28T08:00:00Z',
     });
-    expect(payload.cash_eur).toBe(500);
+    expect(payload.cash_eur).toBe(595.83);
   });
 
   it('un portefeuille sans liquidités ne déclare pas de cash', () => {
@@ -256,6 +258,99 @@ describe('détail par devise', () => {
     expect(diagnostics.titresDegiro).toBe(77582.57);
     // Nous n'en trouvons que 51 003,48 sur cette ligne unique de test.
     expect(diagnostics.titresManquants).toBe(round2(77582.57 - 51003.48));
+  });
+});
+
+/**
+ * La capture réelle du 29/09/2026, reconstituée avec des lignes synthétiques
+ * mais les mêmes totaux : 10 lignes en euros exactes au centime, 10 lignes en
+ * dollars toutes au même taux, et un total DEGIRO plus haut de 91,99 €.
+ *
+ * Deux défauts se cachaient derrière ce seul chiffre : un « ✗ » alarmant alors
+ * qu'aucune ligne n'était mal lue, et des liquidités gonflées de 91,99 € parce
+ * qu'elles étaient DÉDUITES du total (total − titres) au lieu d'être lues.
+ */
+describe('écart de change entre les lignes et le total DEGIRO', () => {
+  const eur = (n, v) => ligne({ id: String(500 + n), positionType: 'PRODUCT', size: 1, price: v, value: v });
+  const usd = (n, local) => ligne({ id: String(600 + n), positionType: 'PRODUCT', size: 1, price: local, value: round2(local * 0.8794) });
+  const infosMixtes = [{ data: Object.fromEntries([
+    ...[...Array(10).keys()].map((n) => [String(500 + n), { isin: `FR000000000${n}`, name: `Titre FR ${n}`, productType: 'STOCK', currency: 'EUR' }]),
+    ...[...Array(10).keys()].map((n) => [String(600 + n), { isin: `US000000001${n}`, name: `Titre US ${n}`, productType: 'STOCK', currency: 'USD' }]),
+  ]) }];
+  // 10 × 2 530,30 € = 25 303,00 € ; 10 × 3 905,84 $ au taux 0,8794.
+  const lignes = [
+    ...[...Array(10).keys()].map((n) => eur(n, 2530.3)),
+    ...[...Array(10).keys()].map((n) => usd(n, 3905.84)),
+    ligne({ id: 'EUR', positionType: 'CASH', value: 3902.74 }),
+    ligne({ id: 'FLATEX_EUR', positionType: 'CASH', value: 26266.84 }),
+  ];
+  const titres = round2(10 * 2530.3 + 10 * round2(3905.84 * 0.8794));
+  const totaux = (ecart) => ({
+    portfolio: { value: lignes },
+    totalPortfolio: { value: [
+      { name: 'reportPortfValue', value: titres + 3902.74 + ecart },
+      { name: 'reportCashBal', value: 26266.84 },
+      { name: 'reportNetliq', value: titres + 3902.74 + 26266.84 + ecart + 0.004152 },
+    ] },
+  });
+  const build = (ecart) => buildPayload({ update: totaux(ecart), products: infosMixtes, captureId: 'fx', capturedAt: '2026-09-29T09:00:00Z' });
+
+  it('liquidités = celles de l’écran DEGIRO, pas le total moins nos titres', () => {
+    const { payload } = build(91.99);
+    expect(payload.cash_eur).toBe(30169.58);
+  });
+
+  it('total arrondi au centime', () => {
+    const { payload } = build(91.99);
+    expect(payload.total_value_eur).toBe(round2(titres + 30169.58 + 91.99));
+  });
+
+  it('reconnaît l’écart de change, chiffré, au lieu d’un ✗', () => {
+    const { diagnostics } = build(91.99);
+    expect(diagnostics.totalGap).toBe(91.99);
+    expect(diagnostics.ecartChange.devises).toEqual(['USD']);
+    expect(diagnostics.ecartChange.tauxLignes).toBeCloseTo(0.8794, 5);
+    expect(diagnostics.ecartChange.tauxTotal).toBeGreaterThan(0.8794);
+    expect(diagnostics.ecartChange.part).toBeCloseTo(91.99 / (10 * round2(3905.84 * 0.8794)), 4);
+  });
+
+  it('ne l’invoque pas pour un écart trop grand pour être du change', () => {
+    // 5 000 € sur 34 000 € de titres en dollars : ce n'est plus un taux, c'est un titre qui manque.
+    expect(build(5000).diagnostics.ecartChange).toBeNull();
+  });
+
+  it('ne l’invoque pas quand une ligne est nommée comme suspecte', () => {
+    const faussee = totaux(91.99);
+    faussee.portfolio.value = structuredClone(lignes);
+    // Une ligne en dollars convertie à un autre taux que ses voisines.
+    faussee.portfolio.value[10].value.find((f) => f.name === 'value').value -= 50;
+    const { diagnostics } = buildPayload({ update: faussee, products: infosMixtes, captureId: 'fx2', capturedAt: '2026-09-29T09:00:00Z' });
+    expect(diagnostics.suspects.length).toBeGreaterThan(0);
+    expect(diagnostics.ecartChange).toBeNull();
+  });
+
+  it('ne l’invoque jamais pour un portefeuille tout en euros', () => {
+    const toutEuro = {
+      portfolio: { value: [...lignes.slice(0, 10), ...lignes.slice(20)] },
+      totalPortfolio: { value: [
+        { name: 'reportPortfValue', value: 25303 + 3902.74 + 91.99 },
+        { name: 'reportCashBal', value: 26266.84 },
+        { name: 'reportNetliq', value: 25303 + 30169.58 + 91.99 },
+      ] },
+    };
+    const { diagnostics } = buildPayload({ update: toutEuro, products: infosMixtes, captureId: 'fx3', capturedAt: '2026-09-29T09:00:00Z' });
+    expect(diagnostics.totalGap).toBe(91.99);
+    expect(diagnostics.ecartChange).toBeNull();
+  });
+
+  it('nomme une position soldée que DEGIRO valorise encore', () => {
+    const avecSoldee = totaux(91.99);
+    avecSoldee.portfolio.value = [...lignes, ligne({ id: '700', positionType: 'PRODUCT', size: 0, price: 124, value: 91.99 })];
+    const infos2 = structuredClone(infosMixtes);
+    infos2[0].data['700'] = { isin: 'US69608A1088', name: 'Titre vendu', productType: 'STOCK', currency: 'USD' };
+    const { diagnostics } = buildPayload({ update: avecSoldee, products: infos2, captureId: 'fx4', capturedAt: '2026-09-29T09:00:00Z' });
+    expect(diagnostics.suspects.some((s) => /Titre vendu : soldée mais valorisée 91.99/.test(s))).toBe(true);
+    expect(diagnostics.ecartChange).toBeNull();
   });
 });
 

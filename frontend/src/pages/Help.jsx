@@ -10,7 +10,7 @@ import { Card } from '../components/ui.jsx';
 const TIPS = [
   {
     title: 'Commence par la vraie exposition',
-    body: "C'est la vue qui surprend le plus. Importe la composition de tes ETF (Import / Extension → Compositions d'ETF), puis regarde l'onglet « vraie exposition » : les titres que tu détiens sans le savoir apparaissent, et les doublons entre deux ETF aussi.",
+    body: "C'est la vue qui surprend le plus. Importe la composition de tes ETF (Import / Extension → Compositions d'ETF), puis ouvre Exposition en vue « ETF éclatés » : les titres que tu détiens sans le savoir apparaissent, et les doublons entre deux ETF aussi.",
   },
   {
     title: 'Clique sur une ligne du portefeuille',
@@ -102,11 +102,17 @@ export default function Help({ onGoImport, onReplayTour }) {
       <Card title="Ce que montre chaque vue">
         <dl className="help-defs">
           <dt>Portefeuille</dt>
-          <dd>Tes positions, leur valeur et leurs +/− values. Clique une ligne pour ouvrir son détail complet.</dd>
+          <dd>
+            Chiffres clés (valeur, +/− value, variation du jour, liquidités), allocation, concentration, points
+            d'attention chiffrés, ce qui fait ta plus-value, et le tableau des lignes — regroupable par secteur,
+            région ou devise, exportable en CSV. Clique une ligne pour son détail.
+          </dd>
           <dt>Exposition</dt>
           <dd>
-            Ta répartition par secteur, pays, devise et classe d'actifs. L'onglet <em>vraie exposition</em> éclate
-            tes ETF en leurs titres — c'est là qu'on voit les concentrations invisibles autrement.
+            Secteurs, régions, pays, devises (de cotation et économiques) et classes d'actifs, avec un score de
+            diversification et un croisement secteurs × régions. La vue <em>ETF éclatés</em> remplace chaque ETF
+            par ses titres : c'est là qu'on voit les concentrations invisibles autrement. Clique une catégorie
+            pour voir les lignes qui la composent.
           </dd>
           <dt>Actus</dt>
           <dd>Des raccourcis vers l'actualité et les pages finance (Google News, Yahoo Finance, Finviz…) de chacun de tes titres.</dd>
