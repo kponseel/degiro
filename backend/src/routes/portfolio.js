@@ -21,7 +21,7 @@ router.get('/', async (req, res, next) => {
     // encore sont exclues : seul le portefeuille ouvert est analysé.
     const [positions] = await pool.query(
       `SELECT p.isin, p.symbol, p.name, p.product_type, p.qty, p.price, p.currency,
-              p.fx_rate, p.break_even_price, p.value_eur, p.pl_eur, p.pl_day_eur,
+              p.fx_rate, p.break_even_price, p.value_eur, p.pl_eur, p.pl_day_eur, p.pl_realized_eur,
               r.sector, r.country, r.asset_class, r.ticker
        FROM positions p
        LEFT JOIN isin_ref r ON r.isin = p.isin

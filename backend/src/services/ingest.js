@@ -67,11 +67,12 @@ export async function ingestSnapshot(payload, accountId = 1) {
         p.value_eur ?? null,
         p.pl_eur ?? null,
         p.pl_day_eur ?? null,
+        p.pl_realized_eur ?? null,
       ]);
       await conn.query(
         `INSERT INTO positions
           (snapshot_id, isin, symbol, name, product_type, qty, price, currency, fx_rate,
-           break_even_price, value_eur, pl_eur, pl_day_eur)
+           break_even_price, value_eur, pl_eur, pl_day_eur, pl_realized_eur)
          VALUES ?`,
         [rows],
       );

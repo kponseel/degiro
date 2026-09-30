@@ -53,13 +53,21 @@ export function enrichLines(positions) {
     const value = num(p.value_eur) || 0;
     const pl = num(p.pl_eur);
     const day = num(p.pl_day_eur);
+    const qty = num(p.qty);
     const fund = isFund(p);
     const country = normalizeCountry(p.country);
+    const cost = pl != null && value - pl > 0 ? value - pl : null;
     return {
       ...p,
       value,
       pl,
       plPct: ratio(pl, value),
+      // Déjà encaissé par des ventes partielles : ne fait pas partie de la plus-value latente.
+      realized: num(p.pl_realized_eur),
+      // Coût moyen, en euros, d'un titre ENCORE détenu. Plutôt que le « prix de
+      // revient » DEGIRO (breakEvenPrice), qui intègre les gains des ventes
+      // passées : sur une ligne en partie vendue, il tombait à 10 $ pour Tesla.
+      avgCost: cost != null && qty > 0 ? cost / qty : null,
       day,
       dayPct: ratio(day, value),
       w: invested > 0 ? value / invested : 0,
@@ -138,6 +146,9 @@ export function analyzePortfolio(pf) {
     patrimoine,
     cashShare: patrimoine > 0 && cash != null ? Math.max(0, cash) / patrimoine : null,
     pl: pl.known.length ? { total: pl.sum, pct: plCost > 0 ? pl.sum / plCost : null, cost: plCost, coverage: pl.coverage } : null,
+    realized: lines.some((l) => l.realized)
+      ? { total: lines.reduce((s, l) => s + (l.realized || 0), 0), count: lines.filter((l) => Math.abs(l.realized || 0) >= 1).length }
+      : null,
     day: day.known.length ? { total: day.sum, pct: dayBase > 0 ? day.sum / dayBase : null, coverage: day.coverage } : null,
     allocation,
     concentration: concentration(lines),
@@ -444,10 +455,10 @@ export function linesToCsv(lines) {
     return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const head = ['Titre', 'ISIN', 'Ticker', 'Type', 'Secteur', 'Pays', 'Région', 'Devise', 'Quantité', 'Cours',
-    'PRU', 'Valeur €', 'Poids %', '+/- value €', '+/- value %', 'Jour €', 'Jour %'];
+    'Coût moyen €', 'Valeur €', 'Poids %', '+/- value latente €', '+/- value latente %', 'Déjà réalisé €', 'Jour €', 'Jour %'];
   const rows = lines.map((l) => [
     l.name, l.isin, l.ticker || l.symbol, l.type, l.sectorN, l.countryN, l.region, l.currency, num(l.qty),
-    num(l.price), num(l.break_even_price), l.value, l.w * 100, l.pl, l.plPct == null ? null : l.plPct * 100,
+    num(l.price), l.avgCost, l.value, l.w * 100, l.pl, l.plPct == null ? null : l.plPct * 100, l.realized,
     l.day, l.dayPct == null ? null : l.dayPct * 100,
   ].map(cell).join(';'));
   return [head.join(';'), ...rows].join('\r\n');

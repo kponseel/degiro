@@ -89,6 +89,19 @@ describe('analyse du portefeuille', () => {
     expect(a.lines.find((l) => l.isin === 'DE0000000004').plPct).toBeNull();
   });
 
+  it('coût moyen par titre en euros, et réalisé des ventes partielles à part', () => {
+    const b = analyzePortfolio({ snapshot: {}, positions: [
+      { isin: 'X1', name: 'Partielle', qty: 10, value_eur: 600, pl_eur: 500, pl_realized_eur: 3600 },
+      { isin: 'X2', name: 'Entière', qty: 4, value_eur: 400, pl_eur: -100 },
+    ] });
+    expect(b.lines.find((l) => l.isin === 'X1').avgCost).toBe(10);
+    expect(b.lines.find((l) => l.isin === 'X2').avgCost).toBe(125);
+    expect(b.realized).toEqual({ total: 3600, count: 1 });
+    // Le % latent porte sur le coût des titres détenus, pas sur le flux net.
+    expect(b.lines.find((l) => l.isin === 'X1').plPct).toBe(5);
+    expect(a.realized).toBeNull();
+  });
+
   it('variation du jour en % de la valeur de la veille', () => {
     expect(a.day.total).toBe(55);
     expect(a.day.pct).toBeCloseTo(55 / (10000 - 55), 6);

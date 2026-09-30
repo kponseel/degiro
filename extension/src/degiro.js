@@ -36,6 +36,12 @@ function amount(v) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/** Somme des montants connus ; `undefined` si aucun ne l'est (jamais un zéro inventé). */
+const sumKnown = (...xs) => {
+  const known = xs.filter((x) => x !== undefined);
+  return known.length ? known.reduce((s, x) => s + x, 0) : undefined;
+};
+
 /** Médiane : la moyenne se laisserait déplacer par la valeur aberrante qu'on cherche. */
 export function mediane(xs) {
   const t = [...xs].filter(Number.isFinite).sort((a, b) => a - b);
@@ -147,10 +153,18 @@ export function toPosition(row, info) {
   if (!ISIN_RE.test(isin)) return null;
 
   const value = amount(row.value);
-  // `plBase` porte le coût d'acquisition en négatif : value + plBase = P/L.
+  // `plBase` n'est PAS le coût des titres détenus : c'est le flux net de la ligne
+  // depuis l'origine (achats en négatif, ventes en positif). `value + plBase` est
+  // donc le résultat TOTAL de la ligne, ventes passées comprises — ce que DEGIRO
+  // affiche en « G/P total ». Sur une ligne en partie vendue, le prendre pour une
+  // plus-value latente affichait +2 200 % (coût apparent : 105 € pour 11 Tesla).
   const plBase = amount(row.plBase);
   const correction = amount(row.portfolioValueCorrection) ?? 0;
   const todayPlBase = amount(row.todayPlBase);
+  // Le réalisé des ventes (produit + change), que l'on retranche du total pour ne
+  // garder que la plus-value LATENTE des titres encore détenus.
+  const realized = sumKnown(amount(row.realizedProductPl), amount(row.realizedFxPl));
+  const total = value !== undefined && plBase !== undefined ? value + plBase + correction : undefined;
 
   const currency = clip(info?.currency, 3);
 
@@ -165,8 +179,9 @@ export function toPosition(row, info) {
     fx_rate: num(row.averageFxRate),
     break_even_price: num(row.breakEvenPrice),
     value_eur: value === undefined ? undefined : round2(value),
-    pl_eur: value !== undefined && plBase !== undefined ? round2(value + plBase + correction) : undefined,
+    pl_eur: total === undefined ? undefined : round2(total - (realized ?? 0)),
     pl_day_eur: value !== undefined && todayPlBase !== undefined ? round2(value + todayPlBase) : undefined,
+    pl_realized_eur: total === undefined || realized === undefined ? undefined : round2(realized),
   };
 }
 
@@ -518,6 +533,15 @@ export function buildPayload({
       // Titres selon DEGIRO une fois le fonds retiré, et ce qui nous en manque.
       titresDegiro,
       titresManquants,
+      // Plus-values : lignes dont DEGIRO a livré le réalisé, et celles en partie
+      // vendues (réalisé non nul), nommées — c'est ce qui sépare le résultat total
+      // de la plus-value latente.
+      realiseConnu: positions.filter((p) => p.pl_realized_eur !== undefined).length,
+      avecPl: positions.filter((p) => p.pl_eur !== undefined).length,
+      ventesPartielles: positions
+        .filter((p) => Math.abs(p.pl_realized_eur || 0) >= 1)
+        .sort((a, b) => Math.abs(b.pl_realized_eur) - Math.abs(a.pl_realized_eur))
+        .map((p) => ({ nom: p.name || p.isin, realise: p.pl_realized_eur, latent: p.pl_eur })),
     },
   };
 }

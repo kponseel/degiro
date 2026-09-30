@@ -118,9 +118,20 @@ describe('Générateur de prompts', () => {
     const { heads } = positionsTable(csv, 2700);
     expect(heads).toEqual(['Titre', 'ISIN', 'Qté', 'Cours', 'Devise', 'Valeur €', 'Poids']);
     const r = buildPrompt({ pf: { ...pf, positions: csv }, scope: 'portfolio', objective: 'bilan' });
-    expect(r.text).not.toMatch(/PRU/);
+    expect(r.text).not.toMatch(/Coût moyen/);
     // Présente sur une ligne seulement : la colonne reste, tiret pour les autres.
-    expect(positionsTable(pf.positions, 2700).heads).toContain('PRU');
+    expect(positionsTable(pf.positions, 2700).heads).toContain('Coût moyen €');
+  });
+
+  it('coût moyen déduit de la plus-value latente, réalisé à part', () => {
+    const lignes = [{ isin: 'US0000000009', name: 'Vendue en partie', qty: 10, price: 60, currency: 'EUR', value_eur: 600, pl_eur: 500, pl_realized_eur: 3600, break_even_price: -350 }];
+    const { table, heads } = positionsTable(lignes, 600);
+    expect(heads).toContain('Déjà réalisé €');
+    // 10 € par titre, et non le « prix de revient » DEGIRO négatif.
+    expect(table).toContain('|10,00|');
+    expect(table).not.toContain('-350');
+    const r = buildPrompt({ pf: { snapshot: {}, positions: lignes }, scope: 'portfolio', objective: 'bilan' });
+    expect(r.text).toMatch(/Déjà réalisé = gain déjà encaissé/);
   });
 
   it('présélection par le hash : uniquement les titres détenus', () => {

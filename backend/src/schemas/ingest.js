@@ -18,6 +18,7 @@ const position = z.object({
   value_eur: money.optional(),
   pl_eur: money.optional(),
   pl_day_eur: money.optional(),
+  pl_realized_eur: money.optional(),
 });
 
 export const ingestSchema = z.object({

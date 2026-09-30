@@ -212,17 +212,24 @@ export function mapPortfolio(rows) {
     .filter((p) => ISIN_RE.test(p.isin || ''));
 }
 
-/** Extrait la ligne de liquidités (CASH & CASH FUND…) → montant EUR, sinon null. */
+/**
+ * Liquidités → montant EUR total, sinon null.
+ *
+ * DEGIRO écrit une ligne par devise (« CASH & CASH FUND & FTX CASH (EUR) »,
+ * « … (USD) »), chacune avec sa « Valeur en EUR ». On les additionne : s'arrêter
+ * à la première perdait les soldes en devises (dividendes américains, typiquement).
+ */
 export function extractCashEur(rows) {
+  let total = null;
   for (const r of rows) {
     if (findIsin(r)) continue; // vraie position
     const name = String(pick(r, FIELDS.name) || Object.values(r)[0] || '');
     if (/cash|liquidit|fund|geld/i.test(name)) {
       const val = findValueEur(r);
-      if (val !== null) return val;
+      if (val !== null) total = Math.round(((total ?? 0) + val) * 100) / 100;
     }
   }
-  return null;
+  return total;
 }
 
 /** Identifiant de capture déterministe pour un contenu CSV (idempotence d'import). */

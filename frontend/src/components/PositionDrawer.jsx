@@ -57,6 +57,8 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
   const cost = pl != null ? value - pl : null;
   const plPct = cost > 0 ? pl / cost : null;
   const dayPct = day != null && value - day > 0 ? day / (value - day) : null;
+  const qty = Number(p.qty) || 0;
+  const realized = p.pl_realized_eur != null ? Number(p.pl_realized_eur) : null;
   const signed = (x) => `${x > 0 ? '+' : ''}${fmtPct(x)}`;
 
   return (
@@ -83,7 +85,7 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
               <span className="dr-kpi-value">{fmtPct(p.w)}</span>
             </div>
             <div className="dr-kpi">
-              <span className="dr-kpi-label">P/L latent</span>
+              <span className="dr-kpi-label">+/- value latente</span>
               <span className={`dr-kpi-value ${pl == null ? '' : pl >= 0 ? 'pos' : 'neg'}`}>
                 {pl == null ? '—' : `${pl >= 0 ? '+' : ''}${fmtEur(pl)}`}
               </span>
@@ -95,8 +97,19 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
             <h4>Position</h4>
             <Row label="Quantité">{fmtNum(p.qty, Number.isInteger(Number(p.qty)) ? 0 : 2)}</Row>
             <Row label="Cours">{fmtNum(p.price)} {p.currency || ''}</Row>
-            {p.break_even_price != null && <Row label="Prix de revient">{fmtNum(p.break_even_price)} {p.currency || ''}</Row>}
-            {cost != null && <Row label="Coût d'achat">{fmtEur(cost)}</Row>}
+            {cost > 0 && qty > 0 && <Row label="Coût moyen par titre">{fmtEur(cost / qty)}</Row>}
+            {cost > 0 && <Row label="Coût des titres détenus">{fmtEur(cost)}</Row>}
+            {realized != null && Math.abs(realized) >= 1 && (
+              <Row label="Déjà réalisé (ventes)">
+                <span className={realized >= 0 ? 'pos' : 'neg'}>{`${realized >= 0 ? '+' : ''}${fmtEur(realized)}`}</span>
+              </Row>
+            )}
+            {p.break_even_price != null && (
+              <Row label="Seuil de rentabilité DEGIRO">
+                {fmtNum(p.break_even_price)} {p.currency || ''}
+                {realized != null && Math.abs(realized) >= 1 && <span className="muted"> · ventes passées comprises</span>}
+              </Row>
+            )}
             {day != null && (
               <Row label="Variation du jour">
                 <span className={day >= 0 ? 'pos' : 'neg'}>{`${day >= 0 ? '+' : ''}${fmtEur(day)}`}{dayPct != null ? ` (${signed(dayPct)})` : ''}</span>

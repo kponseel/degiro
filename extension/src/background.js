@@ -276,6 +276,23 @@ async function capture() {
       + fonds);
   }
 
+  // Plus-values : latente = résultat total DEGIRO − réalisé des ventes partielles.
+  // Sans le réalisé, une ligne en partie vendue afficherait ses gains passés comme
+  // latents : l'étape passe en ✗ pour que ça se voie, au lieu d'un faux +2 200 %.
+  if (diagnostics.avecPl > 0) {
+    const eur = (n) => `${n > 0 ? '+' : ''}${n} €`;
+    const ventes = diagnostics.ventesPartielles || [];
+    const complet = diagnostics.realiseConnu === diagnostics.avecPl;
+    step(report, 'Plus-values latentes', complet,
+      complet
+        ? `réalisé des ventes exclu sur ${diagnostics.realiseConnu} ligne(s)`
+          + (ventes.length
+            ? ` — ${ventes.length} ligne(s) en partie vendue(s) : ${ventes.slice(0, 5).map((v) => `${v.nom} (${eur(v.realise)} déjà réalisés, ${eur(v.latent)} latents)`).join(', ')}${ventes.length > 5 ? '…' : ''}`
+            : ' — aucune vente partielle')
+        : `DEGIRO n'a pas livré le réalisé de ${diagnostics.avecPl - diagnostics.realiseConnu} ligne(s) sur ${diagnostics.avecPl} :`
+          + ' leur plus-value inclut les gains des ventes passées (résultat total, pas latent)');
+  }
+
   if (!payload.positions.length) {
     return { ok: false, report, diagnostics, error: 'Aucune position exploitable trouvée. Le diagnostic ci-dessous indique où ça coince.' };
   }

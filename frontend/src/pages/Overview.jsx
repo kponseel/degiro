@@ -188,7 +188,9 @@ export default function Overview({ onGoImport }) {
         <Kpi
           label="+/- value latente"
           value={a.pl ? fmtSignedEur(a.pl.total) : '—'}
-          sub={a.pl ? `${signedPct(a.pl.pct)} du coût` : 'non fournie par Portfolio.csv'}
+          sub={a.pl
+            ? `${signedPct(a.pl.pct)} du coût${a.realized?.count ? ` · ${fmtSignedEur(a.realized.total)} déjà réalisés à part` : ''}`
+            : 'non fournie par Portfolio.csv'}
           tone={a.pl ? toneOf(a.pl.total) : ''}
         />
         <Kpi
@@ -281,7 +283,7 @@ export default function Overview({ onGoImport }) {
                 <SortHeader label="Titre" colKey="name" sort={sort} onToggle={toggle} align="left" />
                 <SortHeader label="Qté" colKey="qty" sort={sort} onToggle={toggle} cls="col-opt" />
                 <SortHeader label="Cours" colKey="price" sort={sort} onToggle={toggle} cls="col-opt" />
-                <SortHeader label="PRU" colKey="break_even_price" sort={sort} onToggle={toggle} cls="col-opt" />
+                <SortHeader label="Coût moy." colKey="avgCost" sort={sort} onToggle={toggle} cls="col-opt" />
                 <SortHeader label="Valeur" colKey="value" sort={sort} onToggle={toggle} />
                 <SortHeader label="Poids" colKey="w" sort={sort} onToggle={toggle} />
                 <SortHeader label="+/- €" colKey="pl" sort={sort} onToggle={toggle} />
@@ -308,7 +310,7 @@ export default function Overview({ onGoImport }) {
                     </td>
                     <td className="col-opt">{fmtNum(l.qty, Number.isInteger(Number(l.qty)) ? 0 : 2)}</td>
                     <td className="col-opt">{fmtNum(l.price)} <span className="muted sm">{l.currency}</span></td>
-                    <td className="col-opt">{l.break_even_price != null ? fmtNum(l.break_even_price) : <span className="muted">—</span>}</td>
+                    <td className="col-opt">{l.avgCost != null ? fmtEur(l.avgCost) : <span className="muted">—</span>}</td>
                     <td className="sym">{fmtEur(l.value)}</td>
                     <td>
                       <span className="wcell">
