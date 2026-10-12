@@ -40,6 +40,8 @@ describe('GET /api/portfolio — capture précédente', () => {
     const [[row]] = await getPool().query('SELECT net_deposits_eur, today_flow_eur FROM snapshots');
     expect(Number(row.net_deposits_eur)).toBe(9000);
     expect(Number(row.today_flow_eur)).toBe(0);
+    const pf = await request(app).get('/api/portfolio').set(AUTH);
+    expect(Number(pf.body.snapshot.net_deposits_eur)).toBe(9000);
   });
 });
 

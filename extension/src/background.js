@@ -295,8 +295,13 @@ async function capture({ tabId = null, mode = 'manuel', force = false } = {}) {
       complet
         ? `réalisé des ventes exclu sur ${diagnostics.realiseConnu} ligne(s)`
           + (ventes.length
-            ? ` — ${ventes.length} ligne(s) en partie vendue(s) : ${ventes.slice(0, 5).map((v) => `${v.nom} (${eur(v.realise)} déjà réalisés, ${eur(v.latent)} latents)`).join(', ')}${ventes.length > 5 ? '…' : ''}`
-            : ' — aucune vente partielle')
+            // DEGIRO compte aussi en « réalisé » les frais d'achat et de change :
+            // presque chaque ligne en a, vendue ou non. On ne dit donc pas « en
+            // partie vendue », et on montre d'abord les montants les plus forts —
+            // ceux-là viennent de ventes.
+            ? ` — ${ventes.length} ligne(s) avec du réalisé (ventes passées, mais aussi frais d'achat et de change),`
+              + ` dont : ${ventes.slice(0, 5).map((v) => `${v.nom} (${eur(v.realise)} déjà réalisés, ${eur(v.latent)} latents)`).join(', ')}${ventes.length > 5 ? '…' : ''}`
+            : ' — aucun réalisé sur les lignes détenues')
         : `DEGIRO n'a pas livré le réalisé de ${diagnostics.avecPl - diagnostics.realiseConnu} ligne(s) sur ${diagnostics.avecPl} :`
           + ' leur plus-value inclut les gains des ventes passées (résultat total, pas latent)');
   }
