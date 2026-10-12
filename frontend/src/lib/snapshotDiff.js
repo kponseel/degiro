@@ -27,6 +27,13 @@ const unit = (p) => {
 
 const THRESHOLDS = [0.1, 0.15];
 
+// Garde-fou « capture incomplète » — même règle que le serveur
+// (backend/src/services/plausibility.js) : au moins la moitié des lignes ET de
+// la valeur perdues d'un coup ressemble bien plus à une lecture DEGIRO tronquée
+// qu'à de vraies ventes. La carte le dit au lieu d'annoncer « −89 % ».
+const SUSPECT_MIN_LINES = 4;
+const SUSPECT_RATIO = 0.5;
+
 /**
  * @param latest    { snapshot, positions }
  * @param previous  { snapshot, positions } | null
@@ -78,6 +85,10 @@ export function diffSnapshots(latest, previous) {
   const cashBefore = num(previous.snapshot.cash_eur);
   const totalDelta = totalNow != null && totalBefore != null ? totalNow - totalBefore : null;
   const byMove = [...moves].sort((a, b) => b.move - a.move);
+  const suspect = before.size >= SUSPECT_MIN_LINES && totalNow != null && totalBefore > 0
+    && now.size <= before.size * SUSPECT_RATIO && totalNow <= totalBefore * SUSPECT_RATIO
+    ? { lines: now.size, previousLines: before.size, total: totalNow, previousTotal: totalBefore }
+    : null;
 
   return {
     since: previous.snapshot.snapshot_date,
@@ -92,5 +103,6 @@ export function diffSnapshots(latest, previous) {
     closed,
     resized,
     crossings,
+    suspect,
   };
 }

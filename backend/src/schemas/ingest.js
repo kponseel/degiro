@@ -34,6 +34,8 @@ export const ingestSchema = z.object({
   today_flow_eur: money.optional(),
   raw_json: z.unknown().optional(),
   positions: z.array(position).default([]),
+  // Envoi confirmé par l'utilisateur malgré le garde-fou « capture suspecte ».
+  force: z.boolean().optional(),
   // Envoyé par les extensions antérieures à la 0.6, et ignoré : l'application
   // n'analyse plus que le portefeuille ouvert. Accepté sans validation pour
   // qu'un ordre mal formé dans un historique inutile ne fasse pas échouer la

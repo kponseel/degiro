@@ -13,6 +13,7 @@ const els = {
   diagBox: $('diagBox'), steps: $('steps'), copyDiag: $('copyDiag'), last: $('last'),
   pin: $('pin'), tokenLink: $('tokenLink'),
   auto: $('auto'), autoMsg: $('autoMsg'), openApp: $('openApp'), openAppWrap: $('openAppWrap'),
+  force: $('force'),
 };
 
 /**
@@ -152,13 +153,14 @@ function renderReport(report) {
   els.diagBox.hidden = !(report?.steps || []).length;
 }
 
-els.capture.addEventListener('click', async () => {
+async function lancerCapture(force = false) {
   els.capture.disabled = true;
+  els.force.hidden = true;
   els.capture.textContent = 'Capture en cours…';
   show(els.error, ''); show(els.success, '');
 
   try {
-    const res = await chrome.runtime.sendMessage({ type: 'CAPTURE' });
+    const res = await chrome.runtime.sendMessage({ type: 'CAPTURE', force });
     renderReport(res?.report);
     if (res?.ok) {
       const s = res.summary;
@@ -172,6 +174,9 @@ els.capture.addEventListener('click', async () => {
       } catch { /* adresse invalide : pas de lien */ }
     } else {
       show(els.error, res?.error || 'Échec de la capture.');
+      // Refusée par le garde-fou : l'utilisateur, qui connaît ses opérations,
+      // peut confirmer. La capture est refaite, puis envoyée sans contrôle.
+      els.force.hidden = !res?.suspect;
       els.diagBox.open = true;
     }
   } catch (e) {
@@ -180,7 +185,10 @@ els.capture.addEventListener('click', async () => {
     els.capture.disabled = false;
     els.capture.textContent = 'Capturer mon portefeuille';
   }
-});
+}
+
+els.capture.addEventListener('click', () => lancerCapture(false));
+els.force.addEventListener('click', () => lancerCapture(true));
 
 els.copyDiag.addEventListener('click', async () => {
   const lines = (lastReport?.steps || []).map((s) => `${s.ok ? 'OK ' : 'KO '} ${s.label}${s.detail ? ` — ${s.detail}` : ''}`);

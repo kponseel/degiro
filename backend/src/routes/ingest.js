@@ -18,6 +18,14 @@ router.post('/', async (req, res, next) => {
   }
   try {
     const result = await ingestSnapshot(parsed.data, req.user.id);
+    // Capture jugée incomplète : rien n'est enregistré ni remplacé. L'extension
+    // explique et propose de renvoyer avec `force`.
+    if (result.suspect) {
+      return res.status(409).json({
+        error: 'Capture suspecte : bien moins de lignes et de valeur que la précédente. Rien n\'a été remplacé.',
+        suspect: result.suspect,
+      });
+    }
     return res.status(result.deduplicated ? 200 : 201).json(result);
   } catch (err) {
     return next(err);

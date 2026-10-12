@@ -73,6 +73,20 @@ function AttentionList({ points, onFocus, onRoute }) {
  * Chaque puce filtre le tableau sur les lignes concernées.
  */
 function SinceLast({ d, onFocus, onPick }) {
+  const title = `Depuis ta capture du ${fmtDate(d.since)}${d.days != null ? ` (${plural(d.days, 'jour')})` : ''}`;
+  if (d.suspect) {
+    const s = d.suspect;
+    return (
+      <Card title={title} className="ana-block">
+        <p className="since-suspect">
+          <strong>Capture probablement incomplète</strong> : {plural(s.lines, 'ligne')} et {fmtEur(s.total)}
+          {' '}contre {plural(s.previousLines, 'ligne')} et {fmtEur(s.previousTotal)} le {fmtDate(d.since)}.
+          {' '}DEGIRO n'avait sans doute pas fini de charger. Recharge l'onglet DEGIRO, puis relance une capture
+          depuis l'extension : elle remplacera celle-ci.
+        </p>
+      </Card>
+    );
+  }
   const movers = [...d.up, ...[...d.down].reverse()]
     .map((m) => ({ key: m.isin, label: m.name, value: m.move, sub: m.pct == null ? '' : signedPct(m.pct) }));
   const chips = [
@@ -91,7 +105,7 @@ function SinceLast({ d, onFocus, onPick }) {
     })),
   ].filter(Boolean);
   return (
-    <Card title={`Depuis ta capture du ${fmtDate(d.since)}${d.days != null ? ` (${plural(d.days, 'jour')})` : ''}`} className="ana-block">
+    <Card title={title} className="ana-block">
       <div className="since-figs">
         {d.totalDelta != null && (
           <span>Valeur totale <strong className={toneOf(d.totalDelta)}>{fmtSignedEur(d.totalDelta)}</strong>{d.totalPct != null ? ` (${signedPct(d.totalPct)})` : ''}</span>
