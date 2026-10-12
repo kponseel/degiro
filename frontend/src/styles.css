@@ -905,6 +905,7 @@ tr.group-row th { text-align: left; }
 /* « Depuis ta dernière capture » */
 .since-figs { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 14px; }
 .since-figs strong { font-variant-numeric: tabular-nums; }
+.since-suspect { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--ink, inherit); border-left: 3px solid var(--warn); font-size: 14px; line-height: 1.5; }
 
 /* Mes notes (tiroir de détail) */
 .dr-field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; font-size: 12.5px; color: var(--ink-soft); }

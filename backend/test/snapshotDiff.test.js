@@ -74,3 +74,24 @@ describe('depuis ta dernière capture', () => {
     expect(r.market).toBeNull();
   });
 });
+
+// Cas réel (anonymisé) : une capture DEGIRO tronquée — 7 lignes au lieu de 21 —
+// faisait annoncer −89 % et 15 lignes soldées. La carte doit la signaler.
+describe('depuis ta dernière capture — capture suspecte', () => {
+  const lignes = (n, v) => Array.from({ length: n }, (_, i) => ({ isin: `FR${String(i).padStart(10, '0')}`, name: `T${i}`, qty: 1, value_eur: v }));
+  const avant = { snapshot: { snapshot_date: '2026-10-01', source: 'extension', total_value_eur: 90000 }, positions: lignes(21, 4000) };
+
+  it('7 lignes et −89 % : suspecte', () => {
+    const d = diffSnapshots({ snapshot: { snapshot_date: '2026-10-12', source: 'extension', total_value_eur: 9600 }, positions: lignes(7, 1200) }, avant);
+    expect(d.suspect).toEqual({ lines: 7, previousLines: 21, total: 9600, previousTotal: 90000 });
+  });
+
+  it('la moitié des lignes vendues mais le total intact : normale', () => {
+    const d = diffSnapshots({ snapshot: { snapshot_date: '2026-10-12', source: 'extension', total_value_eur: 89000 }, positions: lignes(7, 4000) }, avant);
+    expect(d.suspect).toBeNull();
+  });
+
+  it('variation ordinaire : normale', () => {
+    expect(diffSnapshots(latest, previous).suspect).toBeNull();
+  });
+});

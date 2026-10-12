@@ -81,8 +81,9 @@ const step = (report, label, ok, detail) => {
 /**
  * @param tabId  onglet à utiliser (capture automatique : celui qui vient de se charger)
  * @param mode   'manuel' (popup) ou 'auto' (ouverture de DEGIRO)
+ * @param force  envoi confirmé par l'utilisateur malgré le garde-fou « capture suspecte »
  */
-async function capture({ tabId = null, mode = 'manuel' } = {}) {
+async function capture({ tabId = null, mode = 'manuel', force = false } = {}) {
   const report = { steps: [], at: new Date().toISOString(), mode };
 
   const tab = tabId != null
@@ -324,10 +325,26 @@ async function capture({ tabId = null, mode = 'manuel' } = {}) {
   if (mode === 'auto' && report.steps.some((x) => x.label === 'Contrôle du total' && !x.ok)) {
     return { ok: false, report, diagnostics, error: 'Capture automatique non envoyée : le contrôle du total a échoué. Lance une capture manuelle pour voir le détail.' };
   }
+  // Sans total DEGIRO dans la réponse, rien ne permet de vérifier que la lecture
+  // est complète : une réponse tronquée (page pas encore chargée) passait ainsi
+  // sans contrôle et remplaçait la bonne capture du jour par 7 lignes sur 22.
+  if (mode === 'auto' && diagnostics.degiroTotal === undefined) {
+    return { ok: false, report, diagnostics, error: "Capture automatique non envoyée : DEGIRO n'a pas renvoyé son total, la lecture n'a pas pu être vérifiée. Lance une capture manuelle." };
+  }
 
+  if (force) payload.force = true;
   const sent = await send(payload);
   step(report, 'Envoi à Analyzer', sent.ok, sent.detail);
-  if (!sent.ok) return { ok: false, report, diagnostics, error: sent.detail };
+  if (!sent.ok) {
+    return {
+      ok: false,
+      report,
+      diagnostics,
+      error: sent.detail,
+      // Le popup propose alors « Envoyer quand même » (capture manuelle seulement).
+      suspect: Boolean(sent.suspect) && mode !== 'auto',
+    };
+  }
 
   const summary = {
     at: report.at,
@@ -339,6 +356,8 @@ async function capture({ tabId = null, mode = 'manuel' } = {}) {
   await chrome.storage.local.set({ lastCapture: summary });
   return { ok: true, report, diagnostics, summary };
 }
+
+const euros = (n) => `${Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €`;
 
 /** POST vers l'API Analyzer, avec le jeton d'extension de l'utilisateur. */
 async function send(payload) {
@@ -358,6 +377,19 @@ async function send(payload) {
 
   const body = await res.json().catch(() => null);
   if (res.status === 401) return { ok: false, detail: "Jeton refusé (révoqué ou mal collé). Génère-en un nouveau sur la page Import / Extension de l'Analyzer." };
+  // Garde-fou du serveur : capture bien plus pauvre que la précédente, donc
+  // probablement incomplète. Rien n'a été enregistré ni remplacé.
+  if (res.status === 409 && body?.suspect) {
+    const s = body.suspect;
+    const jour = String(s.since || '').split('-').reverse().slice(0, 2).join('/');
+    return {
+      ok: false,
+      suspect: s,
+      detail: `capture suspecte, non enregistrée : ${s.lines} ligne(s) et ${euros(s.total)} contre ${s.previousLines} ligne(s)`
+        + ` et ${euros(s.previousTotal)} le ${jour}. DEGIRO n'avait sans doute pas fini de charger : recharge l'onglet DEGIRO puis relance.`
+        + " Si tu as vraiment vendu ou retiré autant, choisis « Envoyer quand même ».",
+    };
+  }
   if (!res.ok) return { ok: false, detail: `HTTP ${res.status}${body?.error ? ` — ${body.error}` : ''}` };
   return { ok: true, body, detail: body?.deduplicated ? 'déjà enregistré (identique)' : 'enregistré' };
 }
@@ -405,7 +437,7 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     return false;
   }
   if (msg?.type !== 'CAPTURE') return false;
-  runCapture({ mode: 'manuel' })
+  runCapture({ mode: 'manuel', force: msg.force === true })
     .then((res) => {
       if (res.ok) setBadge(true);
       respond(res);
