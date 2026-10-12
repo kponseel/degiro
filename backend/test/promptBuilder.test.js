@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildPrompt, objectivesFor, isinsFromHash, plPct, positionsTable, OBJECTIVES,
+  buildPrompt, objectivesFor, isinsFromHash, plPct, positionsTable, OBJECTIVES, exposureGaps,
 } from '../../frontend/src/lib/promptBuilder.js';
 
 // Données synthétiques : le dépôt est public, aucune position réelle ici.
@@ -141,3 +141,54 @@ describe('Générateur de prompts', () => {
     expect(isinsFromHash('#/ai', pf.positions)).toEqual([]);
   });
 });
+
+describe('Sprint 1 — notes, manques, nouveaux objectifs', () => {
+  const classe = {
+    snapshot: { snapshot_date: '2026-10-12', cash_eur: 3000 },
+    positions: [
+      { isin: 'US0000000011', name: 'Tech US', sector: 'Technologie', country: 'États-Unis', qty: 10, value_eur: 6000, pl_eur: 1000, note_thesis: 'Leader du cloud,\n je garde', note_target_weight: 40 },
+      { isin: 'FR0000000012', name: 'Banque FR', sector: 'Finance', country: 'France', qty: 10, value_eur: 4000, pl_eur: -200 },
+    ],
+  };
+
+  it('les notes de l’utilisateur passent dans le prompt', () => {
+    const r = buildPrompt({ pf: classe, scope: 'portfolio', objective: 'bilan' });
+    expect(r.text).toContain('Mes notes sur ces lignes');
+    expect(r.text).toContain('Tech US : « Leader du cloud, je garde » (poids visé 40,0 %, actuel 60,0 %)');
+    expect(r.text).not.toContain('Banque FR :');
+  });
+
+  it('manques d’exposition sur la part classée', () => {
+    const g = exposureGaps(classe.positions);
+    expect(g.sectors.missing).toContain('Santé');
+    expect(g.sectors.missing).not.toContain('Technologie');
+    expect(g.regions.missing).toEqual(['Asie-Pacifique développée', 'Émergents']);
+  });
+
+  it('jamais de manques affirmés quand trop de lignes ne sont pas classées', () => {
+    const flou = classe.positions.map((p, i) => (i === 0 ? { ...p, sector: null, country: null } : p));
+    expect(exposureGaps(flou)).toBeNull();
+    const r = buildPrompt({ pf: { ...classe, positions: flou }, scope: 'portfolio', objective: 'idees' });
+    expect(r.text).toMatch(/trop de lignes sans secteur ni pays connus/);
+  });
+
+  it('« Idées d’achat » : manques, titres négociables chez DEGIRO, recherche web forcée', () => {
+    const r = buildPrompt({ pf: classe, scope: 'portfolio', objective: 'idees', options: { web: false } });
+    expect(r.text).toMatch(/Secteurs : .*Santé/);
+    expect(r.text).toMatch(/négociables chez DEGIRO/);
+    expect(r.text).toMatch(/recherche web/);
+  });
+
+  it('« Placer de l’argent frais » : montant saisi, sinon les liquidités', () => {
+    expect(buildPrompt({ pf: classe, scope: 'portfolio', objective: 'placer' }).text).toMatch(/J’ai 3\s000,00\s€ à placer/);
+    expect(buildPrompt({ pf: classe, scope: 'portfolio', objective: 'placer', options: { amount: '1500' } }).text).toMatch(/J’ai 1\s500,00\s€ à placer/);
+  });
+
+  it('« Renforcer une ligne en perte ? » et « Avant les résultats » portent sur des titres choisis', () => {
+    expect(objectivesFor('stocks', 1).map((o) => o.id)).toEqual(expect.arrayContaining(['renforcer-perte', 'avant-resultats']));
+    expect(objectivesFor('portfolio').map((o) => o.id)).toEqual(expect.arrayContaining(['idees', 'placer']));
+    const r = buildPrompt({ pf: classe, scope: 'stocks', isins: ['FR0000000012'], objective: 'renforcer-perte' });
+    expect(r.text).toMatch(/coûts irrécupérables/);
+  });
+});
+

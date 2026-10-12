@@ -30,6 +30,8 @@ export const ingestSchema = z.object({
     .refine((s) => !Number.isNaN(Date.parse(s)), { message: 'date invalide (attendu ISO 8601)' }),
   total_value_eur: money.optional(),
   cash_eur: money.optional(),
+  net_deposits_eur: money.optional(),
+  today_flow_eur: money.optional(),
   raw_json: z.unknown().optional(),
   positions: z.array(position).default([]),
   // Envoyé par les extensions antérieures à la 0.6, et ignoré : l'application

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getPortfolio, getLookthrough } from '../lib/api.js';
-import { fmtEur, fmtPct, fmtNum, fmtDate, fmtSignedEur, toneOf, plural } from '../lib/format.js';
+import { fmtEur, fmtPct, fmtNum, fmtDate, fmtDateShort, fmtSignedEur, toneOf, plural, parisToday, daysBetween } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
@@ -8,6 +8,7 @@ import { StackBar, Meter, DivergingBars } from '../components/Charts.jsx';
 import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
 import { useSort } from '../lib/useSort.js';
 import SortHeader from '../components/SortHeader.jsx';
+import { diffSnapshots } from '../lib/snapshotDiff.js';
 import {
   analyzePortfolio, attentionPoints, breakdown, hasLookthrough, linesToCsv, UNCLASSIFIED,
 } from '../lib/portfolioAnalytics.js';
@@ -66,6 +67,61 @@ function AttentionList({ points, onFocus, onRoute }) {
   );
 }
 
+/**
+ * « Depuis ta capture du JJ/MM » : effet marché à quantité constante, et tes
+ * décisions (lignes nouvelles, soldées, renforcées ou allégées), séparément.
+ * Chaque puce filtre le tableau sur les lignes concernées.
+ */
+function SinceLast({ d, onFocus, onPick }) {
+  const movers = [...d.up, ...[...d.down].reverse()]
+    .map((m) => ({ key: m.isin, label: m.name, value: m.move, sub: m.pct == null ? '' : signedPct(m.pct) }));
+  const chips = [
+    d.added.length && { label: `${plural(d.added.length, 'nouvelle ligne', 'nouvelles lignes')}`, isins: d.added.map((x) => x.isin), title: 'Nouvelles lignes' },
+    d.closed.length && { label: `${plural(d.closed.length, 'ligne soldée', 'lignes soldées')}`, names: d.closed.map((x) => x.name) },
+    d.resized.length && {
+      label: `${plural(d.resized.length, 'quantité modifiée', 'quantités modifiées')}`
+        + (d.resized.some((r) => r.approx != null) ? ` (≈ ${fmtSignedEur(d.resized.reduce((s2, r) => s2 + (r.approx || 0), 0))})` : ''),
+      isins: d.resized.map((x) => x.isin),
+      title: 'Quantités modifiées',
+    },
+    ...d.crossings.map((c) => ({
+      label: `${c.name} ${c.up ? 'passe' : 'repasse sous'} ${Math.round(c.threshold * 100)} %`,
+      isins: [c.isin],
+      title: `${c.name} : seuil ${Math.round(c.threshold * 100)} %`,
+    })),
+  ].filter(Boolean);
+  return (
+    <Card title={`Depuis ta capture du ${fmtDate(d.since)}${d.days != null ? ` (${plural(d.days, 'jour')})` : ''}`} className="ana-block">
+      <div className="since-figs">
+        {d.totalDelta != null && (
+          <span>Valeur totale <strong className={toneOf(d.totalDelta)}>{fmtSignedEur(d.totalDelta)}</strong>{d.totalPct != null ? ` (${signedPct(d.totalPct)})` : ''}</span>
+        )}
+        {d.market != null && (
+          <span>dont marché <strong className={toneOf(d.market)}>{fmtSignedEur(d.market)}</strong> <span className="muted">à quantités constantes</span></span>
+        )}
+        {d.cashDelta != null && Math.abs(d.cashDelta) >= 0.01 && (
+          <span>Liquidités <strong>{fmtSignedEur(d.cashDelta)}</strong></span>
+        )}
+      </div>
+      {chips.length > 0 && (
+        <div className="chip-row" style={{ marginTop: 12 }}>
+          {chips.map((c) => (c.isins
+            ? <button key={c.label} type="button" className="chip filter" onClick={() => onFocus({ title: c.title || c.label, isins: c.isins })}>{c.label}</button>
+            : <span key={c.label} className="chip" title={c.names?.join(', ')}>{c.label}</span>))}
+        </div>
+      )}
+      {movers.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <DivergingBars rows={movers} onPick={(r) => onPick(r.key)} />
+        </div>
+      )}
+      <p className="ana-note">
+        L'écart entre la valeur totale et l'effet marché vient de tes achats et ventes, des versements, dividendes et frais.
+      </p>
+    </Card>
+  );
+}
+
 /** Carte d'une position, pour les petits écrans (le tableau à 9 colonnes n'y tient pas). */
 function PositionCard({ l, onSelect }) {
   return (
@@ -115,6 +171,12 @@ export default function Overview({ onGoImport }) {
   }, []);
 
   const a = useMemo(() => (data?.snapshot ? analyzePortfolio(data) : null), [data]);
+  const since = useMemo(() => (data?.snapshot ? diffSnapshots(data, data.previous) : null), [data]);
+  // Après l'enregistrement d'une note, le tiroir doit montrer la ligne rechargée.
+  useEffect(() => {
+    if (a) setSelected((cur) => (cur ? a.lines.find((l) => l.isin === cur.isin) || null : cur));
+  }, [a]);
+  const reload = () => getPortfolio().then(setData).catch(() => {});
   const points = useMemo(() => {
     if (!a) return [];
     const lt = hasLookthrough(lookthrough) ? lookthrough : null;
@@ -179,9 +241,24 @@ export default function Overview({ onGoImport }) {
   const movers = [...a.dayUp.slice(0, 4), ...a.dayDown.slice(0, 4).reverse()]
     .map((l) => ({ key: l.isin, label: l.name || l.isin, value: l.day, sub: signedPct(l.dayPct) }));
   const source = a.snapshot.source === 'extension' ? 'capture extension' : 'import CSV';
+  // Âge de la capture : la « variation du jour » d'une capture de vendredi, lue
+  // lundi, est celle de vendredi — l'étiquette doit le dire.
+  const age = daysBetween(a.snapshot.snapshot_date, parisToday());
 
   return (
     <>
+      {age != null && age >= 3 && (
+        <div className="ana-block">
+          <Banner kind={age >= 7 ? 'warn' : 'info'}>
+            <strong>Dernière {a.snapshot.source === 'extension' ? 'capture' : 'importation'} il y a {plural(age, 'jour')}</strong>
+            {' '}({fmtDate(a.snapshot.snapshot_date)}) : tes chiffres datent.{' '}
+            {a.snapshot.source === 'extension'
+              ? 'Ouvre DEGIRO et lance une capture depuis l’extension.'
+              : 'Exporte un Portfolio.csv récent, ou utilise l’extension.'}
+            {' '}<button type="button" className="link-btn" onClick={onGoImport}>Import / Extension →</button>
+          </Banner>
+        </div>
+      )}
       <div className="kpi-strip ana-kpis">
         <Kpi label="Valeur totale" value={fmtEur(a.total)} sub={`au ${fmtDate(a.snapshot.snapshot_date)} · ${source}`} />
         <Kpi label="Titres" value={fmtEur(a.invested)} sub={a.pl ? `coût ${fmtEur(a.pl.cost)}${a.pl.coverage < 0.999 ? ' (lignes connues)' : ''}` : plural(c.n, 'ligne')} />
@@ -194,7 +271,7 @@ export default function Overview({ onGoImport }) {
           tone={a.pl ? toneOf(a.pl.total) : ''}
         />
         <Kpi
-          label="Variation du jour"
+          label={age != null && age >= 1 ? `Variation du ${fmtDateShort(a.snapshot.snapshot_date)}` : 'Variation du jour'}
           value={a.day ? fmtSignedEur(a.day.total) : '—'}
           sub={a.day ? signedPct(a.day.pct) : 'capture extension requise'}
           tone={a.day ? toneOf(a.day.total) : ''}
@@ -206,6 +283,8 @@ export default function Overview({ onGoImport }) {
           sub={`effectives sur ${c.n} détenues`}
         />
       </div>
+
+      {since && <SinceLast d={since} onFocus={focusOn} onPick={pick} />}
 
       <div className="ana-grid-2">
         <Card title="Allocation du patrimoine">
@@ -357,6 +436,7 @@ export default function Overview({ onGoImport }) {
         position={selected}
         lookthrough={lookthrough}
         onAnalyze={(p) => { window.location.hash = `#/ai?isin=${encodeURIComponent(p.isin)}`; }}
+        onNoteSaved={reload}
         onClose={() => setSelected(null)}
       />
     </>

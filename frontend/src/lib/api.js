@@ -75,6 +75,7 @@ export const adminSetInviteCode = (code) => jsonPost('/api/admin/invite-code', {
 
 // ── Données ───────────────────────────────────────────────────────
 export const getPortfolio = () => api('/api/portfolio');
+export const saveNote = (isin, note) => jsonPost(`/api/portfolio/notes/${isin}`, note, 'PUT');
 export const getExposure = (lookthrough) => api(`/api/exposure${qs({ lookthrough: lookthrough ? 1 : undefined })}`);
 export const getIsinRef = () => api('/api/isin-ref');
 export const updateIsinRef = (isin, patch) => jsonPost(`/api/isin-ref/${isin}`, patch, 'PUT');

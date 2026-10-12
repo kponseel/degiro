@@ -1,4 +1,6 @@
 import { fmtEur, fmtNum, fmtDate } from './format.js';
+import { enrichLines, breakdown, diversification } from './portfolioAnalytics.js';
+import { SECTORS, REGIONS } from './taxonomy.js';
 
 /**
  * Générateur de prompts à copier-coller, module PUR (aucune API navigateur) :
@@ -143,6 +145,8 @@ export const DEFAULT_OPTIONS = Object.freeze({
   minValue: 0,
   web: true,
   note: '',
+  // Montant à placer (objectif « Placer de l'argent frais ») ; vide = mes liquidités.
+  amount: null,
 });
 
 const pick = (list, value) => list.find((o) => o.value === value) || null;
@@ -306,9 +310,101 @@ export const OBJECTIVES = [
       'Les pièges à éviter : fiscalité des plus-values, frais, sur-concentration.',
     ],
   },
+  {
+    id: 'idees',
+    label: 'Idées d’achat',
+    desc: 'Des titres qui complètent ce que je détiens déjà.',
+    scopes: ['portfolio'],
+    role: 'gérant de portefeuille qui cherche des idées d’investissement',
+    web: true,
+    gaps: true,
+    ask: () => [
+      'Propose 5 à 8 titres ou ETF négociables chez DEGIRO (Euronext, Xetra, NYSE, Nasdaq…) qui comblent les manques listés ci-dessus, sans doublonner ce que je détiens déjà, y compris via mes ETF.',
+      'Pour chacun : ISIN ou ticker, ce qu’il apporte à MON portefeuille (secteur, région, devise, style), la valorisation actuelle et le risque principal.',
+      'Indique ceux que tu écarterais toi-même, et pourquoi.',
+      'Classe-les du plus au moins utile pour mon portefeuille, avec un poids de départ raisonnable pour chacun.',
+    ],
+  },
+  {
+    id: 'placer',
+    label: 'Placer de l’argent frais',
+    desc: 'Où mettre un montant : renforcer ou ouvrir une ligne.',
+    scopes: ['portfolio'],
+    role: 'conseiller en allocation d’actifs',
+    usesAmount: true,
+    gaps: true,
+    ask: ({ amount }) => [
+      `J’ai ${amount ? fmtEur(amount) : 'un montant'} à placer. Propose une répartition : quelle part pour renforcer des lignes existantes, quelle part pour une ou deux nouvelles lignes.`,
+      'Pour chaque achat : le titre, le montant en euros et le nombre de titres approximatif au cours actuel.',
+      'Ce que cette répartition change à ma concentration, mes secteurs et ma part hors euro.',
+      'Ce que tu ne ferais PAS avec cet argent dans ma situation, et pourquoi.',
+    ],
+  },
+  {
+    id: 'renforcer-perte',
+    label: 'Renforcer une ligne en perte ?',
+    desc: 'Thèse intacte ou cassée, avant de moyenner à la baisse.',
+    scopes: ['stocks'],
+    role: 'analyste actions sans complaisance',
+    web: true,
+    ask: ({ n }) => [
+      `${each(n)} : ma thèse d’achat tient-elle toujours (résultats, guidance, concurrence, bilan) ? Distingue ce qui a changé dans l’entreprise de ce qui n’est que le cours.`,
+      'Renforcer, attendre, alléger ou solder : ton avis argumenté, en ignorant mon prix d’achat (il ne dit rien de la valeur future).',
+      'Si renforcer a du sens : à quel prix, pour quel poids maximal dans mon portefeuille, et ce qui invaliderait ce choix.',
+      'Le piège psychologique à éviter ici (biais des coûts irrécupérables, ancrage sur le prix d’achat).',
+    ],
+  },
+  {
+    id: 'avant-resultats',
+    label: 'Avant les résultats',
+    desc: 'Ce que le marché attend, et comment réagir.',
+    scopes: ['stocks'],
+    role: 'analyste actions qui prépare une publication de résultats',
+    web: true,
+    ask: ({ n }) => [
+      `${each(n)} : la date de la prochaine publication et ce que le consensus attend (chiffre d’affaires, marge, BPA, guidance).`,
+      'Les 2 ou 3 indicateurs qui feront vraiment bouger le cours, et leur niveau critique.',
+      'Les scénarios « mieux / conforme / pire que prévu » et la réaction probable du cours.',
+      'Ce que je devrais faire dans chaque scénario, compte tenu du poids de la ligne chez moi.',
+    ],
+  },
 ];
 
 export const objectiveById = (id) => OBJECTIVES.find((o) => o.id === id) || null;
+
+/**
+ * Manques d'exposition : secteurs et régions sous 3 % de la part CLASSÉE du
+ * portefeuille. `null` quand moins de la moitié des titres est classée — dire
+ * « aucune exposition à la santé » sur un portefeuille à moitié « non classé »
+ * serait un chiffre faux affiché avec aplomb.
+ */
+export function exposureGaps(positions, threshold = 0.03) {
+  const lines = enrichLines(positions);
+  const gapsOf = (rows, keys) => {
+    const d = diversification(rows);
+    if (d.coverage < 0.5) return null;
+    const base = d.coverage || 1;
+    const w = new Map(rows.map((r) => [r.key, r.weight / base]));
+    return { coverage: d.coverage, missing: keys.filter((k) => (w.get(k) || 0) < threshold) };
+  };
+  const sectors = gapsOf(breakdown(lines, 'sector'), SECTORS);
+  const regions = gapsOf(breakdown(lines, 'region'), REGIONS.filter((r) => r !== 'Autres'));
+  if (!sectors && !regions) return null;
+  return { sectors, regions };
+}
+
+/** Notes de l'utilisateur sur les lignes affichées : thèse et poids visé. */
+function notesLines(shown, total) {
+  return shown
+    .filter((p) => (p.note_thesis && String(p.note_thesis).trim()) || p.note_target_weight != null)
+    .map((p) => {
+      const w = total > 0 ? (num(p.value_eur) || 0) / total : null;
+      const target = p.note_target_weight != null
+        ? ` (poids visé ${fmtNum(p.note_target_weight, 1)} %, actuel ${pct1(w)})` : '';
+      const thesis = p.note_thesis ? ` : « ${String(p.note_thesis).replace(/\s+/g, ' ').trim().slice(0, 300)} »` : '';
+      return `- ${label(p)}${thesis}${target}`;
+    });
+}
 
 /** Objectifs proposés pour une portée et un nombre de titres donnés. */
 export const objectivesFor = (scope, count = 0) =>
@@ -391,9 +487,30 @@ export function buildPrompt({ pf, exposure = null, scope, isins = [], objective,
     }
   }
 
+  const notes = notesLines(shown, total);
+  if (notes.length) {
+    out.push('');
+    out.push('Mes notes sur ces lignes (pourquoi je les détiens) :');
+    out.push(...notes);
+  }
+
+  if (obj.gaps) {
+    const g = exposureGaps(all);
+    out.push('');
+    if (!g) {
+      out.push('Mes manques d’exposition : trop de lignes sans secteur ni pays connus pour les mesurer ; déduis-les du tableau ci-dessus.');
+    } else {
+      out.push('Mes manques d’exposition (moins de 3 % de la part classée de mon portefeuille) :');
+      if (g.sectors) out.push(`- Secteurs : ${g.sectors.missing.length ? g.sectors.missing.join(', ') : 'aucun manque marqué'}.`);
+      if (g.regions) out.push(`- Régions : ${g.regions.missing.length ? g.regions.missing.join(', ') : 'aucun manque marqué'}.`);
+    }
+  }
+
+  const amount = obj.usesAmount ? (num(opts.amount) || (cash > 0 ? cash : null)) : null;
+
   out.push('');
   out.push('## Ce que je te demande');
-  const questions = obj.ask({ n, scope }).filter(Boolean);
+  const questions = obj.ask({ n, scope, amount }).filter(Boolean);
   questions.forEach((q, i) => out.push(`${i + 1}. ${q}`));
 
   out.push('');

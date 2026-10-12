@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { plural, fmtSignedEur, toneOf } from '../../frontend/src/lib/format.js';
+import { plural, fmtSignedEur, toneOf, daysBetween, parisToday } from '../../frontend/src/lib/format.js';
 
 // L'interface écrivait « 3 vente(s) ». Ces cas figent l'accord désormais fait par
 // le code — et notamment la règle française, qui n'est pas la règle anglaise.
@@ -48,5 +48,21 @@ describe('montants signés', () => {
     expect(toneOf(1)).toBe('pos');
     expect(toneOf(-1)).toBe('neg');
     expect(toneOf(null)).toBe('');
+  });
+});
+
+describe('âge d’une capture', () => {
+  it('compte les jours civils entre deux dates AAAA-MM-JJ', () => {
+    expect(daysBetween('2026-10-09', '2026-10-12')).toBe(3);
+    expect(daysBetween('2026-10-12', '2026-10-12')).toBe(0);
+    // Passage à l'heure d'hiver : toujours un jour entier.
+    expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2);
+    expect(daysBetween('pas une date', '2026-10-12')).toBeNull();
+  });
+
+  it('donne le jour civil à Paris, pas en UTC', () => {
+    // 23 h 30 UTC le 11/10 = 1 h 30 le 12/10 à Paris (heure d'été).
+    expect(parisToday(new Date('2026-10-11T23:30:00Z'))).toBe('2026-10-12');
+    expect(parisToday(new Date('2026-10-11T12:00:00Z'))).toBe('2026-10-11');
   });
 });

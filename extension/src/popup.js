@@ -12,6 +12,7 @@ const els = {
   capture: $('capture'), error: $('error'), success: $('success'),
   diagBox: $('diagBox'), steps: $('steps'), copyDiag: $('copyDiag'), last: $('last'),
   pin: $('pin'), tokenLink: $('tokenLink'),
+  auto: $('auto'), autoMsg: $('autoMsg'), openApp: $('openApp'), openAppWrap: $('openAppWrap'),
 };
 
 /**
@@ -31,7 +32,7 @@ const euros = (n) => (Number.isFinite(Number(n))
   : '— €');
 
 // ── Réglages ────────────────────────────────────────────────────────
-const stored = await chrome.storage.local.get(['apiUrl', 'token', 'brouillon', 'lastCapture']);
+const stored = await chrome.storage.local.get(['apiUrl', 'token', 'brouillon', 'lastCapture', 'auto', 'lastAuto', 'lastAutoReport']);
 // `brouillon` : ce qui a été tapé sans être enregistré. Le popup se ferme dès
 // que Chrome perd le focus — typiquement en allant chercher son jeton — et la
 // saisie en cours était alors perdue à chaque fois.
@@ -69,10 +70,33 @@ els.pin.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('src/popup.html?tab=1') });
   window.close();
 });
+const quand = (iso) => {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+};
 if (stored.lastCapture) {
-  const d = new Date(stored.lastCapture.at);
-  els.last.textContent = `dernière capture ${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  els.last.textContent = `dernière capture ${quand(stored.lastCapture.at)}${stored.lastCapture.mode === 'auto' ? ' (auto)' : ''}`;
 }
+
+// ── Capture automatique ─────────────────────────────────────────────
+els.auto.checked = stored.auto === true;
+els.auto.addEventListener('change', async () => {
+  await chrome.storage.local.set({ auto: els.auto.checked });
+  show(els.autoMsg, els.auto.checked
+    ? 'Activée : la prochaine ouverture de DEGIRO lancera la capture du jour, sans clic.'
+    : 'Désactivée.');
+});
+// Une capture automatique ratée se signale par un « ! » sur l'icône : on en
+// montre ici la raison et le diagnostic, puis le badge disparaît (c'est vu).
+const autoFailedLast = Boolean(stored.lastAuto && !stored.lastAuto.ok
+  && (!stored.lastCapture || new Date(stored.lastAuto.at) > new Date(stored.lastCapture.at)));
+if (autoFailedLast) {
+  show(els.autoMsg, `Dernière capture automatique échouée (${quand(stored.lastAuto.at)}) : ${stored.lastAuto.error || 'voir le diagnostic'}`);
+  els.autoMsg.classList.add('err');
+}
+chrome.action.setBadgeText({ text: '' }).catch(() => {});
+// Le rendu du diagnostic est défini plus bas : on le déclenche une fois la page prête.
+const autoReportToShow = autoFailedLast ? stored.lastAutoReport : null;
 
 els.save.addEventListener('click', async () => {
   const apiUrl = els.apiUrl.value.trim().replace(/\/+$/, '');
@@ -142,6 +166,10 @@ els.capture.addEventListener('click', async () => {
         ? `Déjà à jour : ${s.positions} position(s), ${euros(s.total)}.`
         : `Envoyé : ${s.positions} position(s), ${euros(s.total)}.`);
       els.last.textContent = 'dernière capture à l’instant';
+      try {
+        els.openApp.href = `${new URL(els.apiUrl.value.trim() || ANALYZER_PAR_DEFAUT).origin}/#/overview`;
+        els.openAppWrap.hidden = false;
+      } catch { /* adresse invalide : pas de lien */ }
     } else {
       show(els.error, res?.error || 'Échec de la capture.');
       els.diagBox.open = true;
@@ -160,3 +188,6 @@ els.copyDiag.addEventListener('click', async () => {
   els.copyDiag.textContent = 'Copié ✓';
   setTimeout(() => { els.copyDiag.textContent = 'Copier le diagnostic'; }, 1800);
 });
+
+// Diagnostic de la dernière capture automatique ratée, pour voir l'étape fautive.
+if (autoReportToShow?.steps?.length) renderReport(autoReportToShow);

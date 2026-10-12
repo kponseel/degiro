@@ -288,6 +288,21 @@ export default function AiPrompts({ onGoImport }) {
                 <span>Réponse</span>
                 <Segmented label="Longueur de la réponse" value={opts.length} onChange={set('length')} items={LENGTHS} />
               </div>
+              {current?.usesAmount && (
+                <label className="pb-field">
+                  <span>Montant à placer (€)</span>
+                  <input
+                    className="filter-select"
+                    inputMode="decimal"
+                    value={opts.amount ?? ''}
+                    placeholder={pf.snapshot?.cash_eur > 0 ? `${Math.round(pf.snapshot.cash_eur)} (mes liquidités)` : 'ex. 2000'}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\s/g, '').replace(',', '.');
+                      set('amount')(v === '' ? null : v);
+                    }}
+                  />
+                </label>
+              )}
               {current?.usesCash && (
                 <div className="pb-field">
                   <span>Budget</span>

@@ -141,6 +141,9 @@ export default function Exposure({ onGoImport }) {
   }, []);
 
   const a = useMemo(() => (data?.snapshot ? analyzePortfolio(data) : null), [data]);
+  useEffect(() => {
+    if (a) setSelected((cur) => (cur ? a.lines.find((l) => l.isin === cur.isin) || null : cur));
+  }, [a]);
   const canExplode = hasLookthrough(lookthrough);
   const exploded = canExplode && view.mode === 'lookthrough';
   const lt = exploded ? lookthrough : null;
@@ -254,6 +257,7 @@ export default function Exposure({ onGoImport }) {
         position={selected}
         lookthrough={lookthrough}
         onAnalyze={(p) => { window.location.hash = `#/ai?isin=${encodeURIComponent(p.isin)}`; }}
+        onNoteSaved={() => getPortfolio().then(setData).catch(() => {})}
         onClose={() => setSelected(null)}
       />
     </>

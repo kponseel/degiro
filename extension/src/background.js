@@ -12,6 +12,7 @@ import { buildPayload, parsePortfolio, productIds, chunk } from './degiro.js';
 import {
   isComplete, intAccountFromClient, sessionIdFromConfig, urls,
 } from './session.js';
+import { shouldAutoCapture } from './auto.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
 const isDegiro = (tab) => String(tab?.url || '').startsWith('https://trader.degiro.nl/');
@@ -77,10 +78,16 @@ const step = (report, label, ok, detail) => {
   return ok;
 };
 
-async function capture() {
-  const report = { steps: [], at: new Date().toISOString() };
+/**
+ * @param tabId  onglet à utiliser (capture automatique : celui qui vient de se charger)
+ * @param mode   'manuel' (popup) ou 'auto' (ouverture de DEGIRO)
+ */
+async function capture({ tabId = null, mode = 'manuel' } = {}) {
+  const report = { steps: [], at: new Date().toISOString(), mode };
 
-  const tab = await findTab();
+  const tab = tabId != null
+    ? await chrome.tabs.get(tabId).then((t) => (isDegiro(t) ? t : null)).catch(() => null) || await findTab()
+    : await findTab();
   if (!step(report, 'Onglet DEGIRO', Boolean(tab), tab ? tab.url.slice(0, 60) : 'aucun onglet trader.degiro.nl ouvert')) {
     return { ok: false, report, error: "Ouvre trader.degiro.nl et connecte-toi, puis relance la capture." };
   }
@@ -293,8 +300,29 @@ async function capture() {
           + ' leur plus-value inclut les gains des ventes passées (résultat total, pas latent)');
   }
 
+  // Versements nets selon DEGIRO (dépôts − retraits depuis l'ouverture du compte).
+  // Simplement LU et affiché pour vérification : si le chiffre correspond à ce
+  // que tu as réellement versé, il permettra un « résultat depuis l'ouverture »
+  // honnête, sans aucun historique de transactions.
+  if (diagnostics.degiroTotal !== undefined) {
+    const nd = diagnostics.netDeposits;
+    step(report, 'Versements nets', true, nd === undefined
+      ? 'non fournis par DEGIRO dans cette réponse'
+      : `${nd} € selon DEGIRO depuis l'ouverture du compte`
+        + (diagnostics.todayFlow ? ` (dont ${diagnostics.todayFlow} € aujourd'hui)` : '')
+        + ` — valeur nette ${diagnostics.degiroTotal} €, soit ${Math.round((diagnostics.degiroTotal - nd) * 100) / 100} € de résultat si ce chiffre est juste`);
+  }
+
   if (!payload.positions.length) {
     return { ok: false, report, diagnostics, error: 'Aucune position exploitable trouvée. Le diagnostic ci-dessous indique où ça coince.' };
+  }
+
+  // En automatique, on n'envoie rien de douteux : une capture faite sans que
+  // l'utilisateur regarde ne doit pas remplacer celle du jour par des chiffres
+  // que le contrôle du total juge faux. En manuel, l'utilisateur voit le ✗ et
+  // décide.
+  if (mode === 'auto' && report.steps.some((x) => x.label === 'Contrôle du total' && !x.ok)) {
+    return { ok: false, report, diagnostics, error: 'Capture automatique non envoyée : le contrôle du total a échoué. Lance une capture manuelle pour voir le détail.' };
   }
 
   const sent = await send(payload);
@@ -303,6 +331,7 @@ async function capture() {
 
   const summary = {
     at: report.at,
+    mode,
     positions: payload.positions.length,
     total: payload.total_value_eur,
     deduplicated: Boolean(sent.body?.deduplicated),
@@ -333,10 +362,54 @@ async function send(payload) {
   return { ok: true, body, detail: body?.deduplicated ? 'déjà enregistré (identique)' : 'enregistré' };
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
+// ── Capture automatique ─────────────────────────────────────────────
+
+/** Badge de l'icône : vide quand tout va bien, « ! » quand la dernière capture auto a échoué. */
+function setBadge(ok, title) {
+  chrome.action.setBadgeText({ text: ok ? '' : '!' }).catch(() => {});
+  if (!ok) chrome.action.setBadgeBackgroundColor({ color: '#b45309' }).catch(() => {});
+  chrome.action.setTitle({ title: title || 'DEGIRO Analyzer' }).catch(() => {});
+}
+
+// Une seule capture à la fois : deux onglets DEGIRO ouverts ensemble, ou un clic
+// pendant une capture automatique, ne doivent pas lancer deux envois.
+let inFlight = null;
+function runCapture(opts) {
+  if (!inFlight) inFlight = capture(opts).finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+async function autoCapture(tabId) {
+  const st = await chrome.storage.local.get(['auto', 'apiUrl', 'token', 'lastCapture', 'lastAuto']);
+  const decision = shouldAutoCapture({
+    enabled: st.auto === true,
+    configured: Boolean(st.apiUrl && st.token),
+    lastCapture: st.lastCapture,
+    lastAuto: st.lastAuto,
+    now: new Date(),
+  });
+  if (!decision.go || inFlight) return;
+  const res = await runCapture({ tabId, mode: 'auto' })
+    .catch((e) => ({ ok: false, error: String(e.message || e), report: { steps: [], at: new Date().toISOString(), mode: 'auto' } }));
+  const lastAuto = { at: new Date().toISOString(), ok: Boolean(res.ok), error: res.ok ? null : res.error || null };
+  await chrome.storage.local.set({ lastAuto, lastAutoReport: res.report || null });
+  setBadge(res.ok, res.ok
+    ? 'DEGIRO Analyzer — capture automatique faite'
+    : `DEGIRO Analyzer — capture automatique échouée : ${res.error || 'voir le diagnostic'}`);
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+  if (msg?.type === 'DEGIRO_READY') {
+    // Seul un onglet DEGIRO peut déclencher la capture automatique.
+    if (sender?.tab?.id != null && isDegiro(sender.tab)) autoCapture(sender.tab.id).catch(() => {});
+    return false;
+  }
   if (msg?.type !== 'CAPTURE') return false;
-  capture()
-    .then(respond)
+  runCapture({ mode: 'manuel' })
+    .then((res) => {
+      if (res.ok) setBadge(true);
+      respond(res);
+    })
     .catch((e) => respond({ ok: false, error: String(e.message || e), report: { steps: [], at: new Date().toISOString() } }));
   return true;
 });
