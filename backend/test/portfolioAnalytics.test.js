@@ -133,6 +133,14 @@ describe('analyse du portefeuille', () => {
     expect(csv.day).toBeNull();
   });
 
+  it("résultat depuis l'ouverture = valeur nette − versements nets", () => {
+    const r = analyzePortfolio({ snapshot: { total_value_eur: 90321.16, net_deposits_eur: 81497.76 }, positions: [] });
+    expect(r.sinceStart.gain).toBeCloseTo(8823.4, 2);
+    expect(r.sinceStart.pct).toBeCloseTo(0.10827, 4);
+    expect(analyzePortfolio({ snapshot: { total_value_eur: 1000 }, positions: [] }).sinceStart).toBeNull();
+    expect(analyzePortfolio({ snapshot: { total_value_eur: 1000, net_deposits_eur: 0 }, positions: [] }).sinceStart.pct).toBeNull();
+  });
+
   it('portefeuille vide : aucune division par zéro', () => {
     const vide = analyzePortfolio({ snapshot: {}, positions: [] });
     expect(vide.invested).toBe(0);

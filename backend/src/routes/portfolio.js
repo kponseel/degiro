@@ -24,7 +24,7 @@ router.get('/', async (req, res, next) => {
   try {
     const pool = getPool();
     const [snaps] = await pool.query(
-      `SELECT id, captured_at, snapshot_date, source, total_value_eur, cash_eur
+      `SELECT id, captured_at, snapshot_date, source, total_value_eur, cash_eur, net_deposits_eur
        FROM snapshots WHERE account_id = ?
        ORDER BY captured_at DESC LIMIT 1`,
       [req.user.id],

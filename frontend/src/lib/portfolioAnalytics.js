@@ -105,6 +105,18 @@ export function concentration(lines) {
   };
 }
 
+/**
+ * Résultat depuis l'ouverture du compte : valeur nette − versements nets
+ * (dépôts − retraits, selon DEGIRO). Contrairement à la +/- value latente, il
+ * inclut tout : ventes passées, dividendes, frais, change. C'est le chiffre
+ * « Total P/L » de DEGIRO. Absent d'un import CSV, qui ne donne pas les versements.
+ */
+function sinceStart(total, deposits) {
+  if (deposits == null || total == null) return null;
+  const gain = total - deposits;
+  return { gain, deposits, pct: deposits > 0 ? gain / deposits : null };
+}
+
 /** Analyse d'ensemble du portefeuille. */
 export function analyzePortfolio(pf) {
   const snapshot = pf?.snapshot || {};
@@ -150,6 +162,7 @@ export function analyzePortfolio(pf) {
       ? { total: lines.reduce((s, l) => s + (l.realized || 0), 0), count: lines.filter((l) => Math.abs(l.realized || 0) >= 1).length }
       : null,
     day: day.known.length ? { total: day.sum, pct: dayBase > 0 ? day.sum / dayBase : null, coverage: day.coverage } : null,
+    sinceStart: sinceStart(total, num(snapshot.net_deposits_eur)),
     allocation,
     concentration: concentration(lines),
     gainers,

@@ -275,6 +275,14 @@ export default function Overview({ onGoImport }) {
       )}
       <div className="kpi-strip ana-kpis">
         <Kpi label="Valeur totale" value={fmtEur(a.total)} sub={`au ${fmtDate(a.snapshot.snapshot_date)} · ${source}`} />
+        {a.sinceStart && (
+          <Kpi
+            label="Résultat depuis l'ouverture"
+            value={fmtSignedEur(a.sinceStart.gain)}
+            sub={`${a.sinceStart.pct != null ? `${signedPct(a.sinceStart.pct)} de ` : ''}${fmtEur(a.sinceStart.deposits)} versés nets`}
+            tone={toneOf(a.sinceStart.gain)}
+          />
+        )}
         <Kpi label="Titres" value={fmtEur(a.invested)} sub={a.pl ? `coût ${fmtEur(a.pl.cost)}${a.pl.coverage < 0.999 ? ' (lignes connues)' : ''}` : plural(c.n, 'ligne')} />
         <Kpi
           label="+/- value latente"
