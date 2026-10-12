@@ -21,6 +21,14 @@ const TIPS = [
     body: "Import / Extension → Lancer l'enrichissement. Ce qui reste vide se corrige à la main juste en dessous, et la correction est conservée.",
   },
   {
+    title: 'Laisse l’extension capturer toute seule',
+    body: "Dans l'extension, coche « Capturer automatiquement quand j'ouvre DEGIRO » : la capture du jour se fait dès que tu ouvres DEGIRO, sans clic, une fois par jour. Si elle échoue, un « ! » apparaît sur l'icône et le popup dit pourquoi.",
+  },
+  {
+    title: 'Note pourquoi tu détiens chaque titre',
+    body: "Dans le détail d'une ligne, « Mes notes » garde ta raison d'investir et le poids que tu vises. L'écart à la cible s'affiche, et les prompts IA reprennent tes notes pour juger si la thèse tient toujours.",
+  },
+  {
     title: 'Une capture par jour suffit',
     body: "L'outil ne garde qu'un instantané par journée et par source. Capturer plusieurs fois dans la journée remplace simplement le précédent — ça ne crée jamais de doublon.",
   },

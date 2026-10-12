@@ -315,6 +315,8 @@ export async function deleteUserData(userId) {
   // derrière une suppression annoncée comme complète.
   await pool.query('DELETE FROM ai_insights WHERE account_id = ?', [userId]);
   await pool.query('DELETE FROM ai_prompts WHERE account_id = ?', [userId]);
+  // Notes privées par position (thèse, poids visé).
+  await pool.query('DELETE FROM position_notes WHERE account_id = ?', [userId]);
 }
 
 /** Supprime le compte : données + sessions + liens magiques en attente + ligne user. */

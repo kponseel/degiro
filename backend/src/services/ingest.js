@@ -36,8 +36,8 @@ export async function ingestSnapshot(payload, accountId = 1) {
     const [snapRes] = await conn.query(
       `INSERT INTO snapshots
         (account_id, captured_at, snapshot_date, source, capture_id, schema_version,
-         total_value_eur, cash_eur, raw_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         total_value_eur, cash_eur, net_deposits_eur, today_flow_eur, raw_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         accountId,
         toMysqlUtc(capturedAt),
@@ -47,6 +47,8 @@ export async function ingestSnapshot(payload, accountId = 1) {
         payload.schema_version ?? 1,
         payload.total_value_eur ?? null,
         payload.cash_eur ?? null,
+        payload.net_deposits_eur ?? null,
+        payload.today_flow_eur ?? null,
         payload.raw_json !== undefined ? JSON.stringify(payload.raw_json) : null,
       ],
     );

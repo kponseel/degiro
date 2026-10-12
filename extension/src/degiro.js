@@ -113,7 +113,18 @@ export function parseTotals(update) {
   const cash = num(t.reportCashBal) ?? num(t.totalCash);
   const netLiq = num(t.reportNetliq)
     ?? (positions !== undefined && cash !== undefined ? round2(positions + cash) : undefined);
-  return { positions, cash, netLiq };
+  // Versements nets depuis l'ouverture (dépôts − retraits) et flux du jour.
+  // Champs connus des clients DEGIRO de la communauté, jamais observés sur ce
+  // compte : lus en option, montrés pour vérification, jamais devinés.
+  const netDeposits = amount(t.totalDepositWithdrawal);
+  const todayFlow = amount(t.todayDepositWithdrawal);
+  return {
+    positions,
+    cash,
+    netLiq,
+    netDeposits: netDeposits === undefined ? undefined : round2(netDeposits),
+    todayFlow: todayFlow === undefined ? undefined : round2(todayFlow),
+  };
 }
 
 /** Extrait les identifiants produit à résoudre en ISIN. */
@@ -491,6 +502,10 @@ export function buildPayload({
     positions,
   };
   if (cash !== undefined) payload.cash_eur = cash;
+  // Conservés dès maintenant (colonnes optionnelles), affichés plus tard une fois
+  // le chiffre vérifié par l'utilisateur : chaque jour capturé enrichit l'historique.
+  if (totals.netDeposits !== undefined) payload.net_deposits_eur = totals.netDeposits;
+  if (totals.todayFlow !== undefined) payload.today_flow_eur = totals.todayFlow;
 
   return {
     payload,
@@ -516,6 +531,8 @@ export function buildPayload({
       degiroPositions: totals.positions === undefined ? undefined : round2(totals.positions),
       degiroCash: totals.cash === undefined ? undefined : round2(totals.cash),
       degiroTotal: totals.netLiq === undefined ? undefined : round2(totals.netLiq),
+      netDeposits: totals.netDeposits,
+      todayFlow: totals.todayFlow,
       computedTotal: summed ?? totalRetenu,
       // Un écart > 1 € signale un champ mal lu : à vérifier avant de se fier aux chiffres.
       totalGap,

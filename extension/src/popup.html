@@ -35,8 +35,15 @@
 
     <button id="capture" class="primary">Capturer mon portefeuille</button>
 
+    <label class="auto-toggle">
+      <input id="auto" type="checkbox" />
+      <span>Capturer automatiquement quand j'ouvre DEGIRO <span class="muted">(une fois par jour)</span></span>
+    </label>
+    <p id="autoMsg" class="hint" hidden></p>
+
     <p id="error" class="msg err" hidden></p>
     <p id="success" class="msg ok" hidden></p>
+    <p id="openAppWrap" class="hint" hidden><a id="openApp" href="#" target="_blank" rel="noopener">Ouvrir mon portefeuille →</a></p>
 
     <details id="diagBox" hidden>
       <summary>Diagnostic</summary>

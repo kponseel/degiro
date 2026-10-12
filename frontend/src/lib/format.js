@@ -58,3 +58,22 @@ export const plural = (n, mot, pluriel) => {
   const forme = Number.isFinite(v) && Math.abs(v) >= 2 ? (pluriel ?? `${mot}s`) : mot;
   return `${fmtNum(n, 0)} ${forme}`;
 };
+
+/** Jour civil à Paris, « AAAA-MM-JJ » — la même convention que snapshots.snapshot_date. */
+export function parisToday(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const get = (t) => parts.find((p) => p.type === t).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Nombre de jours entiers entre deux jours « AAAA-MM-JJ » ; `null` si l'un est illisible. */
+export function daysBetween(from, to) {
+  const re = /^(\d{4})-(\d{2})-(\d{2})/;
+  const a = re.exec(String(from || ''));
+  const b = re.exec(String(to || ''));
+  if (!a || !b) return null;
+  const ms = Date.UTC(+b[1], +b[2] - 1, +b[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3]);
+  return Math.round(ms / 86400000);
+}

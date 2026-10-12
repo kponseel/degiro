@@ -121,6 +121,12 @@ describe("Jeton d'extension — portée limitée à l'ingestion", () => {
     }
   });
 
+  it('ne peut pas écrire de note sur une position', async () => {
+    const { auth } = await extensionToken('ext-scope-notes@example.com');
+    const res = await request(app).put('/api/portfolio/notes/US67066G1040').set(auth).send({ thesis: 'x' });
+    expect(res.status).toBe(403);
+  });
+
   it('n’a aucun accès aux routes de compte, qui exigent une vraie session', async () => {
     const { auth } = await extensionToken('ext-scope3@example.com');
     // `/api/auth/*` est monté avant `requireAuth` et n'accepte que le cookie :
@@ -239,5 +245,16 @@ describe('Erreurs — le client ne reçoit pas l’intérieur du système', () =
       // Interceptée en amont par le 404 : rien ne fuit non plus.
       expect(JSON.stringify(res.body)).not.toContain('mysql-42');
     }
+  });
+});
+
+describe('Effacement des données — notes comprises', () => {
+  it('« Effacer mes données » supprime aussi les notes par position', async () => {
+    const agent = await loginAs('notes-wipe@example.com');
+    await seedPosition(agent, 'US67066G1040', 'wipe-1');
+    expect((await agent.put('/api/portfolio/notes/US67066G1040').send({ thesis: 'à effacer' })).status).toBe(200);
+    expect((await agent.delete('/api/auth/me/data')).status).toBe(200);
+    const [[{ n }]] = await getPool().query('SELECT COUNT(*) AS n FROM position_notes');
+    expect(Number(n)).toBe(0);
   });
 });

@@ -1,7 +1,66 @@
-import { useEffect, useRef } from 'react';
-import { fmtEur, fmtPct, fmtNum } from '../lib/format.js';
+import { useEffect, useRef, useState } from 'react';
+import { fmtEur, fmtPct, fmtNum, fmtDate } from '../lib/format.js';
+import { saveNote } from '../lib/api.js';
 import StockLinks from './StockLinks.jsx';
 import { newsLinks } from '../lib/links.js';
+
+/**
+ * Mes notes : pourquoi je détiens ce titre, et le poids que je vise. Privées,
+ * gardées d'une capture à l'autre, reprises par les prompts IA.
+ */
+function Notes({ p, onSaved }) {
+  const [thesis, setThesis] = useState(p.note_thesis || '');
+  const [target, setTarget] = useState(p.note_target_weight != null ? String(p.note_target_weight).replace('.', ',') : '');
+  const [state, setState] = useState(null);
+  const parsedTarget = target.trim() === '' ? null : Number(target.replace(',', '.'));
+  const invalid = parsedTarget != null && (!Number.isFinite(parsedTarget) || parsedTarget < 0 || parsedTarget > 100);
+  const dirty = thesis !== (p.note_thesis || '')
+    || (parsedTarget ?? null) !== (p.note_target_weight != null ? Number(p.note_target_weight) : null);
+
+  async function save() {
+    setState('saving');
+    try {
+      await saveNote(p.isin, { thesis: thesis.trim() || null, target_weight: parsedTarget });
+      setState('saved');
+      onSaved?.();
+    } catch (e) {
+      setState(e.message || 'Échec de l’enregistrement');
+    }
+  }
+
+  const w = Number(p.w) * 100;
+  const gap = p.note_target_weight != null && Number.isFinite(w) ? w - Number(p.note_target_weight) : null;
+  return (
+    <section className="dr-section">
+      <h4>Mes notes</h4>
+      {gap != null && Math.abs(gap) >= 0.05 && (
+        <p className="dr-note">
+          Poids actuel {fmtPct(p.w)} pour une cible de {fmtNum(p.note_target_weight, 1)} % :{' '}
+          <strong>{gap > 0 ? 'au-dessus' : 'en dessous'} de {fmtNum(Math.abs(gap), 1)} point{Math.abs(gap) >= 2 ? 's' : ''}</strong>.
+        </p>
+      )}
+      <label className="dr-field">
+        <span>Pourquoi je détiens ce titre</span>
+        <textarea rows={3} maxLength={600} value={thesis} onChange={(e) => { setThesis(e.target.value); setState(null); }}
+          placeholder="Ex. : leader du cloud, je garde tant que la croissance dépasse 15 %" />
+      </label>
+      <label className="dr-field dr-field-inline">
+        <span>Poids visé (% des titres)</span>
+        <input className="input" inputMode="decimal" value={target} onChange={(e) => { setTarget(e.target.value); setState(null); }}
+          placeholder="—" aria-invalid={invalid} />
+      </label>
+      <div className="dr-note-actions">
+        <button type="button" className="btn ghost sm" onClick={save} disabled={!dirty || invalid || state === 'saving'}>
+          {state === 'saving' ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        {state === 'saved' && <span className="muted sm">Enregistré.</span>}
+        {invalid && <span className="neg sm">Entre un pourcentage entre 0 et 100.</span>}
+        {state && !['saving', 'saved'].includes(state) && <span className="neg sm">{state}</span>}
+        {!state && p.note_updated_at && <span className="muted sm">modifiée le {fmtDate(p.note_updated_at)}</span>}
+      </div>
+    </section>
+  );
+}
 
 function Row({ label, children }) {
   return (
@@ -17,7 +76,7 @@ function Row({ label, children }) {
  * exposition réelle (direct + via ETF), actualités du titre et liens finance.
  * Ferme sur Échap / clic extérieur ; le focus est piégé le temps de l'ouverture.
  */
-export default function PositionDrawer({ position, lookthrough, onClose, onAnalyze }) {
+export default function PositionDrawer({ position, lookthrough, onClose, onAnalyze, onNoteSaved }) {
   const panelRef = useRef(null);
   const previousFocus = useRef(null);
 
@@ -135,6 +194,8 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
               )}
             </section>
           )}
+
+          <Notes key={p.isin} p={p} onSaved={onNoteSaved} />
 
           <section className="dr-section">
             <div className="dr-ai-head">

@@ -74,3 +74,8 @@ summary { cursor: pointer; font-weight: 650; font-size: 12.5px; }
   .msg.err { background: #2a1614; }
   .msg.ok { background: #12241a; }
 }
+
+/* Case « capture automatique » : sous le bouton, sur une ligne. */
+label.auto-toggle { display: flex; align-items: flex-start; gap: 7px; margin: 10px 0 2px; font-weight: 500; font-size: 12.5px; cursor: pointer; }
+label.auto-toggle input { margin-top: 2px; }
+.hint.err { color: #b42318; }

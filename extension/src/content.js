@@ -3,10 +3,11 @@
  *
  * Volontairement minuscule et sans dépendance : les scripts de contenu ne
  * supportent pas les modules ES, donc toute la logique vit dans le service
- * worker. Ici on ne fait que deux choses :
+ * worker. Ici on ne fait que trois choses :
  *
  *  1. mémoriser les identifiants repérés par `inject.js` ;
- *  2. exécuter des requêtes vers DEGIRO **depuis la page elle-même**, ce qui
+ *  2. prévenir le service worker quand la session est prête (capture auto) ;
+ *  3. exécuter des requêtes vers DEGIRO **depuis la page elle-même**, ce qui
  *     leur donne les cookies de la session déjà ouverte. C'est tout l'intérêt :
  *     l'extension ne connaît ni ne stocke le moindre identifiant DEGIRO.
  *
@@ -17,9 +18,23 @@
   const ORIGIN = 'https://trader.degiro.nl';
   let creds = {};
 
+  // Signal « DEGIRO prêt » pour la capture automatique : une fois par page, dès
+  // que les deux identifiants sont connus, avec un délai pour laisser DEGIRO
+  // finir son propre chargement. Le service worker décide seul s'il capture.
+  let ready = false;
+  const READY_DELAY_MS = 8000;
+
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.data?.type !== TAG) return;
     creds = { ...creds, ...(event.data.creds || {}) };
+    if (!ready && creds.sessionId && creds.intAccount) {
+      ready = true;
+      setTimeout(() => {
+        // Extension rechargée depuis l'ouverture de l'onglet : le contexte est
+        // orphelin et l'envoi lève une erreur — rien à faire, rien à signaler.
+        try { chrome.runtime.sendMessage({ type: 'DEGIRO_READY' }).catch(() => {}); } catch { /* orphelin */ }
+      }, READY_DELAY_MS);
+    }
   });
 
   // Demande l'état courant au cas où l'injection a eu lieu avant l'écoute.
