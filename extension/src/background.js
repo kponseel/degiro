@@ -333,7 +333,12 @@ async function capture({ tabId = null, mode = 'manuel', force = false } = {}) {
   // Sans total DEGIRO dans la réponse, rien ne permet de vérifier que la lecture
   // est complète : une réponse tronquée (page pas encore chargée) passait ainsi
   // sans contrôle et remplaçait la bonne capture du jour par 7 lignes sur 22.
-  if (mode === 'auto' && diagnostics.degiroTotal === undefined) {
+  //
+  // Seulement si ce compte fournit d'habitude ce total : certains comptes DEGIRO
+  // ne le renvoient jamais (constaté chez un ami), et leur capture automatique
+  // ne partirait alors jamais.
+  const { lastCapture } = await chrome.storage.local.get('lastCapture');
+  if (mode === 'auto' && diagnostics.degiroTotal === undefined && lastCapture?.totals === true) {
     return { ok: false, report, diagnostics, error: "Capture automatique non envoyée : DEGIRO n'a pas renvoyé son total, la lecture n'a pas pu être vérifiée. Lance une capture manuelle." };
   }
 
@@ -356,6 +361,8 @@ async function capture({ tabId = null, mode = 'manuel', force = false } = {}) {
     mode,
     positions: payload.positions.length,
     total: payload.total_value_eur,
+    // Ce compte renvoie-t-il le total DEGIRO ? Sert au garde-fou de la capture auto.
+    totals: diagnostics.degiroTotal !== undefined,
     deduplicated: Boolean(sent.body?.deduplicated),
   };
   await chrome.storage.local.set({ lastCapture: summary });
@@ -367,7 +374,7 @@ const euros = (n) => `${Number(n).toLocaleString('fr-FR', { maximumFractionDigit
 /** POST vers l'API Analyzer, avec le jeton d'extension de l'utilisateur. */
 async function send(payload) {
   const { apiUrl, token } = await chrome.storage.local.get(['apiUrl', 'token']);
-  if (!apiUrl || !token) return { ok: false, detail: "Adresse de l'API ou jeton manquant (voir les réglages ci-dessus)." };
+  if (!apiUrl || !token) return { ok: false, detail: "Jeton non enregistré : colle ton jeton (dgx_…) dans les réglages ci-dessus et clique sur « Enregistrer »." };
 
   let res;
   try {

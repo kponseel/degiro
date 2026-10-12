@@ -99,19 +99,25 @@ chrome.action.setBadgeText({ text: '' }).catch(() => {});
 // Le rendu du diagnostic est défini plus bas : on le déclenche une fois la page prête.
 const autoReportToShow = autoFailedLast ? stored.lastAutoReport : null;
 
-els.save.addEventListener('click', async () => {
-  const apiUrl = els.apiUrl.value.trim().replace(/\/+$/, '');
-  const token = els.token.value.trim();
+// Réglages effectivement enregistrés (ce que le service worker utilisera).
+const enregistres = { apiUrl: stored.apiUrl || '', token: stored.token || '' };
+const saisie = () => ({ apiUrl: els.apiUrl.value.trim().replace(/\/+$/, ''), token: els.token.value.trim() });
+
+/** Valide, demande l'autorisation d'hôte, enregistre. Renvoie true si c'est fait. */
+async function enregistrer() {
+  const { apiUrl, token } = saisie();
   show(els.saveMsg, '');
   els.saveMsg.className = 'msg';
 
   if (!/^https?:\/\/.+/.test(apiUrl)) {
     els.saveMsg.className = 'msg err';
-    return show(els.saveMsg, "Adresse invalide : commence par https:// (ou http:// en local).");
+    show(els.saveMsg, "Adresse invalide : commence par https:// (ou http:// en local).");
+    return false;
   }
   if (!token.startsWith('dgx_')) {
     els.saveMsg.className = 'msg err';
-    return show(els.saveMsg, 'Le jeton doit commencer par « dgx_ ».');
+    show(els.saveMsg, 'Le jeton doit commencer par « dgx_ ».');
+    return false;
   }
 
   // L'autorisation d'appeler ce serveur est demandée maintenant, sur ce clic :
@@ -121,14 +127,19 @@ els.save.addEventListener('click', async () => {
   const granted = await chrome.permissions.request({ origins: [origin] }).catch(() => false);
   if (!granted) {
     els.saveMsg.className = 'msg err';
-    return show(els.saveMsg, `Autorisation refusée pour ${origin} — l'envoi ne peut pas fonctionner sans.`);
+    show(els.saveMsg, `Autorisation refusée pour ${origin} — l'envoi ne peut pas fonctionner sans.`);
+    return false;
   }
 
   await chrome.storage.local.set({ apiUrl, token });
   await chrome.storage.local.remove('brouillon');
+  Object.assign(enregistres, { apiUrl, token });
   els.saveMsg.className = 'msg ok';
-  return show(els.saveMsg, 'Réglages enregistrés.');
-});
+  show(els.saveMsg, 'Réglages enregistrés.');
+  return true;
+}
+
+els.save.addEventListener('click', () => { enregistrer(); });
 
 // ── Capture ─────────────────────────────────────────────────────────
 function renderReport(report) {
@@ -154,6 +165,22 @@ function renderReport(report) {
 }
 
 async function lancerCapture(force = false) {
+  show(els.error, '');
+  // Jeton collé mais « Enregistrer » oublié : le cas le plus fréquent à la
+  // première utilisation (constaté chez un ami). La capture lisait DEGIRO puis
+  // échouait à l'envoi. On enregistre d'abord — le clic sur « Capturer » vaut
+  // geste utilisateur pour la demande d'autorisation.
+  const s = saisie();
+  if (s.token && (s.token !== enregistres.token || s.apiUrl !== enregistres.apiUrl)) {
+    if (!(await enregistrer())) {
+      show(els.error, 'Réglages non enregistrés : corrige le champ signalé ci-dessus, puis relance.');
+      return;
+    }
+  }
+  if (!enregistres.token) {
+    show(els.error, "Il manque ton jeton : génère-le sur la page Import / Extension de l'Analyzer (lien ci-dessus), colle-le dans le champ Jeton, puis relance.");
+    return;
+  }
   els.capture.disabled = true;
   els.force.hidden = true;
   els.capture.textContent = 'Capture en cours…';
