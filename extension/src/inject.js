@@ -1,12 +1,22 @@
 /**
  * Script injecté dans le contexte de la page DEGIRO (monde MAIN).
  *
- * Son unique rôle : observer les appels réseau que l'application DEGIRO fait
- * d'elle-même, et en extraire `sessionId` / `intAccount`. Rien n'est modifié,
- * rien n'est bloqué — on se contente de lire l'URL avant de laisser passer.
+ * Son unique rôle : repérer, dans les adresses des appels réseau que
+ * l'application DEGIRO fait d'elle-même, le `sessionId` et l'`intAccount`.
+ * Rien n'est modifié, rien n'est bloqué, rien n'est intercepté.
  *
- * Pourquoi ici et pas dans le script de contenu : les mondes JavaScript sont
- * cloisonnés, et c'est la page qui possède le `fetch` que DEGIRO utilise.
+ * Les adresses sont lues dans la liste des requêtes que le navigateur tient
+ * pour chaque page (Resource Timing), et non plus en s'interposant devant
+ * `window.fetch` / `XMLHttpRequest`. S'interposer plaçait ce script dans la
+ * pile d'appel de TOUTES les requêtes de la page : quand DEGIRO voyait ses
+ * propres traceurs publicitaires bloqués par sa politique de sécurité (CSP),
+ * Chrome attribuait ces erreurs à l'extension, et la page « Erreurs » de
+ * chrome://extensions s'en remplissait à chaque visite.
+ *
+ * Si cette lecture ne donne rien, la capture se débrouille sans : le service
+ * worker obtient un `sessionId` par /login/secure/config et l'`intAccount` par
+ * /pa/secure/client, à la seule force du cookie de session.
+ *
  * La communication remonte par `postMessage`, jamais dans l'autre sens : la
  * page ne peut donc rien demander à l'extension, et le jeton d'API ne
  * s'approche jamais du contexte de la page.
@@ -34,29 +44,38 @@
       const m = text.match(re);
       if (m && found[key] !== m[1]) { found[key] = m[1]; changed = true; }
     }
-    if (changed) window.postMessage({ type: TAG, creds: { ...found } }, window.location.origin);
+    return changed;
   }
 
-  const originalFetch = window.fetch;
-  if (typeof originalFetch === 'function') {
-    window.fetch = function patchedFetch(...args) {
-      const [input] = args;
-      try { look(typeof input === 'string' ? input : input?.url); } catch { /* jamais bloquer la page */ }
-      return originalFetch.apply(this, args);
-    };
+  const publish = () => window.postMessage({ type: TAG, creds: { ...found } }, window.location.origin);
+
+  /** Seules les requêtes vers DEGIRO nous intéressent : les autres ne sont même pas lues. */
+  const isDegiro = (name) => String(name || '').startsWith('https://trader.degiro.nl/');
+
+  function scan(entries) {
+    let changed = false;
+    for (const e of entries) {
+      if (isDegiro(e.name) && look(e.name)) changed = true;
+    }
+    if (changed) publish();
   }
 
-  const originalOpen = window.XMLHttpRequest?.prototype?.open;
-  if (typeof originalOpen === 'function') {
-    window.XMLHttpRequest.prototype.open = function patchedOpen(...args) {
-      try { look(args[1]); } catch { /* idem */ }
-      return originalOpen.apply(this, args);
-    };
+  try {
+    // `buffered` : rattrape aussi les requêtes faites avant que ce script ne
+    // tourne. Un observateur reçoit chaque nouvelle requête même quand le
+    // tampon de la page est plein — DEGIRO en fait des centaines par heure.
+    new PerformanceObserver((list) => scan(list.getEntries()))
+      .observe({ type: 'resource', buffered: true });
+  } catch {
+    // Navigateur sans PerformanceObserver : lecture ponctuelle du tampon, à la
+    // demande (voir ci-dessous). Les secours du service worker font le reste.
   }
 
-  // Le script de contenu peut réclamer l'état courant (ex. popup rouvert).
+  // Le script de contenu peut réclamer l'état courant (ex. popup rouvert). On
+  // relit au passage le tampon, au cas où l'observateur aurait manqué quelque chose.
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.data?.type !== `${TAG}_ASK`) return;
-    window.postMessage({ type: TAG, creds: { ...found } }, window.location.origin);
+    try { scan(performance.getEntriesByType('resource')); } catch { /* sans effet */ }
+    publish();
   });
 })();
