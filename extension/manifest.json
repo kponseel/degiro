@@ -1,11 +1,16 @@
 {
   "manifest_version": 3,
   "name": "DEGIRO Analyzer — capture",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "Envoie votre portefeuille DEGIRO vers votre instance DEGIRO Analyzer, depuis votre session déjà ouverte.",
   "permissions": ["storage"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
-  "host_permissions": ["https://trader.degiro.nl/*"],
+  "host_permissions": [
+    "https://trader.degiro.nl/*",
+    "https://charting.vwdservices.com/*",
+    "https://api.frankfurter.dev/*",
+    "https://api.frankfurter.app/*"
+  ],
   "background": { "service_worker": "src/background.js", "type": "module" },
   "action": { "default_popup": "src/popup.html", "default_title": "DEGIRO Analyzer" },
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },

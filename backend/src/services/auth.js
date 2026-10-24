@@ -317,6 +317,9 @@ export async function deleteUserData(userId) {
   await pool.query('DELETE FROM ai_prompts WHERE account_id = ?', [userId]);
   // Notes privées par position (thèse, poids visé).
   await pool.query('DELETE FROM position_notes WHERE account_id = ?', [userId]);
+  // Historique des cours des lignes détenues (la liste des ISIN révèle les positions).
+  await pool.query('DELETE FROM price_history WHERE account_id = ?', [userId]);
+  await pool.query('DELETE FROM fx_history WHERE account_id = ?', [userId]);
 }
 
 /** Supprime le compte : données + sessions + liens magiques en attente + ligne user. */

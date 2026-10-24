@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getPortfolio, getExposure } from '../lib/api.js';
+import { usePrices } from '../lib/usePrices.js';
 import {
   buildPrompt, objectivesFor, isinsFromHash, plPct, totalValue,
   HORIZONS, PROFILES, LENGTHS, CASH, MIN_VALUES, DEFAULT_OPTIONS,
@@ -151,6 +152,7 @@ export default function AiPrompts({ onGoImport }) {
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE.portfolio);
   const [opts, setOpts] = useState({ ...DEFAULT_OPTIONS });
   const set = (k) => (v) => setOpts((o) => ({ ...o, [k]: v }));
+  const prices = usePrices();
 
   useEffect(() => {
     getPortfolio()
@@ -183,8 +185,8 @@ export default function AiPrompts({ onGoImport }) {
   const current = available.find((o) => o.id === effective);
 
   const built = useMemo(
-    () => (pf ? buildPrompt({ pf, exposure: expo, scope, isins: selected, objective: effective, options: opts }) : null),
-    [pf, expo, scope, selected, effective, opts],
+    () => (pf ? buildPrompt({ pf, exposure: expo, prices, scope, isins: selected, objective: effective, options: opts }) : null),
+    [pf, expo, prices, scope, selected, effective, opts],
   );
 
   function changeScope(s) {

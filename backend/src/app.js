@@ -20,6 +20,7 @@ import etfHoldingsRouter from './routes/etfHoldings.js';
 import lookthroughRouter from './routes/lookthrough.js';
 import adminRouter from './routes/admin.js';
 import newsRouter from './routes/news.js';
+import pricesRouter from './routes/prices.js';
 import extensionRouter from './routes/extension.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -108,6 +109,7 @@ export function createApp() {
   app.use('/api/lookthrough', lookthroughRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/news', newsRouter);
+  app.use('/api/prices', pricesRouter);
 
   // Toute route /api inconnue → 404 JSON (avant le fallback SPA).
   app.use('/api', (_req, res) => {

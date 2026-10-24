@@ -29,6 +29,10 @@ const TIPS = [
     body: "Dans le détail d'une ligne, « Mes notes » garde ta raison d'investir et le poids que tu vises. L'écart à la cible s'affiche, et les prompts IA reprennent tes notes pour juger si la thèse tient toujours.",
   },
   {
+    title: 'Une action a chuté ? Regarde ses repères récents',
+    body: "Dans le détail d'une ligne, « Historique du cours » montre le cours en euros (change inclus, au taux BCE de chaque jour) sur 1 an ou 5 ans, ses plus hauts, moyennes et plus bas sur 3, 6 et 12 mois, et la hausse qu'il faudrait pour y revenir — ainsi que pour revenir à ton prix de revient. Plus réaliste que le plus haut historique. L'historique arrive avec chaque capture de l'extension (0.8 ou plus).",
+  },
+  {
     title: 'Une capture par jour suffit',
     body: "L'outil ne garde qu'un instantané par journée et par source. Capturer plusieurs fois dans la journée remplace simplement le précédent — ça ne crée jamais de doublon.",
   },

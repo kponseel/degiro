@@ -44,6 +44,16 @@ export const isComplete = (creds) => Boolean(creds?.sessionId && creds?.intAccou
  * Lit `intAccount` dans la réponse de `/pa/secure/client` — voie de secours
  * quand l'application n'a encore rien appelé depuis l'ouverture de l'onglet.
  */
+/**
+ * Identifiant client DEGIRO (`data.id` de /pa/secure/client) : c'est le
+ * `userToken` qu'attend le service de graphiques vwd.
+ */
+export function clientIdFromClient(client) {
+  const data = client?.data ?? client;
+  const value = data?.id;
+  return Number.isInteger(value) || /^\d{3,}$/.test(String(value ?? '')) ? String(value) : null;
+}
+
 export function intAccountFromClient(client) {
   const data = client?.data ?? client;
   const value = data?.intAccount;
