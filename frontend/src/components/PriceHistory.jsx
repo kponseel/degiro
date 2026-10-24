@@ -1,33 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { fmtEur, fmtNum, fmtPct, fmtDate } from '../lib/format.js';
 import { historyStats, WINDOWS } from '../lib/priceHistory.js';
+import { useWidth, niceStep, MONTHS } from './Charts.jsx';
 
 const signed = (x) => (x == null ? '—' : `${x > 0 ? '+' : ''}${fmtPct(x, Math.abs(x) >= 1 ? 0 : 1)}`);
 const money = (v, unit) => (unit === 'EUR' ? fmtEur(v) : `${fmtNum(v)} ${unit}`);
 
-/** Largeur réelle du conteneur : le graphique se redessine au lieu d'être étiré. */
-function useWidth(fallback = 360) {
-  const ref = useRef(null);
-  const [w, setW] = useState(fallback);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-    setW(el.clientWidth || fallback);
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width) || fallback));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [fallback]);
-  return [ref, w];
-}
-
-const niceStep = (span) => {
-  const raw = span / 4;
-  const p = 10 ** Math.floor(Math.log10(raw));
-  return [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => s >= raw) || raw;
-};
-
-const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 /**
  * Courbe du cours en euros, avec deux lignes de repère : ton prix de revient et

@@ -951,3 +951,16 @@ tr.group-row th { text-align: left; }
 .ph-v { font-weight: 650; white-space: nowrap; }
 .ph-m { font-size: 11.5px; color: var(--ink-soft); }
 .ph-key { display: inline-block; width: 12px; height: 0; border-top: 2px dashed; vertical-align: middle; margin-right: 6px; }
+
+/* ── Courbes dans le temps (Évolution) ── */
+.tc-wrap { margin-top: 10px; }
+.tc-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 4px; }
+.tc-key { display: inline-flex; align-items: center; gap: 6px; }
+.tc-chart { position: relative; width: 100%; touch-action: pan-y; }
+.tc-chart svg { display: block; overflow: visible; }
+.tc-end { stroke: var(--card); stroke-width: 2; }
+.tc-tip-row { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tc-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.evo-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.evo-ranges { display: inline-flex; gap: 4px; }
+.evo-ranges .chip { padding: 2px 10px; font-size: 12px; }

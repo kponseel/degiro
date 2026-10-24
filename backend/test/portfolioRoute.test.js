@@ -45,6 +45,21 @@ describe('GET /api/portfolio — capture précédente', () => {
   });
 });
 
+describe('GET /api/portfolio/history', () => {
+  it('un point par jour, extension préférée au CSV le même jour, versements compris', async () => {
+    await ingest({ capture_id: 'h1', captured_at: '2026-10-01T09:00:00Z', total_value_eur: 10000, net_deposits_eur: 9000 });
+    await ingest({ capture_id: 'h2', source: 'csv', captured_at: '2026-10-02T09:00:00Z', total_value_eur: 10100 });
+    await ingest({ capture_id: 'h3', source: 'csv', captured_at: '2026-10-03T08:00:00Z', total_value_eur: 1 });
+    await ingest({ capture_id: 'h4', captured_at: '2026-10-03T09:00:00Z', total_value_eur: 10300, net_deposits_eur: 9000 });
+    const { body } = await request(app).get('/api/portfolio/history').set(AUTH);
+    expect(body.points.map((p) => [p.date, p.source, p.total, p.deposits])).toEqual([
+      ['2026-10-01', 'extension', 10000, 9000],
+      ['2026-10-02', 'csv', 10100, null],
+      ['2026-10-03', 'extension', 10300, 9000],
+    ]);
+  });
+});
+
 describe('PUT /api/portfolio/notes/:isin', () => {
   it('enregistre, renvoie avec la position, puis supprime une note vidée', async () => {
     await ingest();
