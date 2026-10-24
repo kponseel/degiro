@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getPortfolio, getLookthrough } from '../lib/api.js';
+import { getPortfolio, getLookthrough, getHistory } from '../lib/api.js';
+import { evolution, RANGES } from '../lib/evolution.js';
 import { fmtEur, fmtPct, fmtNum, fmtDate, fmtDateShort, fmtSignedEur, toneOf, plural, parisToday, daysBetween } from '../lib/format.js';
 import { Spinner, Card, Banner, Empty } from '../components/ui.jsx';
 import FilterBar from '../components/FilterBar.jsx';
 import PositionDrawer from '../components/PositionDrawer.jsx';
-import { StackBar, Meter, DivergingBars } from '../components/Charts.jsx';
+import { StackBar, Meter, DivergingBars, TimeChart } from '../components/Charts.jsx';
 import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
 import { useSort } from '../lib/useSort.js';
 import { usePrices } from '../lib/usePrices.js';
@@ -138,6 +139,57 @@ function SinceLast({ d, onFocus, onPick }) {
   );
 }
 
+/**
+ * Évolution du patrimoine : valeur totale et versements nets dans le temps, et
+ * ce qui revient au marché une fois les versements retirés.
+ */
+function Evolution({ history }) {
+  const [range, setRange] = usePersistentState('degiro_evo_range', '1y');
+  const ev = evolution(history, range);
+  const all = evolution(history, 'all');
+  if (!all) return null;
+  return (
+    <Card className="ana-block" title="Évolution du patrimoine">
+      <div className="evo-head">
+        <div className="since-figs">
+          {ev ? (
+            <>
+              <span>Depuis le {fmtDate(ev.from)} <strong className={toneOf(ev.change)}>{fmtSignedEur(ev.change)}</strong>{ev.changePct != null ? ` (${signedPct(ev.changePct)})` : ''}</span>
+              {ev.deposits != null && (
+                <span>dont versements <strong>{fmtSignedEur(ev.deposits)}</strong></span>
+              )}
+              {ev.market != null && (
+                <span>dont marché <strong className={toneOf(ev.market)}>{fmtSignedEur(ev.market)}</strong>{ev.marketPct != null ? ` (${signedPct(ev.marketPct)})` : ''}</span>
+              )}
+            </>
+          ) : <span className="muted">Pas assez de captures sur cette période.</span>}
+        </div>
+        <span className="evo-ranges" role="group" aria-label="Période">
+          {RANGES.map((r) => (
+            <button key={r.key} type="button" className={`chip filter${range === r.key ? ' on' : ''}`} aria-pressed={range === r.key} onClick={() => setRange(r.key)}>{r.label}</button>
+          ))}
+        </span>
+      </div>
+      {ev && (
+        <TimeChart
+          label={`Valeur totale du ${fmtDate(ev.from)} au ${fmtDate(ev.to)}`}
+          series={[
+            { key: 'total', label: 'Valeur totale', color: 'var(--c1)', points: ev.points.map((p) => [p.date, p.total]) },
+            { key: 'dep', label: 'Versements nets', color: 'var(--c7)', step: true, dashed: true, points: ev.points.filter((p) => p.deposits != null).map((p) => [p.date, p.deposits]) },
+          ]}
+        />
+      )}
+      <p className="ana-note">
+        {ev?.market != null
+          ? `Marché = variation de la valeur moins tes versements${ev.depositsFrom && ev.depositsFrom > ev.from ? ` (calculé depuis le ${fmtDate(ev.depositsFrom)}, première capture avec les versements)` : ''} : ce que ton argent a rapporté ou perdu, dividendes et frais compris.`
+          : all.hasDeposits
+            ? 'Les versements nets ne sont connus que sur une partie de la période : élargis-la, ou attends quelques captures.'
+            : 'Les versements nets arrivent avec les captures de l’extension : ils permettront de séparer ce que tu as versé de ce que le marché a rapporté.'}
+      </p>
+    </Card>
+  );
+}
+
 /** Carte d'une position, pour les petits écrans (le tableau à 9 colonnes n'y tient pas). */
 function PositionCard({ l, onSelect }) {
   return (
@@ -181,10 +233,12 @@ export default function Overview({ onGoImport }) {
   // Filtre ponctuel posé par un point d'attention : non mémorisé d'une visite à l'autre.
   const [focus, setFocus] = useState(null);
   const prices = usePrices();
+  const [history, setHistory] = useState(null);
 
   useEffect(() => {
     getPortfolio().then(setData).catch((e) => setError(e.message));
     getLookthrough().then(setLookthrough).catch(() => setLookthrough(null));
+    getHistory().then((r) => setHistory(r.points || [])).catch(() => setHistory([]));
   }, []);
 
   const a = useMemo(() => (data?.snapshot ? analyzePortfolio(data) : null), [data]);
@@ -315,6 +369,8 @@ export default function Overview({ onGoImport }) {
       </div>
 
       {since && <SinceLast d={since} onFocus={focusOn} onPick={pick} />}
+
+      {history && <Evolution history={history} />}
 
       <div className="ana-grid-2">
         <Card title="Allocation du patrimoine">

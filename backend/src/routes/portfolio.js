@@ -73,6 +73,34 @@ const noteSchema = z.object({
   target_weight: z.number().finite().min(0).max(100).nullable().optional(),
 });
 
+// GET /api/portfolio/history — un point par jour capturé : valeur totale,
+// liquidités et versements nets, pour la carte « Évolution ». Un jour qui a à la
+// fois une capture d'extension et un import CSV garde l'extension (plus
+// complète : versements nets, réalisé).
+router.get('/history', async (req, res, next) => {
+  try {
+    const [rows] = await getPool().query(
+      `SELECT snapshot_date, source, total_value_eur, cash_eur, net_deposits_eur
+       FROM snapshots WHERE account_id = ?
+       ORDER BY snapshot_date ASC, (source = 'extension') ASC`,
+      [req.user.id],
+    );
+    const byDay = new Map();
+    for (const r of rows) byDay.set(r.snapshot_date, r); // la dernière lue (extension) l'emporte
+    return res.json({
+      points: [...byDay.values()].map((r) => ({
+        date: r.snapshot_date,
+        source: r.source,
+        total: r.total_value_eur == null ? null : Number(r.total_value_eur),
+        cash: r.cash_eur == null ? null : Number(r.cash_eur),
+        deposits: r.net_deposits_eur == null ? null : Number(r.net_deposits_eur),
+      })),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // PUT /api/portfolio/notes/:isin — note privée sur une position (thèse, poids visé).
 // Une note vide (ni thèse ni poids) est supprimée plutôt que gardée vide.
 router.put('/notes/:isin', async (req, res, next) => {
