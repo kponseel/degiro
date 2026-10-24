@@ -6,7 +6,7 @@ export const AUTH = { Authorization: `Bearer ${TEST_TOKEN}` };
 // `app_settings` en fait partie : le code d'invitation y vit, et le laisser en
 // place ferait échouer toute création de compte des autres tests. Chaque test qui
 // s'intéresse au code le pose donc lui-même.
-const TABLES = ['positions', 'snapshots', 'transactions', 'isin_ref', 'etf_holdings', 'market_prices', 'sessions', 'magic_links', 'extension_tokens', 'ai_insights', 'ai_prompts', 'position_notes', 'app_settings', 'users'];
+const TABLES = ['positions', 'snapshots', 'transactions', 'isin_ref', 'etf_holdings', 'market_prices', 'sessions', 'magic_links', 'extension_tokens', 'ai_insights', 'ai_prompts', 'position_notes', 'price_history', 'fx_history', 'app_settings', 'users'];
 
 /** Vide toutes les tables métier (à appeler en beforeEach des tests DB). */
 export async function resetDb() {

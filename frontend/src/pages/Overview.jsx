@@ -7,6 +7,8 @@ import PositionDrawer from '../components/PositionDrawer.jsx';
 import { StackBar, Meter, DivergingBars } from '../components/Charts.jsx';
 import { usePersistentState, distinctValues, applyFilters } from '../lib/useFilters.js';
 import { useSort } from '../lib/useSort.js';
+import { usePrices } from '../lib/usePrices.js';
+import { historyStats } from '../lib/priceHistory.js';
 import SortHeader from '../components/SortHeader.jsx';
 import { diffSnapshots } from '../lib/snapshotDiff.js';
 import {
@@ -178,6 +180,7 @@ export default function Overview({ onGoImport }) {
   const [filter, setFilter] = usePersistentState('degiro_filter_overview', EMPTY_FILTER);
   // Filtre ponctuel posé par un point d'attention : non mémorisé d'une visite à l'autre.
   const [focus, setFocus] = useState(null);
+  const prices = usePrices();
 
   useEffect(() => {
     getPortfolio().then(setData).catch((e) => setError(e.message));
@@ -197,7 +200,13 @@ export default function Overview({ onGoImport }) {
     return attentionPoints(a, { lookthrough: lt, sectors: breakdown(a.lines, 'sector', lt) });
   }, [a, lookthrough]);
 
-  const lines = a?.lines || [];
+  // Écart au plus haut 12 mois, en euros : pour repérer d'un coup d'œil les
+  // lignes en forte baisse (détail dans le panneau de la ligne).
+  const lines = useMemo(() => (a?.lines || []).map((l) => {
+    const h = prices ? historyStats(prices.byIsin.get(l.isin), prices.fx, l) : null;
+    return { ...l, fromHigh12: h?.unit === 'EUR' ? h.windows.m12?.fromHigh ?? null : null };
+  }), [a, prices]);
+  const hasHistory = lines.some((l) => l.fromHigh12 != null);
   const focusSet = focus ? new Set(focus.isins) : null;
   const filtered = applyFilters(focusSet ? lines.filter((l) => focusSet.has(l.isin)) : lines, filter, {
     searchFields: ['name', 'symbol', 'ticker', 'isin'],
@@ -390,6 +399,7 @@ export default function Overview({ onGoImport }) {
                 <SortHeader label="+/- €" colKey="pl" sort={sort} onToggle={toggle} />
                 <SortHeader label="+/- %" colKey="plPct" sort={sort} onToggle={toggle} />
                 <SortHeader label="Jour" colKey="dayPct" sort={sort} onToggle={toggle} cls="col-opt" />
+                {hasHistory && <SortHeader label="vs + haut 12 m" colKey="fromHigh12" sort={sort} onToggle={toggle} cls="col-opt" />}
               </tr>
             </thead>
             {groups.map((g) => (
@@ -399,7 +409,7 @@ export default function Overview({ onGoImport }) {
                     <th colSpan={4} scope="rowgroup">{g.key} <span className="muted">· {plural(g.lines.length, 'ligne')}</span></th>
                     <td>{fmtEur(g.value)}</td>
                     <td>{fmtPct(a.invested > 0 ? g.value / a.invested : 0)}</td>
-                    <td colSpan={3} />
+                    <td colSpan={hasHistory ? 4 : 3} />
                   </tr>
                 )}
                 {g.lines.map((l) => (
@@ -422,13 +432,18 @@ export default function Overview({ onGoImport }) {
                     <td className={l.pl == null ? 'muted' : toneOf(l.pl)}>{fmtSignedEur(l.pl)}</td>
                     <td className={l.plPct == null ? 'muted' : toneOf(l.pl)}>{signedPct(l.plPct)}</td>
                     <td className={`col-opt ${l.dayPct == null ? 'muted' : toneOf(l.day)}`}>{signedPct(l.dayPct)}</td>
+                    {hasHistory && (
+                      <td className={`col-opt ${l.fromHigh12 == null ? 'muted' : ''}`} title="Écart du cours (en €) à son plus haut des 12 derniers mois">
+                        {l.fromHigh12 == null ? '—' : signedPct(l.fromHigh12)}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             ))}
             {sorted.length === 0 && (
               <tbody>
-                <tr><td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 18 }}>Aucune position ne correspond aux filtres.</td></tr>
+                <tr><td colSpan={hasHistory ? 10 : 9} className="muted" style={{ textAlign: 'center', padding: 18 }}>Aucune position ne correspond aux filtres.</td></tr>
               </tbody>
             )}
           </table>

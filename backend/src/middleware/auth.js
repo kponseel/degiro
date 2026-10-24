@@ -75,9 +75,14 @@ export async function requireAuth(req, res, next) {
 
 /**
  * Chemins (sous /api) qu'un jeton d'extension a le droit d'appeler.
- * L'extension ne fait qu'une chose : déposer une capture.
+ * L'extension ne fait que DÉPOSER : une capture, et l'historique des cours
+ * qui l'accompagne (en écriture seulement — la relecture reste réservée à la
+ * session, la liste des ISIN révélant les positions).
  */
-const EXTENSION_ALLOWED = [/^\/ingest(\/|$)/];
+const EXTENSION_ALLOWED = [
+  { re: /^\/ingest(\/|$)/ },
+  { re: /^\/prices\/?$/, methods: ['POST'] },
+];
 
 /**
  * Restreint la portée du jeton d'extension.
@@ -92,7 +97,7 @@ const EXTENSION_ALLOWED = [/^\/ingest(\/|$)/];
  */
 export function restrictExtensionScope(req, res, next) {
   if (!req.user?.viaExtension) return next();
-  if (EXTENSION_ALLOWED.some((re) => re.test(req.path))) return next();
+  if (EXTENSION_ALLOWED.some((r) => r.re.test(req.path) && (!r.methods || r.methods.includes(req.method)))) return next();
   return res.status(403).json({
     error: "Ce jeton d'extension ne permet que l'envoi de captures. Connecte-toi pour le reste.",
   });

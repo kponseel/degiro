@@ -8,10 +8,15 @@
  * Chaque étape est journalisée dans un rapport de diagnostic renvoyé au popup :
  * si DEGIRO change son format, on voit immédiatement quelle étape a lâché.
  */
-import { buildPayload, parsePortfolio, productIds, chunk } from './degiro.js';
 import {
-  isComplete, intAccountFromClient, sessionIdFromConfig, urls,
+  buildPayload, parsePortfolio, productIds, chunk, indexProducts,
+} from './degiro.js';
+import {
+  isComplete, intAccountFromClient, clientIdFromClient, sessionIdFromConfig, urls,
 } from './session.js';
+import {
+  SPANS, FX_BASES, vwdIdOf, chartUrl, parseChart, fxCurrencyOf, fxUrl, parseFx, pool,
+} from './history.js';
 import { shouldAutoCapture } from './auto.js';
 
 const DEGIRO_TAB = 'https://trader.degiro.nl/*';
@@ -345,6 +350,14 @@ async function capture({ tabId = null, mode = 'manuel', force = false } = {}) {
   if (force) payload.force = true;
   const sent = await send(payload);
   step(report, 'Envoi à Analyzer', sent.ok, sent.detail);
+  if (sent.ok) {
+    // Historique des cours : en dernier et sans jamais faire échouer la capture —
+    // le portefeuille du jour est déjà enregistré.
+    const hist = await captureHistory({
+      tabId: tab.id, degiroFetch, index: indexProducts(lots), positions: payload.positions,
+    }).catch((e) => ({ ok: false, detail: `erreur inattendue : ${String(e.message || e)}` }));
+    step(report, 'Historique des cours', hist.ok, hist.detail);
+  }
   if (!sent.ok) {
     return {
       ok: false,
@@ -370,6 +383,130 @@ async function capture({ tabId = null, mode = 'manuel', force = false } = {}) {
 }
 
 const euros = (n) => `${Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €`;
+
+// ── Historique des cours ────────────────────────────────────────────
+
+/**
+ * GET vers un service tiers (graphiques vwd, taux BCE) depuis le service
+ * worker, qui a la permission d'hôte. En secours, et pour vwd seulement, la
+ * même requête est rejouée depuis l'onglet DEGIRO : certains services ne
+ * répondent qu'à une page de leur client.
+ */
+async function getJson(url, { tabId = null } = {}) {
+  try {
+    const res = await fetch(url, { credentials: 'omit' });
+    const text = await res.text();
+    if (res.ok) return { ok: true, status: res.status, text };
+    if (tabId == null) return { ok: false, status: res.status, text: text.slice(0, 200) };
+  } catch (e) {
+    if (tabId == null) return { ok: false, status: 0, error: String(e.message || e) };
+  }
+  const viaTab = await fetchViaTab(tabId, url);
+  return viaTab?.ok
+    ? { ok: true, status: viaTab.status, text: viaTab.json ?? viaTab.text, viaTab: true }
+    : { ok: false, status: viaTab?.status ?? 0, error: viaTab?.error, text: viaTab?.text };
+}
+
+const isoDate = (d) => d.toISOString().slice(0, 10);
+
+/**
+ * Cours des lignes détenues sur 1 an (quotidien) et 5 ans (hebdomadaire), plus
+ * les taux BCE des devises concernées, envoyés à l'Analyzer. Les positions et
+ * leurs ISIN viennent de la capture qui vient d'être enregistrée.
+ */
+async function captureHistory({ tabId, degiroFetch, index, positions }) {
+  // vwd attend l'identifiant CLIENT (pas le compte) comme jeton.
+  const client = await degiroFetch((sid) => urls.client(sid));
+  const userToken = client?.ok ? clientIdFromClient(client.json) : null;
+  if (!userToken) {
+    return { ok: false, detail: `identifiant client DEGIRO introuvable (HTTP ${client?.status ?? '?'}) — historique non récupéré` };
+  }
+
+  const byIsin = new Map();
+  for (const info of Object.values(index)) {
+    if (info?.isin) byIsin.set(String(info.isin).toUpperCase(), info);
+  }
+  const lines = positions
+    .map((p) => ({ isin: p.isin, name: p.name, currency: p.currency, vwd: vwdIdOf(byIsin.get(p.isin)) }))
+    .filter((l) => l.vwd);
+  const withoutId = positions.length - lines.length;
+
+  let firstFailure = null;
+  const fetchSpan = async (l, span) => {
+    const res = await getJson(chartUrl({ vwd: l.vwd, userToken, ...SPANS[span] }), { tabId });
+    if (!res.ok) {
+      firstFailure ||= `HTTP ${res.status}${res.error ? ` — ${res.error}` : ''}${res.text ? ` — ${String(res.text).slice(0, 120)}` : ''}`;
+      return [];
+    }
+    const points = parseChart(res.text);
+    if (!points.length) firstFailure ||= `réponse reçue mais illisible : ${String(typeof res.text === 'string' ? res.text : JSON.stringify(res.text)).slice(0, 160)}`;
+    return points;
+  };
+  const results = await pool(lines.map((l) => async () => ({
+    isin: l.isin,
+    name: l.name,
+    currency: l.currency,
+    daily: await fetchSpan(l, 'daily'),
+    weekly: await fetchSpan(l, 'weekly'),
+  })), 4);
+  const series = results.filter((r) => r && !r.error && (r.daily.length || r.weekly.length));
+  const missing = results.filter((r) => !r || r.error || (!r.daily.length && !r.weekly.length));
+
+  if (!series.length) {
+    return { ok: false, detail: `aucun historique reçu pour ${lines.length} ligne(s)${firstFailure ? ` — ${firstFailure}` : ''}` };
+  }
+
+  // Taux BCE sur la même profondeur que l'historique le plus long.
+  const codes = [...new Set(series.map((s) => fxCurrencyOf(s.currency).code).filter((c) => c && c !== 'EUR'))];
+  let fx = {};
+  let fxNote = '';
+  if (codes.length) {
+    const to = new Date();
+    const from = new Date(to);
+    from.setUTCFullYear(from.getUTCFullYear() - 5);
+    from.setUTCDate(from.getUTCDate() - 10);
+    for (const base of FX_BASES) {
+      const res = await getJson(fxUrl(base, codes, isoDate(from), isoDate(to)));
+      if (res.ok) { fx = parseFx(res.text); break; }
+      fxNote = ` — taux de change BCE indisponibles (HTTP ${res.status})`;
+    }
+    if (Object.keys(fx).length) fxNote = ` — change BCE : ${Object.keys(fx).join(', ')}`;
+  }
+
+  const sent = await sendJson('/api/prices', {
+    fetched_at: new Date().toISOString(),
+    series: series.map(({ isin, currency, daily, weekly }) => ({ isin, currency, daily, weekly })),
+    fx: Object.entries(fx).map(([currency, rates]) => ({ currency, rates })),
+  });
+  if (!sent.ok) return { ok: false, detail: `historique lu mais non enregistré : ${sent.detail}` };
+
+  const manque = [
+    ...missing.map((m) => m?.name || m?.isin).filter(Boolean),
+  ];
+  return {
+    ok: true,
+    detail: `${series.length}/${positions.length} ligne(s), 1 an au jour et 5 ans à la semaine${fxNote}`
+      + (withoutId ? ` — ${withoutId} ligne(s) sans identifiant de cotation` : '')
+      + (manque.length ? ` — sans historique : ${manque.slice(0, 4).join(', ')}${manque.length > 4 ? '…' : ''}${firstFailure ? ` (${firstFailure})` : ''}` : ''),
+  };
+}
+
+/** POST JSON vers l'API Analyzer, avec le jeton d'extension. */
+async function sendJson(path, body) {
+  const { apiUrl, token } = await chrome.storage.local.get(['apiUrl', 'token']);
+  if (!apiUrl || !token) return { ok: false, detail: 'jeton non enregistré' };
+  try {
+    const res = await fetch(`${apiUrl.replace(/\/+$/, '')}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => null);
+    return res.ok ? { ok: true, body: json } : { ok: false, detail: `HTTP ${res.status}${json?.error ? ` — ${json.error}` : ''}` };
+  } catch (e) {
+    return { ok: false, detail: `serveur injoignable : ${String(e.message || e)}` };
+  }
+}
 
 /** POST vers l'API Analyzer, avec le jeton d'extension de l'utilisateur. */
 async function send(payload) {

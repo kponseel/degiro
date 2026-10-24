@@ -192,3 +192,38 @@ describe('Sprint 1 — notes, manques, nouveaux objectifs', () => {
   });
 });
 
+
+describe('Historique des cours dans le prompt', () => {
+  // Beta : 50 titres à 20 €, coût 1 250 € (PRU 25 €) ; plus haut 12 mois 50 €.
+  const daily = [['2025-11-03', 50], ['2026-03-02', 35], ['2026-07-01', 28], ['2026-08-31', 20]];
+  const prices = {
+    byIsin: new Map([
+      ['FR0000000002', { currency: 'EUR', daily, weekly: [['2022-01-03', 80]] }],
+      ['IE0000000003', { currency: 'EUR', daily: [['2025-11-03', 100], ['2026-08-31', 99]], weekly: [] }],
+    ]),
+    fx: {},
+  };
+
+  it('titre sélectionné : plus hauts, hausse nécessaire, PRU, et question sur un objectif réaliste', () => {
+    const r = buildPrompt({ pf, prices, scope: 'stocks', isins: ['FR0000000002'], objective: objectivesFor('stocks', 1)[0].id });
+    expect(r.text).toContain('Historique des cours en euros');
+    expect(r.text).toMatch(/-60\s%\ssous son plus haut 12 mois/);
+    expect(r.text).toMatch(/12 mois 50,00\s€ \(\+150\s%\)/);
+    expect(r.text).toMatch(/plus haut 5 ans 80,00\s€/);
+    expect(r.text).toMatch(/mon prix de revient 25,00\s€ \(\+25\s% pour y revenir, dernier passage au-dessus le 01\/07\/2026\)/);
+    expect(r.text).toContain('objectif réaliste');
+  });
+
+  it('portefeuille entier : seules les lignes à −20 % ou pire sous leur plus haut', () => {
+    const r = buildPrompt({ pf, prices, scope: 'portfolio', objective: 'bilan' });
+    expect(r.text).toContain('Lignes à 20 % ou plus sous leur plus haut 12 mois');
+    expect(r.text).toMatch(/- Beta\s+SA : cours/);
+    expect(r.text).not.toMatch(/- Gamma ETF : cours/);
+  });
+
+  it('sans historique : aucun bloc, aucune question ajoutée', () => {
+    const r = buildPrompt({ pf, scope: 'stocks', isins: ['FR0000000002'], objective: objectivesFor('stocks', 1)[0].id });
+    expect(r.text).not.toContain('Historique des cours');
+    expect(r.text).not.toContain('objectif réaliste');
+  });
+});

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { fmtEur, fmtPct, fmtNum, fmtDate } from '../lib/format.js';
 import { saveNote } from '../lib/api.js';
 import StockLinks from './StockLinks.jsx';
+import PriceHistory from './PriceHistory.jsx';
+import { usePrices } from '../lib/usePrices.js';
 import { newsLinks } from '../lib/links.js';
 
 /**
@@ -79,6 +81,7 @@ function Row({ label, children }) {
 export default function PositionDrawer({ position, lookthrough, onClose, onAnalyze, onNoteSaved }) {
   const panelRef = useRef(null);
   const previousFocus = useRef(null);
+  const prices = usePrices();
 
   useEffect(() => {
     if (!position) return undefined;
@@ -179,6 +182,10 @@ export default function PositionDrawer({ position, lookthrough, onClose, onAnaly
             <Row label="Pays">{p.fund ? <span className="muted">fonds (domicile {p.countryN || p.country || '—'})</span> : (p.countryN || p.country || <span className="muted">non renseigné</span>)}</Row>
             {p.region && !p.fund && <Row label="Région">{p.region}</Row>}
           </section>
+
+          {prices && (
+            <PriceHistory key={`ph-${p.isin}`} history={prices.byIsin.get(p.isin) || null} fx={prices.fx} position={p} />
+          )}
 
           {(viaEtf > 0.005 || lt) && (
             <section className="dr-section">

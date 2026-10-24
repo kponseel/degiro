@@ -16,6 +16,9 @@
 (() => {
   const TAG = 'DGX_CREDS';
   const ORIGIN = 'https://trader.degiro.nl';
+  // Le service de graphiques de DEGIRO (historique des cours) : appelé d'ici
+  // seulement en secours, si le service worker n'a pas pu le joindre lui-même.
+  const CHART_ORIGIN = 'https://charting.vwdservices.com/';
   let creds = {};
 
   // Signal « DEGIRO prêt » pour la capture automatique : une fois par page, dès
@@ -41,10 +44,12 @@
   window.postMessage({ type: `${TAG}_ASK` }, window.location.origin);
 
   async function fetchDegiro({ url, method = 'GET', body }) {
-    if (!String(url).startsWith(ORIGIN)) throw new Error('URL hors DEGIRO refusée');
+    const degiro = String(url).startsWith(`${ORIGIN}/`);
+    if (!degiro && !String(url).startsWith(CHART_ORIGIN)) throw new Error('URL hors DEGIRO refusée');
     const res = await fetch(url, {
       method,
-      credentials: 'include',
+      // Les cookies de session DEGIRO ne partent que vers DEGIRO.
+      credentials: degiro ? 'include' : 'omit',
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

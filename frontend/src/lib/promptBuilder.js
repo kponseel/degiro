@@ -1,6 +1,7 @@
 import { fmtEur, fmtNum, fmtDate } from './format.js';
 import { enrichLines, breakdown, diversification } from './portfolioAnalytics.js';
 import { SECTORS, REGIONS } from './taxonomy.js';
+import { historyStats } from './priceHistory.js';
 
 /**
  * Générateur de prompts à copier-coller, module PUR (aucune API navigateur) :
@@ -406,6 +407,41 @@ function notesLines(shown, total) {
     });
 }
 
+const signedPct0 = (v) => (Number.isFinite(v) ? `${v > 0 ? '+' : ''}${Math.round(v * 100)} %` : '—');
+
+/**
+ * Historique des cours en euros des lignes affichées : plus hauts et moyennes
+ * récents, avec la hausse qu'il faudrait pour y revenir, et le prix de revient.
+ * Pour tout le portefeuille, seules les lignes nettement sous leur plus haut
+ * 12 mois (−20 % ou pire) sont listées : ce sont elles que la question concerne.
+ */
+export function historyLines(shown, prices, { onlyDrawdowns = false } = {}) {
+  if (!prices?.byIsin?.size) return [];
+  const out = [];
+  for (const p of shown) {
+    const h = historyStats(prices.byIsin.get(p.isin), prices.fx, p);
+    if (!h || h.unit !== 'EUR') continue;
+    const w = h.windows;
+    if (onlyDrawdowns && !(w.m12?.fromHigh <= -0.2)) continue;
+    const highs = [['3 mois', w.m3], ['6 mois', w.m6], ['12 mois', w.m12]]
+      .filter(([, x]) => x)
+      .map(([l, x]) => `${l} ${fmtEur(x.high)} (${signedPct0(x.toHigh)})`);
+    const parts = [`cours ${fmtEur(h.now)}`];
+    if (w.m12) parts.push(`${signedPct0(w.m12.fromHigh)} sous son plus haut 12 mois`);
+    if (highs.length) parts.push(`plus hauts ${highs.join(', ')}`);
+    if (w.y5 && w.y5.high > (w.m12?.high || 0) * 1.001) parts.push(`plus haut 5 ans ${fmtEur(w.y5.high)} (${fmtDate(w.y5.highDate)})`);
+    if (w.m6) parts.push(`moyenne 6 mois ${fmtEur(w.m6.avg)}`);
+    if (w.m12) parts.push(`plus bas 12 mois ${fmtEur(w.m12.low)}`);
+    if (h.pru) {
+      parts.push(h.pru.toLevel > 0.005
+        ? `mon prix de revient ${fmtEur(h.pru.level)} (${signedPct0(h.pru.toLevel)} pour y revenir, ${h.pru.lastAbove ? `dernier passage au-dessus le ${fmtDate(h.pru.lastAbove)}` : `jamais atteint depuis ${fmtDate(h.pru.spanFrom)}`})`
+        : `mon prix de revient ${fmtEur(h.pru.level)} (cours au-dessus)`);
+    }
+    out.push(`- ${label(p)} : ${parts.join(' ; ')}.`);
+  }
+  return out;
+}
+
 /** Objectifs proposés pour une portée et un nombre de titres donnés. */
 export const objectivesFor = (scope, count = 0) =>
   OBJECTIVES.filter((o) => o.scopes.includes(scope) && (scope !== 'stocks' || count >= (o.min || 1)));
@@ -418,10 +454,11 @@ export const objectivesFor = (scope, count = 0) =>
  * @param scope     'portfolio' | 'stocks'
  * @param isins     titres sélectionnés (portée 'stocks')
  * @param objective id d'objectif
+ * @param prices    historique des cours ({ byIsin, fx }, facultatif)
  * @param options   voir DEFAULT_OPTIONS
  * @returns {{ text: string, count: number } | { error: string }}
  */
-export function buildPrompt({ pf, exposure = null, scope, isins = [], objective, options = {} }) {
+export function buildPrompt({ pf, exposure = null, prices = null, scope, isins = [], objective, options = {} }) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const all = byValue(pf?.positions);
   if (!all.length) return { error: 'Aucune position dans le portefeuille.' };
@@ -494,6 +531,15 @@ export function buildPrompt({ pf, exposure = null, scope, isins = [], objective,
     out.push(...notes);
   }
 
+  const history = historyLines(shown, prices, { onlyDrawdowns: scope === 'portfolio' });
+  if (history.length) {
+    out.push('');
+    out.push(scope === 'portfolio'
+      ? 'Lignes à 20 % ou plus sous leur plus haut 12 mois (cours en euros, convertis au taux BCE du jour ; entre parenthèses, la hausse nécessaire pour revenir à chaque niveau) :'
+      : 'Historique des cours en euros (convertis au taux BCE du jour ; entre parenthèses, la hausse nécessaire pour revenir à chaque niveau) :');
+    out.push(...history);
+  }
+
   if (obj.gaps) {
     const g = exposureGaps(all);
     out.push('');
@@ -511,6 +557,9 @@ export function buildPrompt({ pf, exposure = null, scope, isins = [], objective,
   out.push('');
   out.push('## Ce que je te demande');
   const questions = obj.ask({ n, scope, amount }).filter(Boolean);
+  if (history.length) {
+    questions.push(`Au vu de l'historique des cours ci-dessus, quels niveaux te semblent atteignables à mon horizon pour ${history.length > 1 ? 'ces lignes' : 'cette ligne'}, et lequel retenir comme objectif réaliste plutôt que le plus haut historique ?`);
+  }
   questions.forEach((q, i) => out.push(`${i + 1}. ${q}`));
 
   out.push('');

@@ -121,6 +121,17 @@ describe("Jeton d'extension — portée limitée à l'ingestion", () => {
     }
   });
 
+  it("dépose l'historique des cours, mais ne peut pas le relire", async () => {
+    const { auth } = await extensionToken('ext-scope-prices@example.com');
+    const body = {
+      fetched_at: new Date().toISOString(),
+      series: [{ isin: 'US67066G1040', currency: 'USD', daily: [['2026-10-01', 120.5]], weekly: [] }],
+      fx: [{ currency: 'USD', rates: [['2026-10-01', 1.09]] }],
+    };
+    expect((await request(app).post('/api/prices').set(auth).send(body)).status).toBe(201);
+    expect((await request(app).get('/api/prices').set(auth)).status).toBe(403);
+  });
+
   it('ne peut pas écrire de note sur une position', async () => {
     const { auth } = await extensionToken('ext-scope-notes@example.com');
     const res = await request(app).put('/api/portfolio/notes/US67066G1040').set(auth).send({ thesis: 'x' });
@@ -256,5 +267,21 @@ describe('Effacement des données — notes comprises', () => {
     expect((await agent.delete('/api/auth/me/data')).status).toBe(200);
     const [[{ n }]] = await getPool().query('SELECT COUNT(*) AS n FROM position_notes');
     expect(Number(n)).toBe(0);
+  });
+});
+
+describe('Effacement des données — historique des cours compris', () => {
+  it('« Effacer mes données » supprime aussi l’historique des cours et des changes', async () => {
+    const agent = await loginAs('prices-wipe@example.com');
+    const res = await agent.post('/api/prices').send({
+      fetched_at: new Date().toISOString(),
+      series: [{ isin: 'US67066G1040', currency: 'USD', daily: [['2026-10-01', 120.5]], weekly: [['2026-09-28', 118]] }],
+      fx: [{ currency: 'USD', rates: [['2026-10-01', 1.09]] }],
+    });
+    expect(res.status).toBe(201);
+    expect((await agent.delete('/api/auth/me/data')).status).toBe(200);
+    const [[{ n }]] = await getPool().query('SELECT COUNT(*) AS n FROM price_history');
+    const [[{ f }]] = await getPool().query('SELECT COUNT(*) AS f FROM fx_history');
+    expect(Number(n) + Number(f)).toBe(0);
   });
 });
